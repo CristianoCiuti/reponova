@@ -11,7 +11,6 @@ const RepoConfigSchema = z.object({
 });
 
 const BuildConfigSchema = z.object({
-  semantic: z.boolean().default(false),
   graphify_args: z.array(z.string()).default([]),
 });
 

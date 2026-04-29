@@ -11,8 +11,7 @@ repos:
 
 # Build options
 build:
-  semantic: false           # true for --mode deep (requires LLM, costs tokens)
-  graphify_args: []         # extra arguments passed to graphify
+  graphify_args: []         # extra arguments passed to graphify CLI (merge-graphs, update)
 
 # Outline options
 outlines:

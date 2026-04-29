@@ -6,7 +6,7 @@ describe("loadConfig", () => {
     const { config } = loadConfig(undefined);
     expect(config.output).toBe("graphify-out");
     expect(config.repos).toEqual([]);
-    expect(config.build.semantic).toBe(false);
+    expect(config.build.graphify_args).toEqual([]);
     expect(config.outlines.enabled).toBe(true);
     expect(config.search.enabled).toBe(true);
   });

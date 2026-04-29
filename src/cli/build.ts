@@ -11,11 +11,6 @@ export const buildCommand: CommandModule = {
         type: "string",
         describe: "Path to graphify-tools.config.yml",
       })
-      .option("semantic", {
-        type: "boolean",
-        describe: "Use semantic mode (requires LLM)",
-        default: false,
-      })
       .option("force", {
         type: "boolean",
         describe: "Force rebuild even if up-to-date",
@@ -23,7 +18,6 @@ export const buildCommand: CommandModule = {
       }),
   handler: async (argv) => {
     const { config, configDir } = loadConfig(argv.config as string | undefined);
-    const semantic = (argv.semantic as boolean) || config.build.semantic;
-    await runBuild(config, configDir, { semantic, force: argv.force as boolean });
+    await runBuild(config, configDir, { force: argv.force as boolean });
   },
 };

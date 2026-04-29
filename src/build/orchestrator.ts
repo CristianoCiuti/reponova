@@ -1,45 +1,75 @@
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, copyFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Config } from "../shared/types.js";
-import { checkGraphify, installGraphify } from "./graphify-check.js";
+import { checkGraphify } from "./graphify-check.js";
 import { runIndexer } from "./indexer.js";
 import { postProcess } from "./post-process.js";
 import { log } from "../shared/utils.js";
 
 export interface BuildOptions {
-  semantic: boolean;
   force: boolean;
+}
+
+/**
+ * Python script template for initial graph build via graphify library API.
+ * Uses: extract → build_from_json → cluster → to_json
+ * This is AST-only (deterministic, no LLM cost).
+ */
+function buildPythonScript(repoPath: string, outPath: string): string {
+  // Escape backslashes for Windows paths in Python string literals
+  const pyRepoPath = repoPath.replace(/\\/g, "\\\\");
+  const pyOutPath = outPath.replace(/\\/g, "\\\\");
+
+  return `
+import sys
+from pathlib import Path
+
+try:
+    from graphify import extract, build_from_json, cluster, to_json
+    from graphify.extract import collect_files
+except ImportError:
+    print("ERROR: graphify not importable", file=sys.stderr)
+    sys.exit(1)
+
+path = Path("${pyRepoPath}")
+out = Path("${pyOutPath}")
+out.mkdir(parents=True, exist_ok=True)
+
+files = collect_files(path)
+if not files:
+    import json
+    (out / "graph.json").write_text(json.dumps({"nodes": [], "links": []}))
+    print("0 nodes, 0 edges (no code files found)")
+    sys.exit(0)
+
+extraction = extract(files, cache_root=path)
+G = build_from_json(extraction)
+communities = cluster(G)
+to_json(G, communities, str(out / "graph.json"))
+print(f"{G.number_of_nodes()} nodes, {G.number_of_edges()} edges, {len(communities)} communities")
+`.trim();
 }
 
 /**
  * Run the full build pipeline:
  * 1. Verify graphify installed (PyPI: graphifyy)
- * 2. Run `graphify <path>` on each repo
+ * 2. For each repo: run Python API build (or `graphify update` for incremental)
  * 3. Merge graphs via `graphify merge-graphs`
  * 4. Post-process paths
  * 5. Generate search index
- *
- * Reference: https://github.com/safishamsi/graphify
  */
 export async function runBuild(config: Config, configDir: string, options: BuildOptions): Promise<void> {
   // 1. Verify graphify
-  let graphifyInfo = checkGraphify();
+  const graphifyInfo = checkGraphify();
   if (!graphifyInfo) {
     log.error("graphify (PyPI: graphifyy) is required for building the knowledge graph.");
     log.error("Install: pip install graphifyy   (or: uv tool install graphifyy)");
-    const installed = installGraphify();
-    if (!installed) process.exit(1);
-    graphifyInfo = checkGraphify();
-    if (!graphifyInfo) {
-      log.error("Installation failed. Please install manually: pip install graphifyy");
-      process.exit(1);
-    }
+    process.exit(1);
   }
 
-  const graphifyCmd = graphifyInfo.command;
-  log.info(`Using graphify: ${graphifyCmd} v${graphifyInfo.version}`);
+  log.info(`Using graphify: v${graphifyInfo.version}`);
 
   if (config.repos.length === 0) {
     log.error("No repos configured. Add repos to graphify-tools.config.yml");
@@ -57,8 +87,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
   mkdirSync(tmpDir, { recursive: true });
 
   try {
-    // 2. Run graphify on each repo
-    // CLI usage: graphify <path> [--mode deep] [--no-viz] [--out <dir>]
+    // 2. Build each repo
     const repoGraphs: string[] = [];
     for (const repo of config.repos) {
       const repoPath = resolve(configDir, repo.path);
@@ -69,16 +98,34 @@ export async function runBuild(config: Config, configDir: string, options: Build
 
       const repoOutDir = join(tmpDir, repo.name);
       mkdirSync(repoOutDir, { recursive: true });
-      const modeArgs = options.semantic ? "--mode deep" : "";
-      const extraArgs = config.build.graphify_args.join(" ");
-      // graphify <path> --no-viz --out <dir>
-      const cmd = `${graphifyCmd} "${repoPath}" --no-viz --out "${repoOutDir}" ${modeArgs} ${extraArgs}`.trim();
 
       log.info(`Building graph for ${repo.name}...`);
-      log.debug(`  Command: ${cmd}`);
+
+      // Check if repo has existing graph (use `graphify update` for incremental)
+      const existingGraph = join(repoPath, "graphify-out", "graph.json");
+      const useUpdate = !options.force && existsSync(existingGraph);
 
       try {
-        execSync(cmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 600_000 });
+        if (useUpdate) {
+          // Incremental: use `graphify update <path>` (re-extracts code, no LLM)
+          const updateCmd = `${graphifyInfo.command} update "${repoPath}"`;
+          log.debug(`  Incremental: ${updateCmd}`);
+          execSync(updateCmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 600_000 });
+          // Copy the updated graph to our temp dir
+          copyFileSync(existingGraph, join(repoOutDir, "graph.json"));
+        } else {
+          // Initial build: use Python API
+          const script = buildPythonScript(repoPath, repoOutDir);
+          log.debug("  Initial build via Python API");
+          const output = execSync(`python -c "${script.replace(/"/g, '\\"')}"`, {
+            encoding: "utf-8",
+            stdio: ["pipe", "pipe", "pipe"],
+            timeout: 600_000,
+            cwd: repoPath,
+          });
+          if (output.trim()) log.info(`  ${output.trim()}`);
+        }
+
         const graphJson = join(repoOutDir, "graph.json");
         if (existsSync(graphJson)) {
           repoGraphs.push(graphJson);
@@ -101,12 +148,11 @@ export async function runBuild(config: Config, configDir: string, options: Build
     const mergedPath = join(outputDir, "graph.json");
     if (repoGraphs.length > 1) {
       const filesArg = repoGraphs.map((f) => `"${f}"`).join(" ");
-      const mergeCmd = `${graphifyCmd} merge-graphs ${filesArg} --out "${mergedPath}"`;
+      const mergeCmd = `${graphifyInfo.command} merge-graphs ${filesArg} --out "${mergedPath}"`;
       log.info("Merging graphs...");
       execSync(mergeCmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
     } else {
       // Single repo - just copy
-      const { copyFileSync } = await import("node:fs");
       copyFileSync(repoGraphs[0]!, mergedPath);
     }
     log.info(`\u2713 Merged graph: ${mergedPath}`);

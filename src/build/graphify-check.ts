@@ -1,4 +1,4 @@
-import { execSync, spawnSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { log } from "../shared/utils.js";
 
 export interface GraphifyInfo {
@@ -9,102 +9,62 @@ export interface GraphifyInfo {
 /**
  * Verify that graphify is installed and return its command and version.
  *
- * Resolution chain:
- * 1. graphify --version (in PATH via uv/pipx/pip)
- * 2. python -m graphify --version
- * 3. pip show graphifyy (installed but not in PATH)
- * 4. Not found
+ * graphify does NOT have a --version flag. We check the installed package
+ * version via importlib.metadata, then verify the CLI is callable.
+ *
+ * Resolution:
+ * 1. Check package version via Python importlib.metadata
+ * 2. Try `graphify merge-graphs --help` (verifies CLI is in PATH)
+ * 3. Try `python -m graphify merge-graphs --help` (fallback)
  *
  * Reference: https://github.com/safishamsi/graphify
  * PyPI package: graphifyy
  */
 export function checkGraphify(): GraphifyInfo | null {
-  // 1. Try graphify directly
+  // 1. Get version from Python package metadata
+  let version: string | null = null;
   try {
-    const output = execSync("graphify --version", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-    const version = extractVersion(output);
-    if (version) {
-      log.debug(`Found graphify (direct): v${version}`);
-      return { version, command: "graphify" };
+    const output = execSync(
+      'python -c "from importlib.metadata import version; print(version(\'graphifyy\'))"',
+      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+    );
+    version = output.trim();
+    if (!version || !version.match(/^\d+\.\d+/)) {
+      version = null;
     }
   } catch {
-    // Not in PATH
+    // Package not installed
   }
 
-  // 2. Try python -m graphify
+  if (!version) {
+    return null;
+  }
+
+  // 2. Check if `graphify` CLI is in PATH
   try {
-    const output = execSync("python -m graphify --version", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-    const version = extractVersion(output);
-    if (version) {
-      log.debug(`Found graphify (python -m): v${version}`);
-      return { version, command: "python -m graphify" };
-    }
+    execSync("graphify merge-graphs --help", {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    log.debug(`Found graphify (direct): v${version}`);
+    return { version, command: "graphify" };
   } catch {
-    // Not available via python -m
+    // Not in PATH directly
   }
 
-  // 3. Check if pip package exists
+  // 3. Try python -m graphify
   try {
-    const output = execSync("pip show graphifyy", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-    if (output.includes("Name: graphifyy")) {
-      const version = extractVersion(output.split("\n").find((l) => l.startsWith("Version:")) ?? "");
-      log.warn("graphifyy is installed but not in PATH. Try: python -m graphify");
-      return null;
-    }
+    execSync("python -m graphify merge-graphs --help", {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    log.debug(`Found graphify (python -m): v${version}`);
+    return { version, command: "python -m graphify" };
   } catch {
-    // pip show failed
+    // Not available via python -m either
   }
 
+  log.warn(`graphifyy v${version} is installed but CLI is not accessible.`);
+  log.warn("Try: uv tool install graphifyy   (or: pipx install graphifyy)");
   return null;
-}
-
-/**
- * Attempt to install graphify.
- */
-export function installGraphify(): boolean {
-  log.info("Installing graphifyy...");
-
-  // Try uv first (recommended by Graphify docs)
-  const uvResult = spawnSync("uv", ["tool", "install", "graphifyy"], {
-    encoding: "utf-8",
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-
-  if (uvResult.status === 0) {
-    log.info("Installed graphifyy via uv");
-    return true;
-  }
-
-  // Try pipx (isolated install)
-  const pipxResult = spawnSync("pipx", ["install", "graphifyy"], {
-    encoding: "utf-8",
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-
-  if (pipxResult.status === 0) {
-    log.info("Installed graphifyy via pipx");
-    return true;
-  }
-
-  // Fall back to pip
-  const pipResult = spawnSync("pip", ["install", "graphifyy"], {
-    encoding: "utf-8",
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-
-  if (pipResult.status === 0) {
-    log.info("Installed graphifyy via pip");
-    return true;
-  }
-
-  log.error("Failed to install graphifyy. Please install manually:");
-  log.error("  uv tool install graphifyy   (recommended)");
-  log.error("  pipx install graphifyy");
-  log.error("  pip install graphifyy");
-  return false;
-}
-
-function extractVersion(text: string): string | null {
-  const match = text.match(/(\d+\.\d+\.\d+)/);
-  return match ? match[1]! : null;
 }

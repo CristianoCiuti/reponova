@@ -79,7 +79,6 @@ export interface RepoConfig {
 }
 
 export interface BuildConfig {
-  semantic: boolean;
   graphify_args: string[];
 }
 
@@ -235,7 +234,6 @@ export const DEFAULT_CONFIG: Config = {
   output: "graphify-out",
   repos: [],
   build: {
-    semantic: false,
     graphify_args: [],
   },
   outlines: {

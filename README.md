@@ -71,11 +71,15 @@ graphify-mcp-tools outline   # Pre-compute outlines for configured patterns
 graphify-mcp-tools check     # Verify graphify installation and graph status
 ```
 
-### Global Options
+### Command Options
 
 ```bash
+# mcp, install, check, index, outline:
 --graph   Path to graphify-out/ directory (default: auto-detect)
+
+# build:
 --config  Path to graphify-tools.config.yml
+--force   Force full rebuild (skip incremental update)
 ```
 
 ## Editor Configuration
