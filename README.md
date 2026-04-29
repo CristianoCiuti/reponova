@@ -63,12 +63,12 @@ Requires Node.js >= 18.
 ## CLI Commands
 
 ```bash
+graphify-mcp-tools install   # Install MCP server config for your editor
 graphify-mcp-tools mcp       # Start MCP server (stdio transport)
 graphify-mcp-tools build     # Orchestrate multi-repo graphify build + merge
 graphify-mcp-tools index     # Generate search index from graph.json
 graphify-mcp-tools outline   # Pre-compute outlines for configured patterns
 graphify-mcp-tools check     # Verify graphify installation and graph status
-graphify-mcp-tools setup     # Auto-configure MCP for editors
 ```
 
 ### Global Options
@@ -80,14 +80,25 @@ graphify-mcp-tools setup     # Auto-configure MCP for editors
 
 ## Editor Configuration
 
+The quickest way to configure your editor is with the `install` command:
+
+```bash
+graphify-mcp-tools install --target opencode
+graphify-mcp-tools install --target cursor
+graphify-mcp-tools install --target claude
+graphify-mcp-tools install --target vscode
+```
+
 ### OpenCode
 
-```json
+Add to `.opencode/opencode.json` in your project root:
+
+```jsonc
 {
-  "mcpServers": {
+  "mcp": {
     "graphify": {
-      "command": "npx",
-      "args": ["graphify-mcp-tools", "mcp", "--graph", "./graphify-out"]
+      "type": "local",
+      "command": ["npx", "-y", "graphify-mcp-tools", "mcp", "--graph", "./graphify-out"]
     }
   }
 }
@@ -101,7 +112,22 @@ Add to `.cursor/mcp.json`:
   "mcpServers": {
     "graphify": {
       "command": "npx",
-      "args": ["graphify-mcp-tools", "mcp", "--graph", "./graphify-out"]
+      "args": ["-y", "graphify-mcp-tools", "mcp", "--graph", "./graphify-out"]
+    }
+  }
+}
+```
+
+### VS Code
+
+Add to `.vscode/mcp.json`:
+```json
+{
+  "servers": {
+    "graphify": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "graphify-mcp-tools", "mcp", "--graph", "./graphify-out"]
     }
   }
 }
@@ -110,7 +136,7 @@ Add to `.cursor/mcp.json`:
 ### Claude Code
 
 ```bash
-claude mcp add graphify -- npx graphify-mcp-tools mcp --graph ./graphify-out
+claude mcp add graphify -- npx -y graphify-mcp-tools mcp --graph ./graphify-out
 ```
 
 ## Configuration

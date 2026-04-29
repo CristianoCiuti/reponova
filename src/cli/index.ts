@@ -5,7 +5,7 @@ import { buildCommand } from "./build.js";
 import { indexCommand } from "./cmd-index.js";
 import { outlineCommand } from "./outline.js";
 import { checkCommand } from "./check.js";
-import { setupCommand } from "./setup.js";
+import { installCommand } from "./install.js";
 
 yargs(hideBin(process.argv))
   .scriptName("graphify-mcp-tools")
@@ -15,7 +15,7 @@ yargs(hideBin(process.argv))
   .command(indexCommand)
   .command(outlineCommand)
   .command(checkCommand)
-  .command(setupCommand)
+  .command(installCommand)
   .option("graph", {
     type: "string",
     describe: "Path to graphify-out/ directory",

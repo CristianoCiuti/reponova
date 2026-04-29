@@ -1,9 +1,8 @@
 import type { CommandModule } from "yargs";
-import { execSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { resolveGraphPath, resolveSearchDb, resolveGraphJson } from "../core/graph-resolver.js";
-import { log } from "../shared/utils.js";
+import { checkGraphify, checkPython } from "../shared/system-checks.js";
 
 export const checkCommand: CommandModule = {
   command: "check",
@@ -102,34 +101,3 @@ export const checkCommand: CommandModule = {
     }
   },
 };
-
-function checkGraphify(): string | null {
-  try {
-    const output = execSync("graphify --version", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-    const match = output.match(/(\d+\.\d+\.\d+)/);
-    return match ? match[1]! : output.trim();
-  } catch {
-    // Try python -m graphify
-    try {
-      const output = execSync("python -m graphify --version", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-      const match = output.match(/(\d+\.\d+\.\d+)/);
-      return match ? match[1]! : output.trim();
-    } catch {
-      return null;
-    }
-  }
-}
-
-function checkPython(): string | null {
-  try {
-    const output = execSync("python --version", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-    return output.trim().replace("Python ", "");
-  } catch {
-    try {
-      const output = execSync("python3 --version", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-      return output.trim().replace("Python ", "");
-    } catch {
-      return null;
-    }
-  }
-}
