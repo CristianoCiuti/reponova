@@ -1,6 +1,6 @@
 {
   "name": "graphify-mcp-tools",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "MCP server companion for Graphify: search, impact analysis, and code outlines from knowledge graphs",
   "type": "module",
   "main": "dist/index.js",
