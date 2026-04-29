@@ -1,0 +1,218 @@
+{
+  "nodes": [
+    {
+      "id": "Function:connect_database",
+      "label": "connect_database",
+      "type": "function",
+      "source_file": "project-core/src/db/connection.py",
+      "repo": "project-core",
+      "community": "Core Database Layer",
+      "start_line": 23,
+      "end_line": 45,
+      "properties": {
+        "signature": "connect_database(url: str) -> Engine",
+        "decorators": ["log_call"],
+        "docstring": "Create and return a database connection engine."
+      }
+    },
+    {
+      "id": "Function:get_user_by_id",
+      "label": "get_user_by_id",
+      "type": "function",
+      "source_file": "project-api/src/services/user_service.py",
+      "repo": "project-api",
+      "community": "API User Management",
+      "start_line": 45,
+      "end_line": 112,
+      "properties": {
+        "signature": "get_user_by_id(session: Session, user_id: int) -> User",
+        "decorators": ["log_call"],
+        "docstring": "Retrieves a user by primary key.",
+        "calls": ["connect_database", "session.query", "validate_user"]
+      }
+    },
+    {
+      "id": "Function:update_user",
+      "label": "update_user",
+      "type": "function",
+      "source_file": "project-api/src/services/user_service.py",
+      "repo": "project-api",
+      "community": "API User Management",
+      "start_line": 115,
+      "end_line": 156,
+      "properties": {
+        "signature": "update_user(session: Session, user_id: int, data: dict) -> User",
+        "docstring": "Updates user fields and persists changes.",
+        "calls": ["get_user_by_id", "session.commit"]
+      }
+    },
+    {
+      "id": "Class:UserController",
+      "label": "UserController",
+      "type": "class",
+      "source_file": "project-api/src/controllers/user_ctrl.py",
+      "repo": "project-api",
+      "community": "API Controllers",
+      "start_line": 15,
+      "end_line": 89,
+      "properties": {
+        "bases": ["BaseController"],
+        "methods": ["get", "post", "put", "delete"]
+      }
+    },
+    {
+      "id": "Function:UserController.get",
+      "label": "UserController.get",
+      "type": "function",
+      "source_file": "project-api/src/controllers/user_ctrl.py",
+      "repo": "project-api",
+      "community": "API Controllers",
+      "start_line": 30,
+      "end_line": 55,
+      "properties": {
+        "signature": "get(self, user_id: int) -> Response",
+        "calls": ["get_user_by_id"]
+      }
+    },
+    {
+      "id": "Function:create_order",
+      "label": "create_order",
+      "type": "function",
+      "source_file": "project-api/src/services/order_service.py",
+      "repo": "project-api",
+      "community": "Order Management",
+      "start_line": 20,
+      "end_line": 78,
+      "properties": {
+        "signature": "create_order(session: Session, user_id: int, items: list) -> Order",
+        "calls": ["connect_database", "get_user_by_id", "validate_order"]
+      }
+    },
+    {
+      "id": "Function:check_db_health",
+      "label": "check_db_health",
+      "type": "function",
+      "source_file": "project-web/src/handlers/health_check.py",
+      "repo": "project-web",
+      "community": "Health Checks",
+      "start_line": 10,
+      "end_line": 25,
+      "properties": {
+        "signature": "check_db_health() -> bool",
+        "calls": ["connect_database"]
+      }
+    },
+    {
+      "id": "Function:validate_user",
+      "label": "validate_user",
+      "type": "function",
+      "source_file": "project-api/src/validators/user.py",
+      "repo": "project-api",
+      "community": "Validation Layer",
+      "start_line": 5,
+      "end_line": 30,
+      "properties": {
+        "signature": "validate_user(user_data: dict) -> bool",
+        "docstring": "Validates user data against schema."
+      }
+    },
+    {
+      "id": "Function:test_get_user_by_id",
+      "label": "test_get_user_by_id",
+      "type": "function",
+      "source_file": "project-api/tests/test_user_service.py",
+      "repo": "project-api",
+      "community": "Test Suite",
+      "start_line": 78,
+      "end_line": 95,
+      "properties": {
+        "signature": "test_get_user_by_id()",
+        "calls": ["get_user_by_id"]
+      }
+    },
+    {
+      "id": "Module:settings",
+      "label": "settings",
+      "type": "module",
+      "source_file": "project-core/src/config/settings.py",
+      "repo": "project-core",
+      "community": "Configuration",
+      "start_line": 1,
+      "end_line": 50,
+      "properties": {
+        "docstring": "Application configuration settings."
+      }
+    },
+    {
+      "id": "Function:get_db_url",
+      "label": "get_db_url",
+      "type": "function",
+      "source_file": "project-core/src/config/settings.py",
+      "repo": "project-core",
+      "community": "Configuration",
+      "start_line": 30,
+      "end_line": 42,
+      "properties": {
+        "signature": "get_db_url() -> str",
+        "docstring": "Returns the database connection URL from environment."
+      }
+    },
+    {
+      "id": "Class:AuthService",
+      "label": "AuthService",
+      "type": "class",
+      "source_file": "project-api/src/auth/auth_service.py",
+      "repo": "project-api",
+      "community": "Auth & Session Management",
+      "start_line": 12,
+      "end_line": 150,
+      "properties": {
+        "bases": ["BaseService"],
+        "methods": ["login", "logout", "refresh_token"],
+        "docstring": "Service for authentication and session management."
+      }
+    },
+    {
+      "id": "Function:authenticate_user",
+      "label": "authenticate_user",
+      "type": "function",
+      "source_file": "project-api/src/auth/service.py",
+      "repo": "project-api",
+      "community": "Auth & Session Management",
+      "start_line": 45,
+      "end_line": 90,
+      "properties": {
+        "signature": "authenticate_user(email: str, password: str) -> User",
+        "calls": ["verify_password", "create_session", "log_access"],
+        "docstring": "Authenticate a user with email and password."
+      }
+    }
+  ],
+  "edges": [
+    { "source": "Function:get_user_by_id", "target": "Function:connect_database", "type": "CALLS" },
+    { "source": "Function:get_user_by_id", "target": "Function:validate_user", "type": "CALLS" },
+    { "source": "Function:update_user", "target": "Function:get_user_by_id", "type": "CALLS" },
+    { "source": "Function:UserController.get", "target": "Function:get_user_by_id", "type": "CALLS" },
+    { "source": "Function:create_order", "target": "Function:connect_database", "type": "CALLS" },
+    { "source": "Function:create_order", "target": "Function:get_user_by_id", "type": "CALLS" },
+    { "source": "Function:check_db_health", "target": "Function:connect_database", "type": "CALLS" },
+    { "source": "Function:connect_database", "target": "Function:get_db_url", "type": "CALLS" },
+    { "source": "Function:test_get_user_by_id", "target": "Function:get_user_by_id", "type": "CALLS" },
+    { "source": "Class:UserController", "target": "Function:UserController.get", "type": "MEMBER_OF" },
+    { "source": "Function:get_user_by_id", "target": "Module:settings", "type": "IMPORTS" },
+    { "source": "Class:AuthService", "target": "Function:authenticate_user", "type": "MEMBER_OF" }
+  ],
+  "communities": [
+    { "id": 1, "name": "Core Database Layer", "members": ["Function:connect_database", "Function:get_db_url"], "size": 2 },
+    { "id": 2, "name": "API User Management", "members": ["Function:get_user_by_id", "Function:update_user"], "size": 2 },
+    { "id": 3, "name": "API Controllers", "members": ["Class:UserController", "Function:UserController.get"], "size": 2 },
+    { "id": 4, "name": "Auth & Session Management", "members": ["Class:AuthService", "Function:authenticate_user"], "size": 2 }
+  ],
+  "metadata": {
+    "graphify_version": "0.5.0",
+    "built_at": "2026-04-29T10:30:00Z",
+    "repos": ["project-core", "project-api", "project-web"],
+    "node_count": 13,
+    "edge_count": 12
+  }
+}

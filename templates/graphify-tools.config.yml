@@ -1,0 +1,39 @@
+# graphify-tools.config.yml
+# Configuration for graphify-mcp-tools
+
+# Output directory (relative to config file location)
+output: graphify-out
+
+# Repositories to include in multi-repo build
+repos:
+  - name: my-project
+    path: .
+
+# Build options
+build:
+  semantic: false           # true for --mode deep (requires LLM, costs tokens)
+  graphify_args: []         # extra arguments passed to graphify
+
+# Outline options
+outlines:
+  enabled: true
+  language: python
+  paths:
+    - "src/**/*.py"
+  exclude:
+    - "**/__pycache__/**"
+    - "**/test_*.py"
+    - "**/.git/**"
+
+# Search index options
+search:
+  enabled: true
+  fields:
+    - label
+    - type
+    - source_file
+    - properties
+
+# MCP server options
+server:
+  # Reserved for future configuration
