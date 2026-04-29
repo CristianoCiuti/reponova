@@ -97,9 +97,9 @@ The `install` command does two things for each target:
 
 | Target | MCP Config | Hook/Rule | Skill |
 |--------|-----------|-----------|-------|
-| OpenCode | `.opencode/opencode.json` | `.opencode/plugins/graphify-mcp-tools.js` (`tool.execute.before`) | `.opencode/skills/graphify-mcp-tools.md` |
+| OpenCode | `.opencode/opencode.json` | `.opencode/plugins/graphify-mcp-tools.js` (`tool.execute.before`) | `.opencode/skills/graphify-mcp-tools/SKILL.md` |
 | Cursor | `.cursor/mcp.json` | `.cursor/rules/graphify-mcp-tools.mdc` (always-on rule + skill) | *(included in rule)* |
-| Claude Code | `claude mcp add` (manual) | `.claude/settings.json` (`PreToolUse` hook) | `.claude/skills/graphify-mcp-tools.md` |
+| Claude Code | `claude mcp add` (manual) | `.claude/settings.json` (`PreToolUse` hook) | `.claude/skills/graphify-mcp-tools/SKILL.md` |
 | VS Code | `.vscode/mcp.json` | `.github/copilot-instructions.md` | *(included in instructions)* |
 
 ### OpenCode

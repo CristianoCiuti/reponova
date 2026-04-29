@@ -7,7 +7,12 @@ type Target = "opencode" | "cursor" | "claude" | "vscode";
 
 // ─── Skill content ───────────────────────────────────────────────────────────
 
-const SKILL_MD = `# graphify-mcp-tools
+const SKILL_MD = `---
+name: graphify-mcp-tools
+description: MCP server for querying the project knowledge graph. Use when searching symbols, analyzing blast radius, tracing paths between nodes, or understanding architecture.
+---
+
+# graphify-mcp-tools
 
 MCP server for querying the project's knowledge graph (built by graphify).
 
@@ -236,8 +241,8 @@ function installOpenCode(graphDir: string): void {
   writeFileSync(pluginPath, OPENCODE_PLUGIN_JS);
 
   // 4. Write skill file
-  const skillDir = resolve(projectDir, ".opencode", "skills");
-  const skillPath = join(skillDir, "graphify-mcp-tools.md");
+  const skillDir = resolve(projectDir, ".opencode", "skills", "graphify-mcp-tools");
+  const skillPath = join(skillDir, "SKILL.md");
   if (!existsSync(skillDir)) mkdirSync(skillDir, { recursive: true });
   writeFileSync(skillPath, SKILL_MD);
 
@@ -330,8 +335,8 @@ function installClaude(graphDir: string): void {
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
 
   // 2. Write skill file
-  const skillDir = resolve(projectDir, ".claude", "skills");
-  const skillPath = join(skillDir, "graphify-mcp-tools.md");
+  const skillDir = resolve(projectDir, ".claude", "skills", "graphify-mcp-tools");
+  const skillPath = join(skillDir, "SKILL.md");
   if (!existsSync(skillDir)) mkdirSync(skillDir, { recursive: true });
   writeFileSync(skillPath, SKILL_MD);
 
