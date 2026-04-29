@@ -93,13 +93,14 @@ The `install` command does two things for each target:
 
 1. **Registers the MCP server** — so the editor can call graph tools
 2. **Installs a hook/rule** — reminds the AI agent to use graph tools instead of manual file searches
+3. **Installs a skill file** — teaches the AI agent how to use each graph tool (parameters, use cases, best practices)
 
-| Target | MCP Config | Hook/Rule |
-|--------|-----------|-----------|
-| OpenCode | `.opencode/opencode.json` | `.opencode/plugins/graphify-mcp-tools.js` (`tool.execute.before`) |
-| Cursor | `.cursor/mcp.json` | `.cursor/rules/graphify-mcp-tools.mdc` (always-on rule) |
-| Claude Code | `claude mcp add` (manual) | `.claude/settings.json` (`PreToolUse` hook) |
-| VS Code | `.vscode/mcp.json` | `.github/copilot-instructions.md` |
+| Target | MCP Config | Hook/Rule | Skill |
+|--------|-----------|-----------|-------|
+| OpenCode | `.opencode/opencode.json` | `.opencode/plugins/graphify-mcp-tools.js` (`tool.execute.before`) | `.opencode/skills/graphify-mcp-tools.md` |
+| Cursor | `.cursor/mcp.json` | `.cursor/rules/graphify-mcp-tools.mdc` (always-on rule + skill) | *(included in rule)* |
+| Claude Code | `claude mcp add` (manual) | `.claude/settings.json` (`PreToolUse` hook) | `.claude/skills/graphify-mcp-tools.md` |
+| VS Code | `.vscode/mcp.json` | `.github/copilot-instructions.md` | *(included in instructions)* |
 
 ### OpenCode
 

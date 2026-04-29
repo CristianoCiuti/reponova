@@ -5,6 +5,81 @@ import { checkGraphify } from "../shared/system-checks.js";
 
 type Target = "opencode" | "cursor" | "claude" | "vscode";
 
+// ─── Skill content ───────────────────────────────────────────────────────────
+
+const SKILL_MD = `# graphify-mcp-tools
+
+MCP server for querying the project's knowledge graph (built by graphify).
+
+## Available Tools
+
+### graph_search
+Full-text search across all graph nodes (functions, classes, modules).
+
+Parameters:
+- \`query\` (required): search text
+- \`top_k\`: max results (default: 10)
+- \`type\`: filter by node type — "function", "class", "module"
+- \`repo\`: filter by repository name
+
+Use when: finding symbols, locating definitions, exploring what exists.
+
+### graph_impact
+Blast radius analysis — find everything that depends on a symbol (downstream) and everything it depends on (upstream).
+
+Parameters:
+- \`symbol\` (required): symbol name or ID
+- \`direction\`: "upstream", "downstream", or "both" (default: "both")
+- \`max_depth\`: BFS depth limit (default: 3)
+- \`include_tests\`: include test files (default: false)
+
+Use when: assessing change risk, understanding dependencies before refactoring.
+
+### graph_path
+Shortest path between two nodes in the knowledge graph (Dijkstra).
+
+Parameters:
+- \`from\` (required): source node name or ID
+- \`to\` (required): target node name or ID
+- \`max_depth\`: max hops (default: 10)
+- \`edge_types\`: filter by relationship types
+
+Use when: understanding how two symbols are connected, tracing call chains.
+
+### graph_explain
+Full detail on a single node: properties, edges, community membership, centrality metrics.
+
+Parameters:
+- \`symbol\` (required): node name or ID
+- \`include_code\`: also return the file outline (default: false)
+
+Use when: deep-diving into a specific symbol, understanding its role in the architecture.
+
+### graph_outline
+File outline: function signatures, class definitions, imports — without reading the full source.
+
+Parameters:
+- \`file_path\` (required): relative path to file
+- \`format\`: "markdown" or "json" (default: "markdown")
+
+Use when: getting a quick overview of a file's structure.
+
+### graph_status
+Graph metadata: node/edge counts, repos included, build timestamp.
+
+No parameters.
+
+Use when: checking if the graph is available and up to date.
+
+## Best Practices
+
+1. **Prefer graph tools over grep/find** — graph_search uses indexed BM25 ranking and understands symbol types.
+2. **Check impact before refactoring** — run graph_impact on any symbol you plan to modify.
+3. **Use graph_path to trace connections** — faster and more accurate than manually following imports.
+4. **Read GRAPH_REPORT.md** at \`graphify-out/GRAPH_REPORT.md\` for architecture overview, god nodes, and community structure.
+5. **Keep the graph current** — after code changes, run \`graphify update .\` to rebuild (AST-only, no API cost).
+`;
+
 // ─── Context message injected by hooks ───────────────────────────────────────
 
 const HOOK_CONTEXT =
@@ -46,15 +121,7 @@ description: graphify-mcp-tools knowledge graph MCP server
 alwaysApply: true
 ---
 
-This project has a graphify knowledge graph served via MCP (graphify-mcp-tools).
-
-- Use the graph_search tool for codebase text search instead of grep
-- Use graph_impact to find blast radius of changes (downstream dependents)
-- Use graph_path to find relationships between symbols
-- Use graph_explain for full node details (edges, community, centrality)
-- Read graphify-out/GRAPH_REPORT.md for god nodes and community structure
-- After modifying code, run \`graphify update .\` to keep the graph current
-`;
+${SKILL_MD}`;
 
 // ─── VS Code copilot instructions ────────────────────────────────────────────
 
@@ -62,10 +129,7 @@ const VSCODE_SECTION_MARKER = "## graphify-mcp-tools";
 
 const VSCODE_SECTION = `## graphify-mcp-tools
 
-This project has a graphify knowledge graph served via MCP.
-Use graph_search, graph_impact, graph_path, graph_explain tools for codebase queries.
-Read \`graphify-out/GRAPH_REPORT.md\` for architecture overview and god nodes.
-`;
+${SKILL_MD}`;
 
 // ─── Command definition ──────────────────────────────────────────────────────
 
@@ -171,11 +235,19 @@ function installOpenCode(graphDir: string): void {
   if (!existsSync(pluginDir)) mkdirSync(pluginDir, { recursive: true });
   writeFileSync(pluginPath, OPENCODE_PLUGIN_JS);
 
+  // 4. Write skill file
+  const skillDir = resolve(projectDir, ".opencode", "skills");
+  const skillPath = join(skillDir, "graphify-mcp-tools.md");
+  if (!existsSync(skillDir)) mkdirSync(skillDir, { recursive: true });
+  writeFileSync(skillPath, SKILL_MD);
+
   console.log(`\u2713 OpenCode MCP server registered: ${configPath}`);
   console.log(`\u2713 OpenCode plugin installed: ${pluginPath}`);
+  console.log(`\u2713 OpenCode skill installed: ${skillPath}`);
   console.log("");
   console.log("  The MCP server starts automatically with OpenCode.");
   console.log("  The plugin reminds the agent to use graph tools before searching.");
+  console.log("  The skill teaches the agent how to use each graph tool.");
 }
 
 // ─── Cursor ──────────────────────────────────────────────────────────────────
@@ -210,7 +282,7 @@ function installCursor(graphDir: string): void {
   writeFileSync(rulePath, CURSOR_RULE);
 
   console.log(`\u2713 Cursor MCP server registered: ${mcpPath}`);
-  console.log(`\u2713 Cursor rule installed: ${rulePath}`);
+  console.log(`\u2713 Cursor rule/skill installed: ${rulePath}`);
   console.log("");
   console.log("  Restart Cursor for changes to take effect.");
 }
@@ -257,8 +329,15 @@ function installClaude(graphDir: string): void {
   if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
 
-  // 2. Print MCP add command (Claude manages MCP via CLI)
+  // 2. Write skill file
+  const skillDir = resolve(projectDir, ".claude", "skills");
+  const skillPath = join(skillDir, "graphify-mcp-tools.md");
+  if (!existsSync(skillDir)) mkdirSync(skillDir, { recursive: true });
+  writeFileSync(skillPath, SKILL_MD);
+
+  // 3. Print MCP add command (Claude manages MCP via CLI)
   console.log(`\u2713 Claude PreToolUse hook installed: ${settingsPath}`);
+  console.log(`\u2713 Claude skill installed: ${skillPath}`);
   console.log("");
   console.log("  To also register the MCP server, run:");
   console.log(`  claude mcp add graphify -- npx -y graphify-mcp-tools mcp --graph ${graphDir}`);
@@ -310,7 +389,7 @@ function installVSCode(graphDir: string): void {
   writeFileSync(instructionsPath, content);
 
   console.log(`\u2713 VS Code MCP server registered: ${mcpPath}`);
-  console.log(`\u2713 Copilot instructions installed: ${instructionsPath}`);
+  console.log(`\u2713 Copilot skill/instructions installed: ${instructionsPath}`);
   console.log("");
   console.log("  Ensure the GitHub Copilot extension is installed for MCP support.");
 }
