@@ -89,9 +89,21 @@ graphify-mcp-tools install --target claude
 graphify-mcp-tools install --target vscode
 ```
 
+The `install` command does two things for each target:
+
+1. **Registers the MCP server** — so the editor can call graph tools
+2. **Installs a hook/rule** — reminds the AI agent to use graph tools instead of manual file searches
+
+| Target | MCP Config | Hook/Rule |
+|--------|-----------|-----------|
+| OpenCode | `.opencode/opencode.json` | `.opencode/plugins/graphify-mcp-tools.js` (`tool.execute.before`) |
+| Cursor | `.cursor/mcp.json` | `.cursor/rules/graphify-mcp-tools.mdc` (always-on rule) |
+| Claude Code | `claude mcp add` (manual) | `.claude/settings.json` (`PreToolUse` hook) |
+| VS Code | `.vscode/mcp.json` | `.github/copilot-instructions.md` |
+
 ### OpenCode
 
-Add to `.opencode/opencode.json` in your project root:
+MCP server (`.opencode/opencode.json`):
 
 ```jsonc
 {
@@ -104,9 +116,11 @@ Add to `.opencode/opencode.json` in your project root:
 }
 ```
 
+Plugin hook (`.opencode/plugins/graphify-mcp-tools.js`) — fires before bash tool calls to remind the agent that graph tools are available when `graphify-out/graph.json` exists.
+
 ### Cursor
 
-Add to `.cursor/mcp.json`:
+MCP server (`.cursor/mcp.json`):
 ```json
 {
   "mcpServers": {
@@ -118,9 +132,11 @@ Add to `.cursor/mcp.json`:
 }
 ```
 
+Rule (`.cursor/rules/graphify-mcp-tools.mdc`) — always-active rule that instructs the agent to prefer `graph_search`, `graph_impact`, `graph_path` over manual grep/find.
+
 ### VS Code
 
-Add to `.vscode/mcp.json`:
+MCP server (`.vscode/mcp.json`):
 ```json
 {
   "servers": {
@@ -133,11 +149,15 @@ Add to `.vscode/mcp.json`:
 }
 ```
 
+Copilot instructions (`.github/copilot-instructions.md`) — appends a section guiding Copilot to use the MCP graph tools for codebase queries.
+
 ### Claude Code
 
 ```bash
 claude mcp add graphify -- npx -y graphify-mcp-tools mcp --graph ./graphify-out
 ```
+
+Hook (`.claude/settings.json`) — a `PreToolUse` hook that fires before bash commands involving grep/find/rg, injecting a reminder that graph tools are available.
 
 ## Configuration
 
