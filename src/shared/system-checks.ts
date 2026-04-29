@@ -2,40 +2,46 @@ import { execSync } from "node:child_process";
 
 /**
  * Detect installed graphify version.
- * Tries `graphify --version` first, then `python -m graphify --version`.
- * Returns semver string or null if not found.
+ * The PyPI package is "graphifyy" (two y's). There is no --version flag.
+ * Uses importlib.metadata to check the installed package version.
  */
 export function checkGraphify(): string | null {
-  try {
-    const output = execSync("graphify --version", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-    const match = output.match(/(\d+\.\d+\.\d+)/);
-    return match ? match[1]! : output.trim();
-  } catch {
+  const script = "from importlib.metadata import version; print(version('graphifyy'))";
+
+  for (const bin of ["python3", "python"]) {
     try {
-      const output = execSync("python -m graphify --version", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-      const match = output.match(/(\d+\.\d+\.\d+)/);
-      return match ? match[1]! : output.trim();
+      const output = execSync(`${bin} -c "${script}"`, {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const trimmed = output.trim();
+      if (trimmed && /^\d+\.\d+/.test(trimmed)) {
+        return trimmed;
+      }
     } catch {
-      return null;
+      // try next binary
     }
   }
+
+  return null;
 }
 
 /**
  * Detect installed Python version.
- * Tries `python --version` first, then `python3 --version`.
+ * Tries `python3 --version` first, then `python --version`.
  * Returns version string (e.g. "3.11.4") or null if not found.
  */
 export function checkPython(): string | null {
-  try {
-    const output = execSync("python --version", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-    return output.trim().replace("Python ", "");
-  } catch {
+  for (const bin of ["python3", "python"]) {
     try {
-      const output = execSync("python3 --version", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+      const output = execSync(`${bin} --version`, {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
       return output.trim().replace("Python ", "");
     } catch {
-      return null;
+      // try next binary
     }
   }
+  return null;
 }

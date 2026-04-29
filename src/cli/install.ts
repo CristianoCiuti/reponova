@@ -5,9 +5,73 @@ import { checkGraphify } from "../shared/system-checks.js";
 
 type Target = "opencode" | "cursor" | "claude" | "vscode";
 
+// ─── Context message injected by hooks ───────────────────────────────────────
+
+const HOOK_CONTEXT =
+  "graphify-mcp-tools: Knowledge graph MCP server is available. " +
+  "Use graph_search, graph_impact, graph_path, graph_explain tools " +
+  "instead of manually grep/find-ing the codebase. " +
+  "Read graphify-out/GRAPH_REPORT.md for architecture overview.";
+
+// ─── OpenCode plugin JS ──────────────────────────────────────────────────────
+
+const OPENCODE_PLUGIN_JS = `// graphify-mcp-tools OpenCode plugin
+// Reminds the agent that MCP graph tools are available before bash searches.
+import { existsSync } from "fs";
+import { join } from "path";
+
+export const GraphifyMcpPlugin = async ({ directory }) => {
+  let reminded = false;
+
+  return {
+    "tool.execute.before": async (input, output) => {
+      if (reminded) return;
+      if (!existsSync(join(directory, "graphify-out", "graph.json"))) return;
+
+      if (input.tool === "bash") {
+        output.args.command =
+          'echo "[graphify-mcp-tools] Knowledge graph MCP server available. Use graph_search/graph_impact/graph_path tools instead of manual grep." && ' +
+          output.args.command;
+        reminded = true;
+      }
+    },
+  };
+};
+`;
+
+// ─── Cursor rule ─────────────────────────────────────────────────────────────
+
+const CURSOR_RULE = `---
+description: graphify-mcp-tools knowledge graph MCP server
+alwaysApply: true
+---
+
+This project has a graphify knowledge graph served via MCP (graphify-mcp-tools).
+
+- Use the graph_search tool for codebase text search instead of grep
+- Use graph_impact to find blast radius of changes (downstream dependents)
+- Use graph_path to find relationships between symbols
+- Use graph_explain for full node details (edges, community, centrality)
+- Read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- After modifying code, run \`graphify update .\` to keep the graph current
+`;
+
+// ─── VS Code copilot instructions ────────────────────────────────────────────
+
+const VSCODE_SECTION_MARKER = "## graphify-mcp-tools";
+
+const VSCODE_SECTION = `## graphify-mcp-tools
+
+This project has a graphify knowledge graph served via MCP.
+Use graph_search, graph_impact, graph_path, graph_explain tools for codebase queries.
+Read \`graphify-out/GRAPH_REPORT.md\` for architecture overview and god nodes.
+`;
+
+// ─── Command definition ──────────────────────────────────────────────────────
+
 export const installCommand: CommandModule = {
   command: "install",
-  describe: "Install graphify-mcp-tools MCP server for your editor",
+  describe: "Install graphify-mcp-tools MCP server and hooks for your editor",
   builder: (yargs) =>
     yargs
       .option("target", {
@@ -44,6 +108,8 @@ export const installCommand: CommandModule = {
   },
 };
 
+// ─── Graphify check ──────────────────────────────────────────────────────────
+
 function warnIfGraphifyMissing(): void {
   const version = checkGraphify();
   if (version) {
@@ -68,12 +134,14 @@ function warnIfGraphifyMissing(): void {
   console.log("");
 }
 
-// ---------- OpenCode ----------
+// ─── OpenCode ────────────────────────────────────────────────────────────────
 
 function installOpenCode(graphDir: string): void {
-  const configDir = resolve(process.cwd(), ".opencode");
+  const projectDir = process.cwd();
+  const configDir = resolve(projectDir, ".opencode");
   const configPath = join(configDir, "opencode.json");
 
+  // 1. Register MCP server
   let config: Record<string, unknown> = {};
   if (existsSync(configPath)) {
     config = JSON.parse(readFileSync(configPath, "utf-8"));
@@ -81,82 +149,168 @@ function installOpenCode(graphDir: string): void {
 
   if (!config.mcp) config.mcp = {};
   const mcp = config.mcp as Record<string, unknown>;
-
   mcp["graphify"] = {
     type: "local",
     command: ["npx", "-y", "graphify-mcp-tools", "mcp", "--graph", graphDir],
   };
 
+  // 2. Register plugin
+  const pluginRelPath = ".opencode/plugins/graphify-mcp-tools.js";
+  const plugins = (config.plugin as string[] | undefined) ?? [];
+  if (!plugins.includes(pluginRelPath)) {
+    plugins.push(pluginRelPath);
+  }
+  config.plugin = plugins;
+
   if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
-  console.log(`\u2713 OpenCode configured: ${configPath}`);
+
+  // 3. Write plugin file
+  const pluginDir = resolve(projectDir, ".opencode", "plugins");
+  const pluginPath = join(pluginDir, "graphify-mcp-tools.js");
+  if (!existsSync(pluginDir)) mkdirSync(pluginDir, { recursive: true });
+  writeFileSync(pluginPath, OPENCODE_PLUGIN_JS);
+
+  console.log(`\u2713 OpenCode MCP server registered: ${configPath}`);
+  console.log(`\u2713 OpenCode plugin installed: ${pluginPath}`);
   console.log("");
-  console.log("  Added MCP server 'graphify' to .opencode/opencode.json");
-  console.log("  The server will start automatically when OpenCode launches.");
+  console.log("  The MCP server starts automatically with OpenCode.");
+  console.log("  The plugin reminds the agent to use graph tools before searching.");
 }
 
-// ---------- Cursor ----------
+// ─── Cursor ──────────────────────────────────────────────────────────────────
 
 function installCursor(graphDir: string): void {
-  const configDir = resolve(process.cwd(), ".cursor");
-  const configPath = join(configDir, "mcp.json");
+  const projectDir = process.cwd();
 
-  let config: Record<string, unknown> = {};
-  if (existsSync(configPath)) {
-    config = JSON.parse(readFileSync(configPath, "utf-8"));
+  // 1. Register MCP server
+  const mcpDir = resolve(projectDir, ".cursor");
+  const mcpPath = join(mcpDir, "mcp.json");
+
+  let mcpConfig: Record<string, unknown> = {};
+  if (existsSync(mcpPath)) {
+    mcpConfig = JSON.parse(readFileSync(mcpPath, "utf-8"));
   }
 
-  if (!config.mcpServers) config.mcpServers = {};
-  const servers = config.mcpServers as Record<string, unknown>;
-
+  if (!mcpConfig.mcpServers) mcpConfig.mcpServers = {};
+  const servers = mcpConfig.mcpServers as Record<string, unknown>;
   servers["graphify"] = {
     command: "npx",
     args: ["-y", "graphify-mcp-tools", "mcp", "--graph", graphDir],
   };
 
-  if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
-  console.log(`\u2713 Cursor configured: ${configPath}`);
+  if (!existsSync(mcpDir)) mkdirSync(mcpDir, { recursive: true });
+  writeFileSync(mcpPath, JSON.stringify(mcpConfig, null, 2) + "\n");
+
+  // 2. Write cursor rule
+  const rulesDir = resolve(projectDir, ".cursor", "rules");
+  const rulePath = join(rulesDir, "graphify-mcp-tools.mdc");
+
+  if (!existsSync(rulesDir)) mkdirSync(rulesDir, { recursive: true });
+  writeFileSync(rulePath, CURSOR_RULE);
+
+  console.log(`\u2713 Cursor MCP server registered: ${mcpPath}`);
+  console.log(`\u2713 Cursor rule installed: ${rulePath}`);
   console.log("");
-  console.log("  Added MCP server 'graphify' to .cursor/mcp.json");
   console.log("  Restart Cursor for changes to take effect.");
 }
 
-// ---------- Claude Code ----------
+// ─── Claude Code ─────────────────────────────────────────────────────────────
 
 function installClaude(graphDir: string): void {
-  console.log("\u2713 To configure Claude Code, run:");
-  console.log("");
-  console.log(`  claude mcp add graphify -- npx -y graphify-mcp-tools mcp --graph ${graphDir}`);
-  console.log("");
-  console.log("  Claude Code manages MCP servers via its CLI.");
-  console.log("  The command above registers graphify-mcp-tools as a project-level MCP server.");
-}
+  const projectDir = process.cwd();
 
-// ---------- VS Code ----------
+  // 1. Write PreToolUse hook in .claude/settings.json
+  const claudeDir = resolve(projectDir, ".claude");
+  const settingsPath = join(claudeDir, "settings.json");
 
-function installVSCode(graphDir: string): void {
-  const configDir = resolve(process.cwd(), ".vscode");
-  const configPath = join(configDir, "mcp.json");
-
-  let config: Record<string, unknown> = {};
-  if (existsSync(configPath)) {
-    config = JSON.parse(readFileSync(configPath, "utf-8"));
+  let settings: Record<string, unknown> = {};
+  if (existsSync(settingsPath)) {
+    settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
   }
 
-  if (!config.servers) config.servers = {};
-  const servers = config.servers as Record<string, unknown>;
+  const hooks = (settings.hooks as Record<string, unknown[]> | undefined) ?? {};
+  const preToolUse = (hooks.PreToolUse as Array<Record<string, unknown>> | undefined) ?? [];
 
+  // Remove existing graphify-mcp-tools hooks
+  const filtered = preToolUse.filter(
+    (h) => !JSON.stringify(h).includes("graphify-mcp-tools"),
+  );
+
+  // Add new hook
+  filtered.push({
+    matcher: "Bash",
+    hooks: [
+      {
+        type: "command",
+        command:
+          '[ -f graphify-out/graph.json ] && echo \'{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"' +
+          HOOK_CONTEXT +
+          '"}}\' || true',
+      },
+    ],
+  });
+
+  hooks.PreToolUse = filtered;
+  settings.hooks = hooks;
+
+  if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+
+  // 2. Print MCP add command (Claude manages MCP via CLI)
+  console.log(`\u2713 Claude PreToolUse hook installed: ${settingsPath}`);
+  console.log("");
+  console.log("  To also register the MCP server, run:");
+  console.log(`  claude mcp add graphify -- npx -y graphify-mcp-tools mcp --graph ${graphDir}`);
+}
+
+// ─── VS Code ─────────────────────────────────────────────────────────────────
+
+function installVSCode(graphDir: string): void {
+  const projectDir = process.cwd();
+
+  // 1. Register MCP server
+  const vscodeDir = resolve(projectDir, ".vscode");
+  const mcpPath = join(vscodeDir, "mcp.json");
+
+  let mcpConfig: Record<string, unknown> = {};
+  if (existsSync(mcpPath)) {
+    mcpConfig = JSON.parse(readFileSync(mcpPath, "utf-8"));
+  }
+
+  if (!mcpConfig.servers) mcpConfig.servers = {};
+  const servers = mcpConfig.servers as Record<string, unknown>;
   servers["graphify"] = {
     type: "stdio",
     command: "npx",
     args: ["-y", "graphify-mcp-tools", "mcp", "--graph", graphDir],
   };
 
-  if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
-  console.log(`\u2713 VS Code configured: ${configPath}`);
+  if (!existsSync(vscodeDir)) mkdirSync(vscodeDir, { recursive: true });
+  writeFileSync(mcpPath, JSON.stringify(mcpConfig, null, 2) + "\n");
+
+  // 2. Write copilot instructions
+  const githubDir = resolve(projectDir, ".github");
+  const instructionsPath = join(githubDir, "copilot-instructions.md");
+
+  if (!existsSync(githubDir)) mkdirSync(githubDir, { recursive: true });
+
+  let content = "";
+  if (existsSync(instructionsPath)) {
+    content = readFileSync(instructionsPath, "utf-8");
+    if (content.includes(VSCODE_SECTION_MARKER)) {
+      console.log(`\u2713 VS Code MCP server registered: ${mcpPath}`);
+      console.log(`\u2713 Copilot instructions already present: ${instructionsPath}`);
+      return;
+    }
+    content = content.trimEnd() + "\n\n";
+  }
+
+  content += VSCODE_SECTION;
+  writeFileSync(instructionsPath, content);
+
+  console.log(`\u2713 VS Code MCP server registered: ${mcpPath}`);
+  console.log(`\u2713 Copilot instructions installed: ${instructionsPath}`);
   console.log("");
-  console.log("  Added MCP server 'graphify' to .vscode/mcp.json");
   console.log("  Ensure the GitHub Copilot extension is installed for MCP support.");
 }
