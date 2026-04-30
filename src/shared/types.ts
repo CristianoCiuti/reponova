@@ -78,7 +78,6 @@ export interface RepoConfig {
 }
 
 export interface BuildConfig {
-  graphify_args: string[];
   html: boolean;
   html_min_degree?: number;
   html_community_fallback: boolean;
@@ -106,8 +105,6 @@ export interface ImagesConfig {
 
 export interface OutlineConfig {
   enabled: boolean;
-  /** @deprecated Auto-detected from file extension. Kept for backward compatibility. */
-  language?: string;
   paths: string[];
   exclude: string[];
 }
@@ -252,7 +249,6 @@ export const DEFAULT_CONFIG: Config = {
   output: "graphify-out",
   repos: [],
   build: {
-    graphify_args: [],
     html: true,
     html_community_fallback: true,
     exclude: [],
@@ -274,8 +270,8 @@ export const DEFAULT_CONFIG: Config = {
   },
   outlines: {
     enabled: true,
-    paths: ["src/**/*.py"],
-    exclude: ["**/__pycache__/**", "**/test_*.py", "**/.git/**"],
+    paths: ["src/**/*.ts", "src/**/*.py", "src/**/*.js"],
+    exclude: ["**/node_modules/**", "**/.git/**", "**/dist/**"],
   },
   server: {},
 };

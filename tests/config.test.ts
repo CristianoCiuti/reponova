@@ -6,7 +6,8 @@ describe("loadConfig", () => {
     const { config } = loadConfig(undefined);
     expect(config.output).toBe("graphify-out");
     expect(config.repos).toEqual([]);
-    expect(config.build.graphify_args).toEqual([]);
+    expect(config.build.mode).toBe("monorepo");
+    expect(config.build.incremental).toBe(true);
     expect(config.outlines.enabled).toBe(true);
   });
 

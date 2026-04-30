@@ -11,7 +11,6 @@ const RepoConfigSchema = z.object({
 });
 
 const BuildConfigSchema = z.object({
-  graphify_args: z.array(z.string()).default([]),
   html: z.boolean().default(true),
   html_min_degree: z.number().int().min(1).optional(),
   html_community_fallback: z.boolean().default(true),
@@ -35,9 +34,8 @@ const BuildConfigSchema = z.object({
 
 const OutlineConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  language: z.string().optional(),  // DEPRECATED: auto-detected from file extension
-  paths: z.array(z.string()).default(["src/**/*.py"]),
-  exclude: z.array(z.string()).default(["**/__pycache__/**", "**/test_*.py", "**/.git/**"]),
+  paths: z.array(z.string()).default(["src/**/*.ts", "src/**/*.py", "src/**/*.js"]),
+  exclude: z.array(z.string()).default(["**/node_modules/**", "**/.git/**", "**/dist/**"]),
 });
 
 const ServerConfigSchema = z.record(z.unknown()).default({});

@@ -39,7 +39,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
     mkdirSync(outputDir, { recursive: true });
   }
 
-  const tmpDir = join(tmpdir(), `graphify-build-${Date.now()}`);
+    const tmpDir = join(tmpdir(), `gmt-build-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
 
   try {

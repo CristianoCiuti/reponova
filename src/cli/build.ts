@@ -4,7 +4,7 @@ import { runBuild } from "../build/orchestrator.js";
 
 export const buildCommand: CommandModule = {
   command: "build",
-  describe: "Build unified graph from multiple repos (requires graphify)",
+  describe: "Build unified graph from configured repos",
   builder: (yargs) =>
     yargs
       .option("config", {
