@@ -1,11 +1,12 @@
-import { writeFileSync } from "node:fs";
-import { extname } from "node:path";
+import { writeFileSync, readFileSync, existsSync } from "node:fs";
+import { extname, join } from "node:path";
 import type Graph from "graphology";
 import type { CommunityResult } from "../extract/community.js";
 
 export interface GenerateGraphReportOptions {
   graph: Graph;
   communities: CommunityResult;
+  outputDir: string;
   outputPath: string;
 }
 
@@ -17,8 +18,14 @@ interface RankedCommunity {
   keyMembers: string[];
 }
 
+interface LoadedCommunitySummary {
+  id: string | number;
+  summary: string;
+  hub_nodes: string[];
+}
+
 export function generateGraphReport(options: GenerateGraphReportOptions): void {
-  const { graph, communities, outputPath } = options;
+  const { graph, communities, outputDir, outputPath } = options;
   const repoNames = new Set<string>();
   const edgeTypeCounts = new Map<string, number>();
   const crossRepoCounts = new Map<string, number>();
@@ -66,6 +73,9 @@ export function generateGraphReport(options: GenerateGraphReportOptions): void {
     .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label))
     .slice(0, 15);
 
+  // Load community summaries if intelligence layer produced them
+  const summaryMap = loadCommunitySummaries(outputDir);
+
   const rankedCommunities: RankedCommunity[] = Array.from(communities.communities.entries())
     .map(([id, members]) => {
       const rankedMembers = members
@@ -79,15 +89,24 @@ export function generateGraphReport(options: GenerateGraphReportOptions): void {
         .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label));
 
       const repos = Array.from(new Set(rankedMembers.map((member) => member.repo).filter(Boolean) as string[])).sort();
-      const nameSeed = rankedMembers
-        .filter((member) => member.type !== "module" && member.type !== "document")
-        .slice(0, 2)
-        .map((member) => member.label);
+
+      // Use LLM-generated summary as community name if available, fallback to top members
+      const llmSummary = summaryMap.get(String(id));
+      let name: string;
+      if (llmSummary) {
+        name = llmSummary;
+      } else {
+        const nameSeed = rankedMembers
+          .filter((member) => member.type !== "module" && member.type !== "document")
+          .slice(0, 2)
+          .map((member) => member.label);
+        name = nameSeed.length > 0 ? nameSeed.join(" / ") : `Community ${id}`;
+      }
 
       return {
         id,
         members,
-        name: nameSeed.length > 0 ? nameSeed.join(" / ") : `Community ${id}`,
+        name,
         repos,
         keyMembers: rankedMembers.slice(0, 5).map((member) => `${member.label} (${member.degree})`),
       };
@@ -190,4 +209,38 @@ function escapeMarkdownText(value: string): string {
     .replace(/\*/g, "\\*")
     .replace(/_/g, "\\_")
     .replace(/`/g, "\\`");
+}
+
+/**
+ * Load community_summaries.json if it exists (produced by intelligence layer).
+ * Returns a map of community id → first sentence of summary (for use as name).
+ */
+function loadCommunitySummaries(outputDir: string): Map<string, string> {
+  const summaryPath = join(outputDir, "community_summaries.json");
+  if (!existsSync(summaryPath)) return new Map();
+
+  try {
+    const raw = readFileSync(summaryPath, "utf-8");
+    const summaries = JSON.parse(raw) as LoadedCommunitySummary[];
+    const map = new Map<string, string>();
+    for (const s of summaries) {
+      // Extract a meaningful name from the summary.
+      // Algorithmic format: "NNN nodes cluster. Centered around X, Y, Z in path. Spans repos."
+      // LLM format: Free-form descriptive text.
+      // Strategy: prefer "Centered around..." clause, else first sentence.
+      const centeredMatch = s.summary.match(/Centered around ([^.]+)/);
+      let name: string;
+      if (centeredMatch) {
+        name = centeredMatch[1]!.trim();
+      } else {
+        name = s.summary.split(/[.!?\n]/)[0]?.trim() ?? "";
+      }
+      if (name.length > 0) {
+        map.set(String(s.id), name.length > 80 ? name.slice(0, 77) + "..." : name);
+      }
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
 }

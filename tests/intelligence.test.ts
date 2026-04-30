@@ -139,7 +139,7 @@ describe("VectorStore (fallback mode)", () => {
 describe("SummaryGenerator (algorithmic)", () => {
   it("generates algorithmic community summaries", async () => {
     const generator = new SummaryGenerator(
-      { enabled: true, generate_node_descriptions: true, node_description_threshold: 0.8 },
+      { enabled: true, generate_node_descriptions: true, node_description_threshold: 0.8, max_communities: 50 },
       null, // no LLM
     );
 
@@ -165,7 +165,7 @@ describe("SummaryGenerator (algorithmic)", () => {
 
   it("generates algorithmic node descriptions", async () => {
     const generator = new SummaryGenerator(
-      { enabled: true, generate_node_descriptions: true, node_description_threshold: 0.5 },
+      { enabled: true, generate_node_descriptions: true, node_description_threshold: 0.5, max_communities: 50 },
       null,
     );
 
@@ -186,7 +186,7 @@ describe("SummaryGenerator (algorithmic)", () => {
 
   it("respects disabled config", async () => {
     const generator = new SummaryGenerator(
-      { enabled: false, generate_node_descriptions: true, node_description_threshold: 0.8 },
+      { enabled: false, generate_node_descriptions: true, node_description_threshold: 0.8, max_communities: 50 },
       null,
     );
 

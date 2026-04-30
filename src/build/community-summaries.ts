@@ -49,11 +49,16 @@ export class SummaryGenerator {
   async generateCommunitySummaries(communities: CommunityData[]): Promise<CommunitySummary[]> {
     if (!this.config.enabled) return [];
 
-    log.info(`Generating community summaries (${communities.length} communities)...`);
+    // Limit to top N communities by size (largest first) to avoid LLM timeout
+    const maxCommunities = this.config.max_communities;
+    const sorted = [...communities].sort((a, b) => b.nodes.length - a.nodes.length);
+    const selected = maxCommunities > 0 ? sorted.slice(0, maxCommunities) : sorted;
+
+    log.info(`Generating community summaries (${selected.length}/${communities.length} communities, max=${maxCommunities})...`);
 
     const summaries: CommunitySummary[] = [];
 
-    for (const community of communities) {
+    for (const community of selected) {
       const summary = await this.summarizeCommunity(community);
       summaries.push(summary);
     }

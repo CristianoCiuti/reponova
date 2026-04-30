@@ -71,13 +71,6 @@ export async function runBuild(config: Config, configDir: string, options: Build
       log.info(`  Incremental: ${result.incrementalStats.cachedFiles} cached, ${result.incrementalStats.reextractedFiles} re-extracted`);
     }
 
-    log.info("Generating GRAPH_REPORT.md...");
-    generateGraphReport({
-      graph: result.builtGraph.graph,
-      communities: result.communities,
-      outputPath: join(outputDir, "GRAPH_REPORT.md"),
-    });
-
     // Generate search index
     await runIndexer(mergedPath, outputDir);
 
@@ -90,6 +83,15 @@ export async function runBuild(config: Config, configDir: string, options: Build
 
     // Intelligence layer: embeddings + summaries (best-effort)
     await runIntelligenceLayer(config, outputDir, mergedPath);
+
+    // Report AFTER intelligence layer so community summaries can be used as names
+    log.info("Generating GRAPH_REPORT.md...");
+    generateGraphReport({
+      graph: result.builtGraph.graph,
+      communities: result.communities,
+      outputDir,
+      outputPath: join(outputDir, "GRAPH_REPORT.md"),
+    });
 
     log.info("");
     log.info("Build complete!");

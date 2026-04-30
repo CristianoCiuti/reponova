@@ -128,6 +128,7 @@ export interface SummariesConfig {
   enabled: boolean;
   generate_node_descriptions: boolean;
   node_description_threshold: number;
+  max_communities: number;
 }
 
 export interface OutlineConfig {
@@ -314,6 +315,7 @@ export const DEFAULT_CONFIG: Config = {
       enabled: true,
       generate_node_descriptions: true,
       node_description_threshold: 0.8,
+      max_communities: 50,
     },
   },
   outlines: {

@@ -50,6 +50,7 @@ const BuildConfigSchema = z.object({
     enabled: z.boolean().default(true),
     generate_node_descriptions: z.boolean().default(true),
     node_description_threshold: z.number().min(0).max(1).default(0.8),
+    max_communities: z.number().min(0).default(50),
   }).default({}),
 });
 

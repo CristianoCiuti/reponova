@@ -232,8 +232,15 @@ function generateHtml(options: {
   const options = {
     physics: {
       solver: 'forceAtlas2Based',
-      forceAtlas2Based: { gravitationalConstant: -30, centralGravity: 0.005, springLength: 100 },
-      stabilization: { iterations: 300, updateInterval: 50 }
+      forceAtlas2Based: {
+        gravitationalConstant: -800,
+        centralGravity: 0.001,
+        springLength: 250,
+        springConstant: 0.02,
+        damping: 0.4,
+        avoidOverlap: 0.8
+      },
+      stabilization: { iterations: 500, updateInterval: 50 }
     },
     nodes: {
       shape: 'dot',
