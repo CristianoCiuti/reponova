@@ -21,7 +21,7 @@ const BuildConfigSchema = z.object({
 
 const OutlineConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  language: z.string().default("python"),
+  language: z.string().optional(),  // DEPRECATED: auto-detected from file extension
   paths: z.array(z.string()).default(["src/**/*.py"]),
   exclude: z.array(z.string()).default(["**/__pycache__/**", "**/test_*.py", "**/.git/**"]),
 });

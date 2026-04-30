@@ -11,7 +11,7 @@ export default defineConfig([
     clean: true,
     splitting: false,
     shims: true,
-    external: ["sql.js", "web-tree-sitter"],
+    external: ["sql.js", "web-tree-sitter", "graphology", "graphology-communities-louvain"],
   },
   {
     entry: { "cli/index": "src/cli/index.ts" },
@@ -26,6 +26,6 @@ export default defineConfig([
     banner: {
       js: "#!/usr/bin/env node",
     },
-    external: ["sql.js", "web-tree-sitter"],
+    external: ["sql.js", "web-tree-sitter", "graphology", "graphology-communities-louvain"],
   },
 ]);

@@ -88,7 +88,8 @@ export interface BuildConfig {
 
 export interface OutlineConfig {
   enabled: boolean;
-  language: string;
+  /** @deprecated Auto-detected from file extension. Kept for backward compatibility. */
+  language?: string;
   paths: string[];
   exclude: string[];
 }
@@ -241,7 +242,6 @@ export const DEFAULT_CONFIG: Config = {
   },
   outlines: {
     enabled: true,
-    language: "python",
     paths: ["src/**/*.py"],
     exclude: ["**/__pycache__/**", "**/test_*.py", "**/.git/**"],
   },
