@@ -5,6 +5,7 @@ import type { Config, GraphData } from "../shared/types.js";
 import { runIndexer } from "./indexer.js";
 import { runOutlineGeneration } from "./outlines.js";
 import { runIntelligenceLayer } from "./intelligence.js";
+import { generateGraphReport } from "./report.js";
 import { log } from "../shared/utils.js";
 import { runPipeline, type PipelineResult } from "../extract/index.js";
 
@@ -46,6 +47,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
   try {
     const mergedPath = join(outputDir, "graph.json");
     const htmlPath = config.build.html ? join(outputDir, "graph.html") : undefined;
+    const htmlCommunityPath = config.build.html ? join(outputDir, "graph_communities.html") : undefined;
     const mode = config.build.mode;
     const incremental = config.build.incremental && !options.force;
     log.info(`Build mode: ${mode}${incremental ? " (incremental)" : ""}`);
@@ -53,9 +55,9 @@ export async function runBuild(config: Config, configDir: string, options: Build
     let result: PipelineResult;
 
     if (mode === "monorepo") {
-      result = await buildMonorepo(config, configDir, options, tmpDir, mergedPath, htmlPath, outputDir, incremental);
+      result = await buildMonorepo(config, configDir, options, tmpDir, mergedPath, htmlPath, htmlCommunityPath, outputDir, incremental);
     } else {
-      result = await buildSeparate(config, configDir, options, tmpDir, mergedPath, htmlPath, outputDir, incremental);
+      result = await buildSeparate(config, configDir, options, tmpDir, mergedPath, htmlPath, htmlCommunityPath, outputDir, incremental);
     }
 
     // Tag nodes with repo name (monorepo: from first path component)
@@ -68,6 +70,13 @@ export async function runBuild(config: Config, configDir: string, options: Build
     if (result.incrementalStats) {
       log.info(`  Incremental: ${result.incrementalStats.cachedFiles} cached, ${result.incrementalStats.reextractedFiles} re-extracted`);
     }
+
+    log.info("Generating GRAPH_REPORT.md...");
+    generateGraphReport({
+      graph: result.builtGraph.graph,
+      communities: result.communities,
+      outputPath: join(outputDir, "GRAPH_REPORT.md"),
+    });
 
     // Generate search index
     await runIndexer(mergedPath, outputDir);
@@ -108,6 +117,7 @@ async function buildMonorepo(
   tmpDir: string,
   mergedPath: string,
   htmlPath: string | undefined,
+  htmlCommunityPath: string | undefined,
   outputDir: string,
   incremental: boolean,
 ): Promise<PipelineResult> {
@@ -147,7 +157,8 @@ async function buildMonorepo(
     workspace,
     excludeDirs: config.build.exclude,
     graphJsonPath: mergedPath,
-    graphHtmlPath: htmlPath,
+    htmlPath,
+    htmlCommunityPath,
     htmlMinDegree: config.build.html_min_degree,
     outputDir,
     incremental,
@@ -165,6 +176,7 @@ async function buildSeparate(
   tmpDir: string,
   mergedPath: string,
   htmlPath: string | undefined,
+  htmlCommunityPath: string | undefined,
   outputDir: string,
   incremental: boolean,
 ): Promise<PipelineResult> {
@@ -193,7 +205,8 @@ async function buildSeparate(
     workspace,
     excludeDirs: config.build.exclude,
     graphJsonPath: mergedPath,
-    graphHtmlPath: htmlPath,
+    htmlPath,
+    htmlCommunityPath,
     htmlMinDegree: config.build.html_min_degree,
     outputDir,
     incremental,

@@ -16,13 +16,13 @@ import { getExtractorForFile, getSupportedExtensions } from "./languages/registr
 import { buildGraph, type BuiltGraph } from "./graph-builder.js";
 import { detectCommunities, type CommunityResult } from "./community.js";
 import { exportJson } from "./export-json.js";
-import { exportHtml } from "./export-html.js";
+import { exportHtml, exportCommunityHtml } from "./export-html.js";
 import { log } from "../shared/utils.js";
 
 export { buildGraph, type BuiltGraph } from "./graph-builder.js";
 export { detectCommunities, type CommunityResult } from "./community.js";
 export { exportJson } from "./export-json.js";
-export { exportHtml } from "./export-html.js";
+export { exportHtml, exportCommunityHtml } from "./export-html.js";
 export type { FileExtraction } from "./types.js";
 
 // ─── File Detection ──────────────────────────────────────────────────────────
@@ -270,7 +270,9 @@ export interface PipelineOptions {
   /** Output path for graph.json */
   graphJsonPath: string;
   /** Output path for graph.html (optional) */
-  graphHtmlPath?: string;
+  htmlPath?: string;
+  /** Output path for graph_communities.html (optional) */
+  htmlCommunityPath?: string;
   /** Repo name for tagging nodes */
   repoName?: string;
   /** Min degree for HTML filtering */
@@ -305,7 +307,7 @@ export interface PipelineResult {
  * and reuses them for unchanged files on subsequent builds.
  */
 export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
-  const { workspace, excludeDirs = [], graphJsonPath, graphHtmlPath, repoName, htmlMinDegree, outputDir, incremental, docsConfig, imagesConfig } = options;
+  const { workspace, excludeDirs = [], graphJsonPath, htmlPath, htmlCommunityPath, repoName, htmlMinDegree, outputDir, incremental, docsConfig, imagesConfig } = options;
 
   // 1. Detect files
   log.info("Detecting files...");
@@ -324,6 +326,12 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     const emptyGraph = buildGraph({ extractions: [] });
     const emptyCommunities = detectCommunities(emptyGraph.graph);
     exportJson({ graph: emptyGraph.graph, communities: emptyCommunities, outputPath: graphJsonPath });
+    if (htmlPath) {
+      exportHtml({ graph: emptyGraph.graph, communities: emptyCommunities, outputPath: htmlPath, minDegree: htmlMinDegree });
+    }
+    if (htmlCommunityPath) {
+      exportCommunityHtml({ graph: emptyGraph.graph, communities: emptyCommunities, outputPath: htmlCommunityPath });
+    }
     return {
       builtGraph: emptyGraph,
       communities: emptyCommunities,
@@ -387,13 +395,22 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   exportJson({ graph: builtGraph.graph, communities, outputPath: graphJsonPath });
 
   // 6. Export HTML (optional)
-  if (graphHtmlPath) {
+  if (htmlPath) {
     log.info("Generating graph.html...");
     exportHtml({
       graph: builtGraph.graph,
       communities,
-      outputPath: graphHtmlPath,
+      outputPath: htmlPath,
       minDegree: htmlMinDegree,
+    });
+  }
+
+  if (htmlCommunityPath) {
+    log.info("Generating graph_communities.html...");
+    exportCommunityHtml({
+      graph: builtGraph.graph,
+      communities,
+      outputPath: htmlCommunityPath,
     });
   }
 

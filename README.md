@@ -129,7 +129,7 @@ The build pipeline:
 3. In **separate** mode: builds each repo independently, then merges via `graphify merge-graphs`
 4. Normalizes file paths, tags nodes with repo names
 5. Generates `GRAPH_REPORT.md` (architecture overview, god nodes, communities)
-6. Generates `graph.html` interactive visualization (if `html: true`; falls back to aggregated community view for large graphs)
+6. Generates `graph.html` and `graph_communities.html` interactive visualizations (if `html: true`)
 7. Generates the search index (`graph_search.db`)
 8. Generates code outlines (if `outlines.enabled: true`)
 
@@ -204,8 +204,7 @@ build:
     - "dist_package"              #   these are added to graphify's _SKIP_DIRS set
     - ".tox"                      #   (in addition to built-in: venv/, node_modules/, etc.)
   graphify_args: []               # extra CLI arguments passed to graphify (merge-graphs, update)
-  html: true                      # generate graph.html interactive visualization after build
-  html_community_fallback: true   # if graph > 5000 nodes, generate aggregated community-level HTML
+  html: true                      # generate graph.html and graph_communities.html after build
   # html_min_degree: 3            # if set, only nodes with degree >= this value are included
                                   #   in the HTML visualization (omit for full graph)
 

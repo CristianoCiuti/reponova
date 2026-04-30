@@ -24,8 +24,7 @@ build:
   mode: monorepo                  # "monorepo" (default) or "separate"
   exclude: []                     # directory names to skip during detect (e.g. dist_package, .tox)
   incremental: true               # incremental builds using file hash cache
-  html: true                      # generate graph.html visualization
-  html_community_fallback: true   # if graph > 5000 nodes, generate aggregated community-level HTML
+  html: true                      # generate graph.html and graph_communities.html visualizations
   # html_min_degree: 3            # if set, only include nodes with degree >= this value in HTML
   docs:
     enabled: true                 # extract documentation files (.md, .txt, .rst)

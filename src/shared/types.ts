@@ -80,7 +80,6 @@ export interface RepoConfig {
 export interface BuildConfig {
   html: boolean;
   html_min_degree?: number;
-  html_community_fallback: boolean;
   exclude: string[];
   mode: "monorepo" | "separate";
   incremental: boolean;
@@ -278,7 +277,6 @@ export const DEFAULT_CONFIG: Config = {
   repos: [],
   build: {
     html: true,
-    html_community_fallback: true,
     exclude: [],
     mode: "monorepo",
     incremental: true,

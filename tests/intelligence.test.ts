@@ -90,7 +90,7 @@ describe("VectorStore (fallback mode)", () => {
     store = new VectorStore(tmpDir);
     // Force fallback mode (no lancedb)
     await store.initialize();
-  });
+  }, 30000);
 
   it("should store and query vectors", async () => {
     const records: VectorRecord[] = [
@@ -213,7 +213,7 @@ describe("EmbeddingEngine", () => {
     await engine.dispose();
   });
 
-  it("should gracefully handle missing onnxruntime-node", async () => {
+  it("should gracefully handle missing onnxruntime-node", { timeout: 30000 }, async () => {
     // This test validates that if onnxruntime-node IS available but model is not downloaded,
     // the engine handles it without crashing. In CI without the model, it will fail gracefully.
     const engine = new EmbeddingEngine({

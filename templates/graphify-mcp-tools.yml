@@ -16,8 +16,7 @@ build:
   mode: monorepo                  # "monorepo" (default) or "separate"
   graphify_args: []               # extra CLI arguments passed to graphify
   exclude: []                     # directory names to skip during detect (e.g. dist_package, .tox)
-  html: true                      # generate graph.html visualization after build
-  html_community_fallback: true   # if graph > 5000 nodes, generate aggregated community-level HTML
+  html: true                      # generate graph.html and graph_communities.html after build
   # html_min_degree: 3            # if set, only include nodes with degree >= this value in HTML
 
 # Outline generation options
