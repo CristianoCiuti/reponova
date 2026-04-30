@@ -117,19 +117,20 @@ export interface LanguageExtractor {
 
   /**
    * WASM grammar filename (e.g., "tree-sitter-python.wasm").
-   * Must exist in grammars/ directory. Shared with outline module.
+   * If provided, the pipeline parses with tree-sitter and passes the AST.
+   * If omitted/empty, the extractor receives a null tree and uses sourceCode directly.
    */
-  readonly wasmFile: string;
+  readonly wasmFile?: string;
 
   /**
-   * Extract symbols, imports, and references from a parsed tree-sitter tree.
+   * Extract symbols, imports, and references from a source file.
    *
-   * @param tree - The parsed tree-sitter syntax tree
+   * @param tree - The parsed tree-sitter syntax tree (null if no wasmFile)
    * @param sourceCode - The raw source code string
    * @param filePath - Relative file path (for qualified name generation)
    * @returns FileExtraction with all discovered symbols and relationships
    */
-  extract(tree: SyntaxTree, sourceCode: string, filePath: string): FileExtraction;
+  extract(tree: SyntaxTree | null, sourceCode: string, filePath: string): FileExtraction;
 
   /**
    * Resolve an import module path to candidate relative file paths.

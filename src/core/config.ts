@@ -17,6 +17,20 @@ const BuildConfigSchema = z.object({
   html_community_fallback: z.boolean().default(true),
   exclude: z.array(z.string()).default([]),
   mode: z.enum(["monorepo", "separate"]).default("monorepo"),
+  incremental: z.boolean().default(true),
+  docs: z.object({
+    enabled: z.boolean().default(true),
+    patterns: z.array(z.string()).default(["**/*.md", "**/*.txt", "**/*.rst"]),
+    exclude: z.array(z.string()).default(["**/CHANGELOG.md", "**/node_modules/**"]),
+    max_file_size_kb: z.number().default(500),
+  }).default({}),
+  images: z.object({
+    enabled: z.boolean().default(true),
+    patterns: z.array(z.string()).default(["**/*.puml", "**/*.plantuml", "**/*.svg"]),
+    exclude: z.array(z.string()).default(["**/node_modules/**"]),
+    parse_puml: z.boolean().default(true),
+    parse_svg_text: z.boolean().default(true),
+  }).default({}),
 });
 
 const OutlineConfigSchema = z.object({

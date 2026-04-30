@@ -1,0 +1,26 @@
+@startuml
+title System Architecture
+
+class ConfigLoader {
+  +load(path: str): Config
+  +validate(): bool
+}
+
+class DataProcessor {
+  +process(data: Data): Result
+  -transform(raw: bytes): Data
+}
+
+interface OutputInterface {
+  +write(result: Result): void
+}
+
+class FileOutput {
+  +write(result: Result): void
+}
+
+ConfigLoader --> DataProcessor
+DataProcessor --> OutputInterface
+FileOutput ..|> OutputInterface
+
+@enduml

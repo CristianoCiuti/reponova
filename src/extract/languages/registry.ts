@@ -12,6 +12,8 @@
  */
 import type { LanguageExtractor } from "../types.js";
 import { PythonExtractor } from "./python.js";
+import { MarkdownExtractor } from "./markdown.js";
+import { DiagramExtractor } from "./diagrams.js";
 
 // ─── Registry State ──────────────────────────────────────────────────────────
 
@@ -33,6 +35,8 @@ function registerExtractor(extractor: LanguageExtractor): void {
 // ─── Built-in Extractors ─────────────────────────────────────────────────────
 
 registerExtractor(new PythonExtractor());
+registerExtractor(new MarkdownExtractor());
+registerExtractor(new DiagramExtractor());
 
 // Future:
 // registerExtractor(new JavaScriptExtractor());

@@ -84,6 +84,24 @@ export interface BuildConfig {
   html_community_fallback: boolean;
   exclude: string[];
   mode: "monorepo" | "separate";
+  incremental: boolean;
+  docs: DocsConfig;
+  images: ImagesConfig;
+}
+
+export interface DocsConfig {
+  enabled: boolean;
+  patterns: string[];
+  exclude: string[];
+  max_file_size_kb: number;
+}
+
+export interface ImagesConfig {
+  enabled: boolean;
+  patterns: string[];
+  exclude: string[];
+  parse_puml: boolean;
+  parse_svg_text: boolean;
 }
 
 export interface OutlineConfig {
@@ -239,6 +257,20 @@ export const DEFAULT_CONFIG: Config = {
     html_community_fallback: true,
     exclude: [],
     mode: "monorepo",
+    incremental: true,
+    docs: {
+      enabled: true,
+      patterns: ["**/*.md", "**/*.txt", "**/*.rst"],
+      exclude: ["**/CHANGELOG.md", "**/node_modules/**"],
+      max_file_size_kb: 500,
+    },
+    images: {
+      enabled: true,
+      patterns: ["**/*.puml", "**/*.plantuml", "**/*.svg"],
+      exclude: ["**/node_modules/**"],
+      parse_puml: true,
+      parse_svg_text: true,
+    },
   },
   outlines: {
     enabled: true,

@@ -46,14 +46,15 @@ export async function runBuild(config: Config, configDir: string, options: Build
     const mergedPath = join(outputDir, "graph.json");
     const htmlPath = config.build.html ? join(outputDir, "graph.html") : undefined;
     const mode = config.build.mode;
-    log.info(`Build mode: ${mode}`);
+    const incremental = config.build.incremental && !options.force;
+    log.info(`Build mode: ${mode}${incremental ? " (incremental)" : ""}`);
 
     let result: PipelineResult;
 
     if (mode === "monorepo") {
-      result = await buildMonorepo(config, configDir, options, tmpDir, mergedPath, htmlPath);
+      result = await buildMonorepo(config, configDir, options, tmpDir, mergedPath, htmlPath, outputDir, incremental);
     } else {
-      result = await buildSeparate(config, configDir, options, tmpDir, mergedPath, htmlPath);
+      result = await buildSeparate(config, configDir, options, tmpDir, mergedPath, htmlPath, outputDir, incremental);
     }
 
     // Tag nodes with repo name (monorepo: from first path component)
@@ -63,6 +64,9 @@ export async function runBuild(config: Config, configDir: string, options: Build
     }
 
     log.info(`Graph: ${result.builtGraph.stats.nodeCount} nodes, ${result.builtGraph.stats.edgeCount} edges, ${result.communities.count} communities`);
+    if (result.incrementalStats) {
+      log.info(`  Incremental: ${result.incrementalStats.cachedFiles} cached, ${result.incrementalStats.reextractedFiles} re-extracted`);
+    }
 
     // Generate search index
     await runIndexer(mergedPath, outputDir);
@@ -100,6 +104,8 @@ async function buildMonorepo(
   tmpDir: string,
   mergedPath: string,
   htmlPath: string | undefined,
+  outputDir: string,
+  incremental: boolean,
 ): Promise<PipelineResult> {
   const workspace = join(tmpDir, "workspace");
   mkdirSync(workspace, { recursive: true });
@@ -139,6 +145,10 @@ async function buildMonorepo(
     graphJsonPath: mergedPath,
     graphHtmlPath: htmlPath,
     htmlMinDegree: config.build.html_min_degree,
+    outputDir,
+    incremental,
+    docsConfig: config.build.docs,
+    imagesConfig: config.build.images,
   });
 }
 
@@ -151,6 +161,8 @@ async function buildSeparate(
   tmpDir: string,
   mergedPath: string,
   htmlPath: string | undefined,
+  outputDir: string,
+  incremental: boolean,
 ): Promise<PipelineResult> {
   // In separate mode, we build each repo independently then merge
   // For now, use the same monorepo approach (symlink into workspace)
@@ -179,6 +191,10 @@ async function buildSeparate(
     graphJsonPath: mergedPath,
     graphHtmlPath: htmlPath,
     htmlMinDegree: config.build.html_min_degree,
+    outputDir,
+    incremental,
+    docsConfig: config.build.docs,
+    imagesConfig: config.build.images,
   });
 }
 

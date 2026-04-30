@@ -55,12 +55,13 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
     const filePath = extraction.filePath.replace(/\\/g, "/");
     const moduleId = makeNodeId(filePath, "");
     const label = filePath.split("/").pop() ?? filePath;
+    const isDoc = extraction.language === "markdown";
 
     if (!graph.hasNode(moduleId)) {
       graph.addNode(moduleId, {
         label,
-        type: "module",
-        file_type: "code",
+        type: isDoc ? "document" : "module",
+        file_type: isDoc ? "doc" : "code",
         source_file: filePath,
         repo: repoName ?? inferRepoName(filePath),
         start_line: 1,
@@ -80,6 +81,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
   for (const extraction of extractions) {
     const filePath = extraction.filePath.replace(/\\/g, "/");
     const moduleId = makeNodeId(filePath, "");
+    const isDoc = extraction.language === "markdown";
 
     for (const symbol of extraction.symbols) {
       const nodeId = makeNodeId(filePath, symbol.name);
@@ -97,7 +99,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
         graph.addNode(nodeId, {
           label: symbol.name,
           type: symbol.kind,
-          file_type: "code",
+          file_type: isDoc ? "doc" : "code",
           source_file: filePath,
           source_location: `L${symbol.startLine}${symbol.endLine ? `-L${symbol.endLine}` : ""}`,
           repo: repoName ?? inferRepoName(filePath),
@@ -112,11 +114,11 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
       // MEMBER_OF: symbol → module (contains relationship)
       addEdgeSafe(graph, moduleId, nodeId, "contains");
 
-      // CONTAINS: class → method
+      // CONTAINS: class → method (or document → section)
       if (symbol.parent) {
         const parentId = makeNodeId(filePath, symbol.parent);
         if (graph.hasNode(parentId)) {
-          addEdgeSafe(graph, parentId, nodeId, "method");
+          addEdgeSafe(graph, parentId, nodeId, isDoc ? "contains_section" : "method");
         }
       }
     }
