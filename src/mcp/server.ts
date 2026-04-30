@@ -16,6 +16,7 @@ import { handleExplain } from "./tools/explain.js";
 import { handleStatus } from "./tools/status.js";
 import { handleCommunity } from "./tools/community.js";
 import { handleHotspots } from "./tools/hotspots.js";
+import { handleSimilar, initSimilaritySearch, disposeSimilaritySearch } from "./tools/similar.js";
 import { log } from "../shared/utils.js";
 
 export interface McpServerOptions {
@@ -38,6 +39,12 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   const graphJsonPath = resolveGraphJson(graphDir);
   const db = await openDatabase(dbPath, { readonly: true });
 
+  // Initialize similarity search (best-effort, non-blocking)
+  const defaultEmbeddingsConfig = { enabled: true, model: "all-MiniLM-L6-v2", dimensions: 384, batch_size: 128, cache_dir: "~/.cache/graphify-mcp-tools/models" };
+  initSimilaritySearch(graphDir, defaultEmbeddingsConfig).catch(() => {
+    // Silently degrade — graph_similar will return appropriate error
+  });
+
   const server = new Server(
     { name: "graphify-mcp-tools", version: "0.1.0" },
     { capabilities: { tools: {}, resources: {} } },
@@ -52,6 +59,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
       { name: "graph_explain", description: "Complete detail of a node: properties, relationships, centrality.", inputSchema: { type: "object" as const, properties: { symbol: { type: "string", description: "Node name or ID" }, include_code: { type: "boolean", description: "Include file outline" } }, required: ["symbol"] } },
       { name: "graph_community", description: "List all nodes belonging to a specific community.", inputSchema: { type: "object" as const, properties: { community_id: { type: "string", description: "Community ID or name" } }, required: ["community_id"] } },
       { name: "graph_hotspots", description: "Most connected nodes in the graph (god nodes / architectural hotspots).", inputSchema: { type: "object" as const, properties: { top_n: { type: "number", description: "Number of results (default: 10)" }, metric: { type: "string", description: "Ranking metric: degree, in_degree, out_degree, betweenness (default: degree)" } } } },
+      { name: "graph_similar", description: "Semantic similarity search — find nodes conceptually similar to a query.", inputSchema: { type: "object" as const, properties: { query: { type: "string", description: "Natural language query or symbol name" }, top_k: { type: "number", description: "Max results (default: 10)" }, type: { type: "string", description: "Filter by type: function, class, module" }, repo: { type: "string", description: "Filter by repo" } }, required: ["query"] } },
       { name: "graph_status", description: "Graph status: metadata, counts, repos.", inputSchema: { type: "object" as const, properties: {} } },
     ],
   }));
@@ -67,6 +75,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
         case "graph_explain": return handleExplain(db, graphDir, args as Record<string, unknown>);
         case "graph_community": return handleCommunity(db, args as Record<string, unknown>);
         case "graph_hotspots": return handleHotspots(db, args as Record<string, unknown>);
+        case "graph_similar": return await handleSimilar(db, args as Record<string, unknown>);
         case "graph_status": return handleStatus(db, graphDir, graphJsonPath);
         default: return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
       }
@@ -91,6 +100,6 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   await server.connect(transport);
   log.info("graphify-mcp-tools MCP server running on stdio");
 
-  process.on("SIGINT", async () => { db.close(); await server.close(); process.exit(0); });
-  process.on("SIGTERM", async () => { db.close(); await server.close(); process.exit(0); });
+  process.on("SIGINT", async () => { await disposeSimilaritySearch(); db.close(); await server.close(); process.exit(0); });
+  process.on("SIGTERM", async () => { await disposeSimilaritySearch(); db.close(); await server.close(); process.exit(0); });
 }

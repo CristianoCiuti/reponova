@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import type { Config, GraphData } from "../shared/types.js";
 import { runIndexer } from "./indexer.js";
 import { runOutlineGeneration } from "./outlines.js";
+import { runIntelligenceLayer } from "./intelligence.js";
 import { log } from "../shared/utils.js";
 import { runPipeline, type PipelineResult } from "../extract/index.js";
 
@@ -75,8 +76,11 @@ export async function runBuild(config: Config, configDir: string, options: Build
     if (config.outlines.enabled) {
       log.info("Generating outlines...");
       const outlineCount = await runOutlineGeneration(config, configDir, outputDir, { force: options.force });
-      log.info(`  \u2713 ${outlineCount} outlines generated`);
+      log.info(`  ✓ ${outlineCount} outlines generated`);
     }
+
+    // Intelligence layer: embeddings + summaries (best-effort)
+    await runIntelligenceLayer(config, outputDir, mergedPath);
 
     log.info("");
     log.info("Build complete!");

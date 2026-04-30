@@ -30,6 +30,28 @@ const BuildConfigSchema = z.object({
     parse_puml: z.boolean().default(true),
     parse_svg_text: z.boolean().default(true),
   }).default({}),
+  embeddings: z.object({
+    enabled: z.boolean().default(true),
+    model: z.string().default("all-MiniLM-L6-v2"),
+    dimensions: z.number().default(384),
+    batch_size: z.number().default(128),
+    cache_dir: z.string().default("~/.cache/graphify-mcp-tools/models"),
+  }).default({}),
+  llm: z.object({
+    enabled: z.boolean().default(true),
+    model: z.string().default("qwen2.5-3b-instruct"),
+    quantization: z.string().default("Q4_K_M"),
+    gpu: z.enum(["auto", "cpu", "cuda", "metal", "vulkan"]).default("auto"),
+    context_size: z.number().default(4096),
+    threads: z.number().default(0),
+    download_on_first_use: z.boolean().default(true),
+    cache_dir: z.string().default("~/.cache/graphify-mcp-tools/models"),
+  }).default({}),
+  summaries: z.object({
+    enabled: z.boolean().default(true),
+    generate_node_descriptions: z.boolean().default(true),
+    node_description_threshold: z.number().min(0).max(1).default(0.8),
+  }).default({}),
 });
 
 const OutlineConfigSchema = z.object({

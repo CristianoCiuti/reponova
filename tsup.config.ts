@@ -11,7 +11,7 @@ export default defineConfig([
     clean: true,
     splitting: false,
     shims: true,
-    external: ["sql.js", "web-tree-sitter", "graphology", "graphology-communities-louvain"],
+    external: ["sql.js", "web-tree-sitter", "graphology", "graphology-communities-louvain", "onnxruntime-node", "@lancedb/lancedb", "node-llama-cpp", "apache-arrow"],
   },
   {
     entry: { "cli/index": "src/cli/index.ts" },
@@ -26,6 +26,6 @@ export default defineConfig([
     banner: {
       js: "#!/usr/bin/env node",
     },
-    external: ["sql.js", "web-tree-sitter", "graphology", "graphology-communities-louvain"],
+    external: ["sql.js", "web-tree-sitter", "graphology", "graphology-communities-louvain", "onnxruntime-node", "@lancedb/lancedb", "node-llama-cpp", "apache-arrow"],
   },
 ]);

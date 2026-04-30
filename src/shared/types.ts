@@ -86,6 +86,9 @@ export interface BuildConfig {
   incremental: boolean;
   docs: DocsConfig;
   images: ImagesConfig;
+  embeddings: EmbeddingsConfig;
+  llm: LlmConfig;
+  summaries: SummariesConfig;
 }
 
 export interface DocsConfig {
@@ -101,6 +104,31 @@ export interface ImagesConfig {
   exclude: string[];
   parse_puml: boolean;
   parse_svg_text: boolean;
+}
+
+export interface EmbeddingsConfig {
+  enabled: boolean;
+  model: string;
+  dimensions: number;
+  batch_size: number;
+  cache_dir: string;
+}
+
+export interface LlmConfig {
+  enabled: boolean;
+  model: string;
+  quantization: string;
+  gpu: "auto" | "cpu" | "cuda" | "metal" | "vulkan";
+  context_size: number;
+  threads: number;
+  download_on_first_use: boolean;
+  cache_dir: string;
+}
+
+export interface SummariesConfig {
+  enabled: boolean;
+  generate_node_descriptions: boolean;
+  node_description_threshold: number;
 }
 
 export interface OutlineConfig {
@@ -266,6 +294,28 @@ export const DEFAULT_CONFIG: Config = {
       exclude: ["**/node_modules/**"],
       parse_puml: true,
       parse_svg_text: true,
+    },
+    embeddings: {
+      enabled: true,
+      model: "all-MiniLM-L6-v2",
+      dimensions: 384,
+      batch_size: 128,
+      cache_dir: "~/.cache/graphify-mcp-tools/models",
+    },
+    llm: {
+      enabled: true,
+      model: "qwen2.5-3b-instruct",
+      quantization: "Q4_K_M",
+      gpu: "auto",
+      context_size: 4096,
+      threads: 0,
+      download_on_first_use: true,
+      cache_dir: "~/.cache/graphify-mcp-tools/models",
+    },
+    summaries: {
+      enabled: true,
+      generate_node_descriptions: true,
+      node_description_threshold: 0.8,
     },
   },
   outlines: {

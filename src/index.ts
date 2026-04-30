@@ -17,6 +17,12 @@ export { getNodeDetail, getNodeSuggestions, formatNodeDetailMarkdown } from "./c
 export { resolveGraphPath, resolveGraphJson, resolveSearchDb } from "./core/graph-resolver.js";
 export { fixPaths, fixGraphPaths } from "./core/path-fixer.js";
 
+// Intelligence layer exports
+export { EmbeddingEngine, composeNodeText } from "./build/embeddings.js";
+export { VectorStore } from "./core/vector-store.js";
+export { LlmEngine } from "./build/llm-engine.js";
+export { SummaryGenerator } from "./build/community-summaries.js";
+
 export type {
   GraphNode,
   GraphEdge,
@@ -28,4 +34,7 @@ export type {
   PathResult,
   NodeDetail,
   FileOutline,
+  EmbeddingsConfig,
+  LlmConfig,
+  SummariesConfig,
 } from "./shared/types.js";

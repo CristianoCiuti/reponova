@@ -62,5 +62,10 @@
     "type": "git",
     "url": "git+https://github.com/CristianoCiuti/graphify-mcp-tools.git"
   },
-  "homepage": "https://github.com/CristianoCiuti/graphify-mcp-tools"
+  "homepage": "https://github.com/CristianoCiuti/graphify-mcp-tools",
+  "optionalDependencies": {
+    "@lancedb/lancedb": "^0.27.2",
+    "node-llama-cpp": "^3.18.1",
+    "onnxruntime-node": "^1.25.1"
+  }
 }
