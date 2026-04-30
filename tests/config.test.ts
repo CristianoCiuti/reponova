@@ -8,7 +8,6 @@ describe("loadConfig", () => {
     expect(config.repos).toEqual([]);
     expect(config.build.graphify_args).toEqual([]);
     expect(config.outlines.enabled).toBe(true);
-    expect(config.search.enabled).toBe(true);
   });
 
   it("throws on non-existent explicit path", () => {

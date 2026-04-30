@@ -69,7 +69,6 @@ export interface Config {
   repos: RepoConfig[];
   build: BuildConfig;
   outlines: OutlineConfig;
-  search: SearchConfig;
   server: ServerConfig;
 }
 
@@ -90,11 +89,6 @@ export interface OutlineConfig {
   language: string;
   paths: string[];
   exclude: string[];
-}
-
-export interface SearchConfig {
-  enabled: boolean;
-  fields: string[];
 }
 
 export interface ServerConfig {
@@ -246,10 +240,6 @@ export const DEFAULT_CONFIG: Config = {
     language: "python",
     paths: ["src/**/*.py"],
     exclude: ["**/__pycache__/**", "**/test_*.py", "**/.git/**"],
-  },
-  search: {
-    enabled: true,
-    fields: ["label", "type", "source_file", "properties"],
   },
   server: {},
 };

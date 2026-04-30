@@ -29,15 +29,6 @@ outlines:
     - "**/test_*.py"
     - "**/.git/**"
 
-# Search index options
-search:
-  enabled: true
-  fields:
-    - label
-    - type
-    - source_file
-    - properties
-
 # MCP server options
 server:
   # Reserved for future configuration

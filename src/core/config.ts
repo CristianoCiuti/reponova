@@ -24,11 +24,6 @@ const OutlineConfigSchema = z.object({
   exclude: z.array(z.string()).default(["**/__pycache__/**", "**/test_*.py", "**/.git/**"]),
 });
 
-const SearchConfigSchema = z.object({
-  enabled: z.boolean().default(true),
-  fields: z.array(z.string()).default(["label", "type", "source_file", "properties"]),
-});
-
 const ServerConfigSchema = z.record(z.unknown()).default({});
 
 const ConfigSchema = z.object({
@@ -36,7 +31,6 @@ const ConfigSchema = z.object({
   repos: z.array(RepoConfigSchema).default([]),
   build: BuildConfigSchema.default({}),
   outlines: OutlineConfigSchema.default({}),
-  search: SearchConfigSchema.default({}),
   server: ServerConfigSchema.default({}),
 });
 

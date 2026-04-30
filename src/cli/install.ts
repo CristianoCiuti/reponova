@@ -35,15 +35,6 @@ outlines:
     - "**/__pycache__/**"
     - "**/test_*.py"
     - "**/.git/**"
-
-# Search index options
-search:
-  enabled: true
-  fields:
-    - label
-    - type
-    - source_file
-    - properties
 `;
 
 /**
