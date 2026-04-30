@@ -9,23 +9,26 @@ type Target = "opencode" | "cursor" | "claude" | "vscode";
 
 const DEFAULT_CONFIG_YAML = `# graphify-mcp-tools.yml
 # Configuration for graphify-mcp-tools
+# All paths are relative to this file's location.
+# Since this file is inside the editor directory, use ../ to reference project root.
 
-# Output directory (relative to project root)
+# Where to write build output
 output: ../graphify-out
 
-# Repositories to include in multi-repo build
+# Repositories to include in the build
 repos:
   - name: my-project
     path: ..
 
 # Build options
 build:
+  mode: monorepo             # "monorepo" (default) or "separate"
   graphify_args: []
-  exclude: []            # directory names to skip during detect (e.g. dist_package, .tox)
-  html: true             # generate graph.html visualization
-  # html_min_degree: 3   # if set, only include nodes with degree >= this value in HTML
+  exclude: []                # directory names to skip during detect (e.g. dist_package, .tox)
+  html: true                 # generate graph.html visualization
+  # html_min_degree: 3       # if set, only include nodes with degree >= this value in HTML
 
-# Outline options
+# Outline generation options
 outlines:
   enabled: true
   language: python
