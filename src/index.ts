@@ -22,6 +22,8 @@ export { EmbeddingEngine, composeNodeText } from "./build/embeddings.js";
 export { VectorStore } from "./core/vector-store.js";
 export { LlmEngine } from "./build/llm-engine.js";
 export { SummaryGenerator } from "./build/community-summaries.js";
+export { ContextBuilder } from "./core/context-builder.js";
+export { classifyQuestion } from "./core/question-classifier.js";
 
 export type {
   GraphNode,
@@ -38,3 +40,13 @@ export type {
   LlmConfig,
   SummariesConfig,
 } from "./shared/types.js";
+
+export type {
+  ContextParams,
+  ContextResult,
+} from "./core/context-builder.js";
+
+export type {
+  QueryStrategy,
+  ClassificationResult,
+} from "./core/question-classifier.js";

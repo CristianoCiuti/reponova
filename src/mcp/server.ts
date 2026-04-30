@@ -17,6 +17,9 @@ import { handleStatus } from "./tools/status.js";
 import { handleCommunity } from "./tools/community.js";
 import { handleHotspots } from "./tools/hotspots.js";
 import { handleSimilar, initSimilaritySearch, disposeSimilaritySearch } from "./tools/similar.js";
+import { handleContext, initContextBuilder, disposeContextBuilder } from "./tools/context.js";
+import { handleAsk } from "./tools/ask.js";
+import { handleDocs } from "./tools/docs.js";
 import { log } from "../shared/utils.js";
 
 export interface McpServerOptions {
@@ -45,6 +48,11 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
     // Silently degrade — graph_similar will return appropriate error
   });
 
+  // Initialize context builder (best-effort, non-blocking)
+  initContextBuilder(db, graphDir, defaultEmbeddingsConfig).catch(() => {
+    // Silently degrade — graph_context will lazy-init without embeddings
+  });
+
   const server = new Server(
     { name: "graphify-mcp-tools", version: "0.1.0" },
     { capabilities: { tools: {}, resources: {} } },
@@ -60,6 +68,9 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
       { name: "graph_community", description: "List all nodes belonging to a specific community.", inputSchema: { type: "object" as const, properties: { community_id: { type: "string", description: "Community ID or name" } }, required: ["community_id"] } },
       { name: "graph_hotspots", description: "Most connected nodes in the graph (god nodes / architectural hotspots).", inputSchema: { type: "object" as const, properties: { top_n: { type: "number", description: "Number of results (default: 10)" }, metric: { type: "string", description: "Ranking metric: degree, in_degree, out_degree, betweenness (default: degree)" } } } },
       { name: "graph_similar", description: "Semantic similarity search — find nodes conceptually similar to a query.", inputSchema: { type: "object" as const, properties: { query: { type: "string", description: "Natural language query or symbol name" }, top_k: { type: "number", description: "Max results (default: 10)" }, type: { type: "string", description: "Filter by type: function, class, module" }, repo: { type: "string", description: "Filter by repo" } }, required: ["query"] } },
+      { name: "graph_context", description: "Smart context builder — returns token-budgeted, relevance-ranked context for any query. Combines text search, vector similarity, graph expansion, and community summaries.", inputSchema: { type: "object" as const, properties: { query: { type: "string", description: "Natural language query or code reference" }, max_tokens: { type: "number", description: "Token budget (default: 4096)" }, scope: { type: "string", description: "Repo name or path prefix filter" }, include_source: { type: "boolean", description: "Include source code snippets (default: false)" }, format: { type: "string", description: "Output format: 'narrative' (markdown) or 'structured' (JSON). Default: narrative" } }, required: ["query"] } },
+      { name: "graph_ask", description: "Natural language question about the codebase — automatically routes to the best strategy (search, impact, path, explain, similar, or context).", inputSchema: { type: "object" as const, properties: { question: { type: "string", description: "Natural language question (English or Italian)" }, max_tokens: { type: "number", description: "Max response tokens (default: 2048)" } }, required: ["question"] } },
+      { name: "graph_docs", description: "Search documentation nodes (markdown, text, rst) with linked code references.", inputSchema: { type: "object" as const, properties: { query: { type: "string", description: "Search text" }, top_k: { type: "number", description: "Max results (default: 10)" }, repo: { type: "string", description: "Filter by repo" } }, required: ["query"] } },
       { name: "graph_status", description: "Graph status: metadata, counts, repos.", inputSchema: { type: "object" as const, properties: {} } },
     ],
   }));
@@ -76,6 +87,9 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
         case "graph_community": return handleCommunity(db, args as Record<string, unknown>);
         case "graph_hotspots": return handleHotspots(db, args as Record<string, unknown>);
         case "graph_similar": return await handleSimilar(db, args as Record<string, unknown>);
+        case "graph_context": return await handleContext(db, graphDir, args as Record<string, unknown>);
+        case "graph_ask": return await handleAsk(db, graphDir, args as Record<string, unknown>);
+        case "graph_docs": return handleDocs(db, args as Record<string, unknown>);
         case "graph_status": return handleStatus(db, graphDir, graphJsonPath);
         default: return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
       }
@@ -100,6 +114,6 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   await server.connect(transport);
   log.info("graphify-mcp-tools MCP server running on stdio");
 
-  process.on("SIGINT", async () => { await disposeSimilaritySearch(); db.close(); await server.close(); process.exit(0); });
-  process.on("SIGTERM", async () => { await disposeSimilaritySearch(); db.close(); await server.close(); process.exit(0); });
+  process.on("SIGINT", async () => { await disposeSimilaritySearch(); await disposeContextBuilder(); db.close(); await server.close(); process.exit(0); });
+  process.on("SIGTERM", async () => { await disposeSimilaritySearch(); await disposeContextBuilder(); db.close(); await server.close(); process.exit(0); });
 }
