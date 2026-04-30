@@ -93,7 +93,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
   log.info(`Using graphify: v${graphifyInfo.version}`);
 
   if (config.repos.length === 0) {
-    log.error("No repos configured. Add repos to graphify-tools.config.yml");
+    log.error("No repos configured. Add repos to graphify-mcp-tools.yml");
     process.exit(1);
   }
 

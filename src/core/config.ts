@@ -63,7 +63,7 @@ export function loadConfig(configPath?: string): { config: Config; configDir: st
 /**
  * Resolve config file path using priority chain:
  * 1. Explicit path
- * 2. CWD / graphify-tools.config.yml
+ * 2. CWD / graphify-mcp-tools.yml
  * 3. Editor directory configs (.opencode/, .cursor/, .claude/, .vscode/)
  */
 function resolveConfigPath(explicitPath?: string): string | null {
@@ -74,13 +74,13 @@ function resolveConfigPath(explicitPath?: string): string | null {
   }
 
   // Check project root
-  const cwdConfig = resolve(process.cwd(), "graphify-tools.config.yml");
+  const cwdConfig = resolve(process.cwd(), "graphify-mcp-tools.yml");
   if (existsSync(cwdConfig)) return cwdConfig;
 
   // Check editor directories
   const editorDirs = [".opencode", ".cursor", ".claude", ".vscode"];
   for (const dir of editorDirs) {
-    const editorConfig = resolve(process.cwd(), dir, "graphify-tools.config.yml");
+    const editorConfig = resolve(process.cwd(), dir, "graphify-mcp-tools.yml");
     if (existsSync(editorConfig)) return editorConfig;
   }
 

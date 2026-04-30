@@ -7,7 +7,7 @@ type Target = "opencode" | "cursor" | "claude" | "vscode";
 
 // ─── Default config YAML (written into editor directory) ─────────────────────
 
-const DEFAULT_CONFIG_YAML = `# graphify-tools.config.yml
+const DEFAULT_CONFIG_YAML = `# graphify-mcp-tools.yml
 # Configuration for graphify-mcp-tools
 
 # Output directory (relative to project root)
@@ -50,7 +50,7 @@ search:
  * Write config file into the editor directory if it doesn't already exist.
  */
 function writeConfigFile(editorDir: string): string | null {
-  const configPath = join(editorDir, "graphify-tools.config.yml");
+  const configPath = join(editorDir, "graphify-mcp-tools.yml");
   if (existsSync(configPath)) return null; // Don't overwrite existing
   if (!existsSync(editorDir)) mkdirSync(editorDir, { recursive: true });
   writeFileSync(configPath, DEFAULT_CONFIG_YAML);

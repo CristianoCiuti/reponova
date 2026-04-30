@@ -23,7 +23,7 @@ yargs(hideBin(process.argv))
   })
   .option("config", {
     type: "string",
-    describe: "Path to graphify-tools.config.yml",
+    describe: "Path to graphify-mcp-tools.yml",
     global: true,
   })
   .demandCommand(1, "Please specify a command")

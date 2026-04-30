@@ -1,4 +1,4 @@
-# graphify-tools.config.yml
+# graphify-mcp-tools.yml
 # Configuration for graphify-mcp-tools
 # NOTE: All paths are relative to this file's location.
 # When placed in an editor directory (e.g. .opencode/), use ../ to reference project root.

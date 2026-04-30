@@ -57,7 +57,7 @@ Requires Node.js >= 18.
    Or install graphify and use the build command:
    ```bash
    pip install graphifyy
-   graphify-mcp-tools build --config graphify-tools.config.yml
+   graphify-mcp-tools build --config graphify-mcp-tools.yml
    ```
 
 2. **Configure your editor**:
@@ -100,7 +100,7 @@ graphify-mcp-tools check     # Verify graphify installation and graph status
 --graph   Path to graphify-out/ directory (default: auto-detect)
 
 # build:
---config  Path to graphify-tools.config.yml
+--config  Path to graphify-mcp-tools.yml
 --force   Force full rebuild (skip incremental update)
 
 # install:
@@ -123,7 +123,7 @@ The `install` command does four things for each target:
 1. **Registers the MCP server** — so the editor can call graph tools
 2. **Installs a hook/rule** — reminds the AI agent to use graph tools instead of manual file searches
 3. **Installs a skill file** — teaches the AI agent how to use each graph tool (parameters, use cases, best practices)
-4. **Writes the config file** — `graphify-tools.config.yml` inside the editor directory (e.g. `.opencode/graphify-tools.config.yml`)
+4. **Writes the config file** — `graphify-mcp-tools.yml` inside the editor directory (e.g. `.opencode/graphify-mcp-tools.yml`)
 
 | Target | MCP Config | Hook/Rule | Skill |
 |--------|-----------|-----------|-------|
@@ -192,7 +192,7 @@ Hook (`.claude/settings.json`) — a `PreToolUse` hook that fires before bash co
 
 ## Configuration
 
-The `install` command writes `graphify-tools.config.yml` into the editor directory (e.g. `.opencode/graphify-tools.config.yml`). The config is auto-detected from editor directories, or you can pass `--config` explicitly.
+The `install` command writes `graphify-mcp-tools.yml` into the editor directory (e.g. `.opencode/graphify-mcp-tools.yml`). The config is auto-detected from editor directories, or you can pass `--config` explicitly.
 
 ```yaml
 output: ../graphify-out
@@ -227,7 +227,7 @@ outlines:
 Orchestrate graph builds across multiple repositories and merge results:
 
 ```bash
-graphify-mcp-tools build --config .opencode/graphify-tools.config.yml
+graphify-mcp-tools build --config .opencode/graphify-mcp-tools.yml
 ```
 
 The build pipeline:
