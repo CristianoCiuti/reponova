@@ -227,25 +227,17 @@ function runPostBuildAnalysis(mergedPath: string, outputDir: string, config: Con
 from graphify.export import to_html
 
 threshold = ${htmlMinDegree}
-if G.number_of_nodes() <= 5000:
-    to_html(G, communities, str(out / "graph.html"))
-else:
-    while True:
-        subgraph_nodes = [n for n in G.nodes() if G.degree(n) >= threshold]
-        if len(subgraph_nodes) <= 5000:
-            break
-        threshold += 2
-    H = G.subgraph(subgraph_nodes).copy()
-    # Retain only community members present in subgraph
-    sub_communities = {}
-    node_set = set(H.nodes())
-    for cid, members in communities.items():
-        filtered = [m for m in members if m in node_set]
-        if filtered:
-            sub_communities[cid] = filtered
-    to_html(H, sub_communities, str(out / "graph.html"))
-    print(f"HTML: filtered to {H.number_of_nodes()} nodes (degree >= {threshold})")
-print(f"  graph.html written")
+subgraph_nodes = [n for n in G.nodes() if G.degree(n) >= threshold]
+H = G.subgraph(subgraph_nodes).copy()
+# Retain only community members present in subgraph
+sub_communities = {}
+node_set = set(H.nodes())
+for cid, members in communities.items():
+    filtered = [m for m in members if m in node_set]
+    if filtered:
+        sub_communities[cid] = filtered
+to_html(H, sub_communities, str(out / "graph.html"))
+print(f"  graph.html written ({H.number_of_nodes()} nodes, degree >= {threshold})")
 `
     : "";
 

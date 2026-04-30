@@ -22,8 +22,8 @@ repos:
 build:
   graphify_args: []
   exclude: []            # directory names to skip during detect (e.g. dist_package, .tox)
-  html: true             # generate graph.html visualization after build
-  html_min_degree: 3     # minimum node degree for HTML subset (graphs >5000 nodes get filtered)
+  html: true             # generate graph.html visualization
+  html_min_degree: 3     # minimum node degree to include in HTML visualization
 
 # Outline options
 outlines:
