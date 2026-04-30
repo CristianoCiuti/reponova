@@ -221,15 +221,15 @@ function runPostBuildAnalysis(mergedPath: string, outputDir: string, config: Con
   const htmlEnabled = config.build.html;
   const htmlMinDegree = config.build.html_min_degree;
 
-  const htmlBlock = htmlEnabled
-    ? `
-# HTML visualization
+  let htmlBlock = "";
+  if (htmlEnabled && htmlMinDegree != null) {
+    htmlBlock = `
+# HTML visualization (filtered by degree >= ${htmlMinDegree})
 from graphify.export import to_html
 
 threshold = ${htmlMinDegree}
 subgraph_nodes = [n for n in G.nodes() if G.degree(n) >= threshold]
 H = G.subgraph(subgraph_nodes).copy()
-# Retain only community members present in subgraph
 sub_communities = {}
 node_set = set(H.nodes())
 for cid, members in communities.items():
@@ -238,8 +238,15 @@ for cid, members in communities.items():
         sub_communities[cid] = filtered
 to_html(H, sub_communities, str(out / "graph.html"))
 print(f"  graph.html written ({H.number_of_nodes()} nodes, degree >= {threshold})")
-`
-    : "";
+`;
+  } else if (htmlEnabled) {
+    htmlBlock = `
+# HTML visualization (full graph)
+from graphify.export import to_html
+to_html(G, communities, str(out / "graph.html"))
+print(f"  graph.html written ({G.number_of_nodes()} nodes)")
+`;
+  }
 
   const script = `
 import sys, json

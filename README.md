@@ -210,7 +210,7 @@ build:
     - "build_output"
     - ".tox"
   html: true             # generate graph.html visualization
-  html_min_degree: 3     # minimum degree to include in HTML visualization
+  # html_min_degree: 3   # if set, only include nodes with degree >= this value
 
 outlines:
   enabled: true

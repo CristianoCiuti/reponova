@@ -13,7 +13,7 @@ const RepoConfigSchema = z.object({
 const BuildConfigSchema = z.object({
   graphify_args: z.array(z.string()).default([]),
   html: z.boolean().default(true),
-  html_min_degree: z.number().int().min(1).default(3),
+  html_min_degree: z.number().int().min(1).optional(),
   exclude: z.array(z.string()).default([]),
 });
 
