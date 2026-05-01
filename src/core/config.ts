@@ -31,6 +31,7 @@ const BuildConfigSchema = z.object({
   }).default({}),
   embeddings: z.object({
     enabled: z.boolean().default(true),
+    method: z.enum(["tfidf", "onnx"]).default("tfidf"),
     model: z.string().default("all-MiniLM-L6-v2"),
     dimensions: z.number().default(384),
     batch_size: z.number().default(128),

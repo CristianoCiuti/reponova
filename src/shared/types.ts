@@ -107,6 +107,7 @@ export interface ImagesConfig {
 
 export interface EmbeddingsConfig {
   enabled: boolean;
+  method: "tfidf" | "onnx";
   model: string;
   dimensions: number;
   batch_size: number;
@@ -296,6 +297,7 @@ export const DEFAULT_CONFIG: Config = {
     },
     embeddings: {
       enabled: true,
+      method: "tfidf",
       model: "all-MiniLM-L6-v2",
       dimensions: 384,
       batch_size: 128,

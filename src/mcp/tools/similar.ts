@@ -2,11 +2,13 @@
  * graph_similar MCP tool — semantic similarity search via vector embeddings.
  */
 import { VectorStore } from "../../core/vector-store.js";
-import { EmbeddingEngine, composeNodeText } from "../../build/embeddings.js";
+import { EmbeddingEngine } from "../../build/embeddings.js";
+import { TfidfEmbeddingEngine } from "../../build/tfidf-embeddings.js";
 import type { EmbeddingsConfig } from "../../shared/types.js";
 
 let vectorStore: VectorStore | null = null;
 let embeddingEngine: EmbeddingEngine | null = null;
+let tfidfEngine: TfidfEmbeddingEngine | null = null;
 
 /**
  * Initialize the similarity search backend.
@@ -21,14 +23,26 @@ export async function initSimilaritySearch(graphDir: string, embeddingsConfig: E
     return false;
   }
 
-  // Initialize embedding engine for query-time embedding
+  const method = embeddingsConfig.method;
+
+  if (method === "tfidf") {
+    // Load pre-built IDF table for query-time embedding
+    const engine = new TfidfEmbeddingEngine(embeddingsConfig);
+    const loaded = engine.loadVocabulary(graphDir);
+    if (!loaded) {
+      vectorStore = null;
+      return false;
+    }
+    tfidfEngine = engine;
+    return true;
+  }
+
+  // ONNX method
   embeddingEngine = new EmbeddingEngine(embeddingsConfig);
   const engineReady = await embeddingEngine.initialize();
 
   if (!engineReady) {
     embeddingEngine = null;
-    // Vector store still usable if we get pre-computed query vectors
-    // but without the engine we can't embed new queries
     return false;
   }
 
@@ -44,7 +58,7 @@ export async function handleSimilar(_db: unknown, args: Record<string, unknown>)
     return { content: [{ type: "text" as const, text: "Error: 'query' is required" }], isError: true };
   }
 
-  if (!vectorStore || !embeddingEngine) {
+  if (!vectorStore || (!embeddingEngine && !tfidfEngine)) {
     return {
       content: [{
         type: "text" as const,
@@ -58,16 +72,21 @@ export async function handleSimilar(_db: unknown, args: Record<string, unknown>)
   const typeFilter = args.type as string | undefined;
   const repoFilter = args.repo as string | undefined;
 
-  // Embed the query
-  const queryResults = await embeddingEngine.embedBatch([{ id: "_query", text: query }]);
-  if (queryResults.length === 0) {
-    return {
-      content: [{ type: "text" as const, text: "Failed to generate query embedding." }],
-      isError: true,
-    };
-  }
+  // Embed the query using whatever method was configured
+  let queryVector: number[] | Float32Array;
 
-  const queryVector = queryResults[0].vector;
+  if (tfidfEngine) {
+    queryVector = tfidfEngine.embedQuery(query);
+  } else {
+    const queryResults = await embeddingEngine!.embedBatch([{ id: "_query", text: query }]);
+    if (queryResults.length === 0) {
+      return {
+        content: [{ type: "text" as const, text: "Failed to generate query embedding." }],
+        isError: true,
+      };
+    }
+    queryVector = queryResults[0]!.vector;
+  }
 
   // Search
   const results = await vectorStore.query(queryVector, {
@@ -83,7 +102,7 @@ export async function handleSimilar(_db: unknown, args: Record<string, unknown>)
   // Format output
   const lines = [`## Similar to "${query}" (${results.length} results)`, ""];
   for (let i = 0; i < results.length; i++) {
-    const r = results[i];
+    const r = results[i]!;
     const scoreStr = (r.score * 100).toFixed(1);
     lines.push(`${i + 1}. [${r.type}] ${r.label} — ${scoreStr}% similarity`);
     if (r.source_file) lines.push(`   File: ${r.source_file}`);
@@ -100,6 +119,8 @@ export async function handleSimilar(_db: unknown, args: Record<string, unknown>)
 export async function disposeSimilaritySearch(): Promise<void> {
   if (embeddingEngine) await embeddingEngine.dispose();
   if (vectorStore) await vectorStore.dispose();
+  if (tfidfEngine) tfidfEngine.dispose();
   embeddingEngine = null;
   vectorStore = null;
+  tfidfEngine = null;
 }

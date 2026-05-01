@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { log } from "../shared/utils.js";
 import type { Config, GraphData, GraphNode } from "../shared/types.js";
 import { EmbeddingEngine, composeNodeText } from "./embeddings.js";
+import { TfidfEmbeddingEngine } from "./tfidf-embeddings.js";
 import { VectorStore, type VectorRecord } from "../core/vector-store.js";
 import { LlmEngine } from "./llm-engine.js";
 import { SummaryGenerator, type CommunityData, type CommunitySummary, type NodeDescription } from "./community-summaries.js";
@@ -61,29 +62,70 @@ export async function runIntelligenceLayer(
 // ─── Embeddings ──────────────────────────────────────────────────────────────
 
 async function runEmbeddings(config: Config, outputDir: string, graphData: GraphData): Promise<number> {
+  const method = config.build.embeddings.method;
+
+  // Compose text for each node (shared by both methods)
+  const items = graphData.nodes.map(node => ({
+    id: node.id,
+    text: composeNodeText({
+      id: node.id,
+      label: node.label,
+      type: node.type,
+      signature: node.properties?.signature as string | undefined,
+      docstring: node.properties?.docstring as string | undefined,
+      bases: node.properties?.bases as string[] | undefined,
+      source_file: node.source_file,
+    }),
+  }));
+
+  if (method === "tfidf") {
+    return runTfidfEmbeddings(config, outputDir, graphData, items);
+  }
+  return runOnnxEmbeddings(config, outputDir, graphData, items);
+}
+
+async function runTfidfEmbeddings(
+  config: Config,
+  outputDir: string,
+  graphData: GraphData,
+  items: Array<{ id: string; text: string }>,
+): Promise<number> {
+  try {
+    const engine = new TfidfEmbeddingEngine(config.build.embeddings);
+
+    log.info("Generating TF-IDF embeddings...");
+    engine.buildVocabulary(items.map(i => i.text));
+
+    const embeddings = engine.embedBatch(items);
+    engine.saveVocabulary(outputDir);
+    engine.dispose();
+
+    if (embeddings.length === 0) {
+      log.warn("  No embeddings generated");
+      return 0;
+    }
+
+    return storeEmbeddings(outputDir, graphData, embeddings);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log.warn(`TF-IDF embeddings failed (non-blocking): ${msg}`);
+    return 0;
+  }
+}
+
+async function runOnnxEmbeddings(
+  config: Config,
+  outputDir: string,
+  graphData: GraphData,
+  items: Array<{ id: string; text: string }>,
+): Promise<number> {
   const engine = new EmbeddingEngine(config.build.embeddings);
 
   try {
     const ready = await engine.initialize();
     if (!ready) return 0;
 
-    log.info("Generating embeddings...");
-
-    // Compose text for each node
-    const items = graphData.nodes.map(node => ({
-      id: node.id,
-      text: composeNodeText({
-        id: node.id,
-        label: node.label,
-        type: node.type,
-        signature: node.properties?.signature as string | undefined,
-        docstring: node.properties?.docstring as string | undefined,
-        bases: node.properties?.bases as string[] | undefined,
-        source_file: node.source_file,
-      }),
-    }));
-
-    // Generate embeddings
+    log.info("Generating ONNX embeddings...");
     const embeddings = await engine.embedBatch(items);
 
     if (embeddings.length === 0) {
@@ -91,36 +133,43 @@ async function runEmbeddings(config: Config, outputDir: string, graphData: Graph
       return 0;
     }
 
-    // Store in vector DB
-    const vectorStore = new VectorStore(outputDir);
-    await vectorStore.initialize();
-
-    const records: VectorRecord[] = embeddings.map(emb => {
-      const node = graphData.nodes.find(n => n.id === emb.id);
-      return {
-        id: emb.id,
-        label: node?.label ?? "",
-        type: node?.type ?? "",
-        repo: node?.repo ?? "",
-        source_file: node?.source_file ?? "",
-        community: node?.community ?? "",
-        text: emb.text,
-        vector: Array.from(emb.vector),
-      };
-    });
-
-    await vectorStore.upsert(records);
-    await vectorStore.dispose();
-
-    log.info(`  ✓ ${embeddings.length} embeddings generated and indexed`);
-    return embeddings.length;
+    return storeEmbeddings(outputDir, graphData, embeddings);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    log.warn(`Embeddings failed (non-blocking): ${msg}`);
+    log.warn(`ONNX embeddings failed (non-blocking): ${msg}`);
     return 0;
   } finally {
     await engine.dispose();
   }
+}
+
+async function storeEmbeddings(
+  outputDir: string,
+  graphData: GraphData,
+  embeddings: Array<{ id: string; text: string; vector: Float32Array }>,
+): Promise<number> {
+  const vectorStore = new VectorStore(outputDir);
+  await vectorStore.initialize();
+
+  const records: VectorRecord[] = embeddings.map(emb => {
+    const node = graphData.nodes.find(n => n.id === emb.id);
+    return {
+      id: emb.id,
+      label: node?.label ?? "",
+      type: node?.type ?? "",
+      repo: node?.repo ?? "",
+      source_file: node?.source_file ?? "",
+      community: node?.community ?? "",
+      text: emb.text,
+      vector: Array.from(emb.vector),
+    };
+  });
+
+  await vectorStore.upsert(records);
+  await vectorStore.dispose();
+
+  log.info(`  ✓ ${embeddings.length} embeddings generated and indexed`);
+  return embeddings.length;
 }
 
 // ─── Summaries ───────────────────────────────────────────────────────────────

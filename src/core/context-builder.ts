@@ -13,6 +13,7 @@ import { queryAll, queryOne } from "./db.js";
 import { searchNodes } from "./search.js";
 import { VectorStore } from "./vector-store.js";
 import { EmbeddingEngine } from "../build/embeddings.js";
+import { TfidfEmbeddingEngine } from "../build/tfidf-embeddings.js";
 import type { EmbeddingsConfig } from "../shared/types.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -123,6 +124,7 @@ export class ContextBuilder {
   private graphDir: string;
   private vectorStore: VectorStore | null = null;
   private embeddingEngine: EmbeddingEngine | null = null;
+  private tfidfEngine: TfidfEmbeddingEngine | null = null;
   private communitySummaries: Map<string, string> = new Map();
   private nodeDescriptions: Map<string, string> = new Map();
 
@@ -167,9 +169,15 @@ export class ContextBuilder {
 
     // Initialize embedding engine for query encoding
     if (embeddingsConfig && embeddingsConfig.enabled) {
-      this.embeddingEngine = new EmbeddingEngine(embeddingsConfig);
-      const ready = await this.embeddingEngine.initialize();
-      if (!ready) this.embeddingEngine = null;
+      if (embeddingsConfig.method === "tfidf") {
+        const engine = new TfidfEmbeddingEngine(embeddingsConfig);
+        const loaded = engine.loadVocabulary(this.graphDir);
+        if (loaded) this.tfidfEngine = engine;
+      } else {
+        this.embeddingEngine = new EmbeddingEngine(embeddingsConfig);
+        const ready = await this.embeddingEngine.initialize();
+        if (!ready) this.embeddingEngine = null;
+      }
     }
   }
 
@@ -373,10 +381,18 @@ export class ContextBuilder {
     }
 
     // Vector search (if available)
-    if (this.vectorStore && this.embeddingEngine) {
-      const queryEmbeddings = await this.embeddingEngine.embedBatch([{ id: "_q", text: query }]);
-      if (queryEmbeddings.length > 0) {
-        const vectorResults = await this.vectorStore.query(queryEmbeddings[0]!.vector, {
+    if (this.vectorStore && (this.embeddingEngine || this.tfidfEngine)) {
+      let queryVector: number[] | Float32Array | null = null;
+
+      if (this.tfidfEngine) {
+        queryVector = this.tfidfEngine.embedQuery(query);
+      } else if (this.embeddingEngine) {
+        const queryEmbeddings = await this.embeddingEngine.embedBatch([{ id: "_q", text: query }]);
+        if (queryEmbeddings.length > 0) queryVector = queryEmbeddings[0]!.vector;
+      }
+
+      if (queryVector) {
+        const vectorResults = await this.vectorStore.query(queryVector, {
           top_k: 30,
           repo_filter: scope,
         });
@@ -623,6 +639,7 @@ export class ContextBuilder {
    */
   async dispose(): Promise<void> {
     if (this.embeddingEngine) await this.embeddingEngine.dispose();
+    if (this.tfidfEngine) this.tfidfEngine.dispose();
     if (this.vectorStore) await this.vectorStore.dispose();
   }
 }
