@@ -6,13 +6,17 @@
   <img src="https://img.shields.io/badge/MCP-compatible-8A2BE2?style=flat-square" alt="MCP compatible" />
 </p>
 
-<h1 align="center">reponova</h1>
+<p align="center">
+  <img src="media/reponova-social.jpg" alt="RepoNova" width="600" />
+</p>
+
+<h1 align="center">🤖 RepoNova 🔭</h1>
 
 <p align="center">
   <strong>Turn your codebase into a knowledge graph. Query it with AI.</strong>
 </p>
 
-<p align="center">
+<p align="center" style="font-style: italic;">
   Knowledge graph builder &amp; <a href="https://modelcontextprotocol.io/">MCP</a> server for AI code assistants.<br/>
   Extracts symbols, relationships, and semantics from your code — then exposes the entire structure<br/>
   as 12 graph tools that any MCP-compatible agent can use.
@@ -20,17 +24,17 @@
 
 ---
 
-> **Alpha — Active Development**
+> **⚠️ Alpha — Active Development**
 > APIs, config format, and CLI may change between releases.
 > Already usable in production workflows. [Open an issue](https://github.com/CristianoCiuti/reponova/issues) if something doesn't work.
 
 ---
 
-## Why reponova?
+## Why RepoNova?
 
 AI agents read files one at a time. They don't understand how your codebase fits together — which functions call what, which modules depend on which, where the architectural bottlenecks are.
 
-**reponova fixes that.** It builds a persistent knowledge graph of your entire codebase (or multiple repos) and gives your AI agent 12 specialized tools to query it: search, impact analysis, shortest path, semantic similarity, community detection, and more.
+**RepoNova fixes that.** It builds a persistent knowledge graph of your entire codebase (or multiple repos) and gives your AI agent 12 specialized tools to query it: search, impact analysis, shortest path, semantic similarity, community detection, and more.
 
 > **One build. Persistent graph. Instant queries across sessions.**
 > No re-reading files. No burning tokens on context. The graph remembers everything.
@@ -130,7 +134,7 @@ Agent: [calls graph_impact] → shows upstream/downstream blast radius across re
 
 ## Agentic Workflows
 
-reponova is designed to be the **structural memory layer** for AI coding agents. Here's how to use it effectively in agentic workflows.
+RepoNova is designed to be the **structural memory layer** for AI coding agents. Here's how to use it effectively in agentic workflows.
 
 ### Recommended agent patterns
 
@@ -636,7 +640,7 @@ build:
     model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"   # same model, auto-shared
 ```
 
-> When `community_summaries.model` and `node_descriptions.model` resolve to the same file, reponova shares a single engine instance — no double memory usage.
+> When `community_summaries.model` and `node_descriptions.model` resolve to the same file, RepoNova shares a single engine instance — no double memory usage.
 
 ### File Filtering Config
 
@@ -658,7 +662,7 @@ build:
     - "**/*.generated.ts"
 ```
 
-> When `patterns` is empty (default), reponova auto-detects source files by extension using all registered extractors.
+> When `patterns` is empty (default), RepoNova auto-detects source files by extension using all registered extractors.
 > The following directories are **always skipped** regardless of configuration: `node_modules`, `__pycache__`, `.git`, `.svn`, `.hg`, `venv`, `.venv`, `env`, `.env`, `.tox`, `site-packages`, `dist`, `build`, `.eggs`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `target`, `bin`, `obj`.
 > This filter applies at every depth — any directory matching these names is excluded along with all its contents.
 
@@ -666,7 +670,7 @@ build:
 
 ## Models
 
-reponova uses two types of AI models, both downloaded automatically on first use and cached locally. No API keys, no cloud services.
+RepoNova uses two types of AI models, both downloaded automatically on first use and cached locally. No API keys, no cloud services.
 
 ### ONNX Embeddings
 
@@ -705,7 +709,7 @@ Local language models for richer community summaries and node descriptions, powe
 | **Required when** | `community_summaries.model` or `node_descriptions.model` is set |
 | **Dependency** | `node-llama-cpp` (optional peer dependency) |
 
-When both `community_summaries.model` and `node_descriptions.model` resolve to the same file, reponova shares a single engine instance — no double memory usage.
+When both `community_summaries.model` and `node_descriptions.model` resolve to the same file, RepoNova shares a single engine instance — no double memory usage.
 
 > **Why different notations?** ONNX embeddings use direct HTTP fetch from a fixed HuggingFace org (`sentence-transformers/`), downloading specific files (model.onnx, vocab.txt). LLM models delegate entirely to node-llama-cpp's `resolveModelFile()`, which handles the `hf:` URI protocol, download, and caching. The two systems are technically incompatible — the notation reflects this.
 
@@ -754,7 +758,7 @@ Two storage engines serve different purposes:
 
 ## Programmatic API
 
-Use reponova as a library in your own Node.js tools.
+Use RepoNova as a library in your own Node.js tools.
 
 ### Build API
 
@@ -948,7 +952,7 @@ Contributions are welcome.
 
 ### Adding Language Support (Extraction)
 
-Add new programming language extractors via tree-sitter. An extractor teaches reponova how to parse a language's AST and extract symbols, imports, and references for graph building.
+Add new programming language extractors via tree-sitter. An extractor teaches RepoNova how to parse a language's AST and extract symbols, imports, and references for graph building.
 
 #### Steps
 
