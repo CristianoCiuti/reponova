@@ -1,4 +1,29 @@
-import { resolve, relative, sep } from "node:path";
+import { resolve, relative, sep, dirname } from "node:path";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+// ─── Package version ────────────────────────────────────────────────────────
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkgPath = resolve(__dirname, "..", "..", "package.json");
+
+let _version: string | undefined;
+
+/**
+ * Package version from package.json.
+ * Resolved lazily; works in dev (src/), dist, and after npm install.
+ */
+export function getVersion(): string {
+  if (!_version) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version: string };
+      _version = pkg.version;
+    } catch {
+      _version = "unknown";
+    }
+  }
+  return _version;
+}
 
 /**
  * Normalize a path to forward slashes, relative form.

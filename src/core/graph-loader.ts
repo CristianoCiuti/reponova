@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { GraphData, GraphNode, GraphEdge, AdjacencyMap, AdjacencyEntry } from "../shared/types.js";
+import type { GraphData, GraphNode, GraphEdge, GraphMetadata, AdjacencyMap, AdjacencyEntry } from "../shared/types.js";
 import { DEFAULT_EDGE_WEIGHTS } from "../shared/types.js";
 import { log } from "../shared/utils.js";
 
@@ -59,8 +59,20 @@ export function loadGraphData(graphJsonPath: string): GraphData {
     properties: e,
   }));
 
+  // Parse metadata (version, build timestamp, etc.)
+  const rawMeta = data.metadata as Record<string, unknown> | undefined;
+  const metadata: GraphMetadata | undefined = rawMeta
+    ? {
+        reponova_version: rawMeta.reponova_version as string | undefined,
+        built_at: rawMeta.built_at as string | undefined,
+        repos: rawMeta.repos as string[] | undefined,
+        node_count: rawMeta.node_count as number | undefined,
+        edge_count: rawMeta.edge_count as number | undefined,
+      }
+    : undefined;
+
   log.info(`Loaded graph: ${nodes.length} nodes, ${edges.length} edges`);
-  return { nodes, edges };
+  return { nodes, edges, metadata };
 }
 
 /**

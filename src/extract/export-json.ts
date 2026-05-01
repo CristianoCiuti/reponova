@@ -7,6 +7,7 @@
 import { writeFileSync } from "node:fs";
 import type Graph from "graphology";
 import type { CommunityResult } from "./community.js";
+import { getVersion } from "../shared/utils.js";
 
 export interface ExportJsonOptions {
   /** The graphology graph with community attributes */
@@ -81,6 +82,13 @@ export function exportJson(options: ExportJsonOptions): void {
     });
   });
 
-  const data = { nodes, edges };
+  const data = {
+    nodes,
+    edges,
+    metadata: {
+      reponova_version: getVersion(),
+      built_at: new Date().toISOString(),
+    },
+  };
   writeFileSync(outputPath, JSON.stringify(data, null, 2));
 }
