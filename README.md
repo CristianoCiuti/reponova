@@ -754,7 +754,69 @@ Two storage engines serve different purposes:
 
 ## Programmatic API
 
-Use reponova as a library in your own Node.js tools:
+Use reponova as a library in your own Node.js tools.
+
+### Build API
+
+Run the full build pipeline programmatically — useful for CI integrations, custom tooling, or workflows that register custom extractors/languages before building.
+
+```typescript
+import { build } from "reponova";
+
+const result = await build("./reponova.yml");
+console.log(`Built: ${result.nodeCount} nodes, ${result.edgeCount} edges`);
+console.log(`Output: ${result.outputDir}`);
+```
+
+```typescript
+// Force rebuild (deletes output and rebuilds from scratch)
+const result = await build("./reponova.yml", { force: true });
+```
+
+`build()` returns a `BuildResult`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `outputDir` | `string` | Absolute path to the output directory |
+| `fileCount` | `number` | Number of source files processed |
+| `nodeCount` | `number` | Number of nodes in the graph |
+| `edgeCount` | `number` | Number of edges in the graph |
+| `communityCount` | `number` | Number of detected communities |
+
+If `configPath` is omitted, config is auto-detected from standard locations (see [Config Resolution](#config-resolution)).
+
+### Runtime Registration + Build
+
+Register custom extractors, outline languages, or NL rulesets **before** calling `build()`:
+
+```typescript
+import {
+  build,
+  registerExtractor,
+  registerOutlineLanguage,
+  registerLanguage,
+} from "reponova";
+import type { LanguageExtractor, LanguageSupport } from "reponova";
+
+// 1. Register a custom extractor (graph building)
+const myExtractor: LanguageExtractor = { /* ... */ };
+registerExtractor(myExtractor);
+
+// 2. Register outline support (graph_outline)
+const myOutline: LanguageSupport = { /* ... */ };
+registerOutlineLanguage("rust", ["rs"], myOutline);
+
+// 3. Register a NL query language (graph_ask)
+const fr: LanguageRuleset = { /* ... */ };
+registerLanguage(fr);
+
+// 4. Build — all registrations are picked up automatically
+const result = await build("./reponova.yml");
+```
+
+### Query API
+
+After building, load and query the graph:
 
 ```typescript
 import {
@@ -984,7 +1046,7 @@ Outlines (`graph_outline`) use a **separate system** from extraction. They have 
 #### Steps
 
 1. **Create** `src/outline/languages/<lang>.ts` implementing the `LanguageSupport` interface
-2. **Register** it in `src/outline/languages/registry.ts` (add to `byLanguage` record and `extToLanguage` mapping)
+2. **Register** it in `src/outline/languages/registry.ts` via `registerOutlineLanguage()`
 3. The same WASM grammar from `grammars/` is shared with the extraction system
 
 #### `LanguageSupport` Interface
@@ -1002,7 +1064,19 @@ interface LanguageSupport {
 }
 ```
 
-Unlike extraction, outline registration is static — add your language to the `byLanguage` record and `extToLanguage` extension mapping in `src/outline/languages/registry.ts`.
+#### Runtime Registration
+
+You can also register outline languages at runtime via the public API (must be called before `build`):
+
+```typescript
+import { registerOutlineLanguage } from "reponova";
+import type { LanguageSupport } from "reponova";
+
+const myOutline: LanguageSupport = { /* ... */ };
+registerOutlineLanguage("rust", ["rs"], myOutline);
+```
+
+Note: duplicate language `names` or `extensions` silently overwrite the previous registration.
 
 See `src/outline/languages/python.ts` for the reference implementation.
 

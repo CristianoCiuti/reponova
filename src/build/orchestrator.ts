@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, rmSync, symlinkSync, copyFileSync, readdirSync, 
 import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Config, GraphData } from "../shared/types.js";
+import { loadConfig } from "../core/config.js";
 import { runIndexer } from "./indexer.js";
 import { runOutlineGeneration } from "./outlines.js";
 import { runIntelligenceLayer } from "./intelligence.js";
@@ -15,17 +16,32 @@ export interface BuildOptions {
 }
 
 /**
+ * Build result returned by both `runBuild()` and the public `build()` API.
+ */
+export interface BuildResult {
+  /** Absolute path to the output directory */
+  outputDir: string;
+  /** Number of source files processed */
+  fileCount: number;
+  /** Number of nodes in the graph */
+  nodeCount: number;
+  /** Number of edges in the graph */
+  edgeCount: number;
+  /** Number of detected communities */
+  communityCount: number;
+}
+
+/**
  * Run the full build pipeline.
  *
  * Phase 0 rewrite: Uses in-process extraction engine (web-tree-sitter WASM +
  * graphology) instead of Python subprocess. Zero external runtime dependencies.
  */
-export async function runBuild(config: Config, configDir: string, options: BuildOptions): Promise<void> {
+export async function runBuild(config: Config, configDir: string, options: BuildOptions): Promise<BuildResult> {
   log.info("reponova build (in-process extraction engine)");
 
   if (config.repos.length === 0) {
-    log.error("No repos configured. Add repos to reponova.yml");
-    process.exit(1);
+    throw new Error("No repos configured. Add repos to reponova.yml");
   }
 
   // Create output directory (with --force cleanup)
@@ -124,6 +140,14 @@ export async function runBuild(config: Config, configDir: string, options: Build
     log.info(`  Nodes: ${result.builtGraph.stats.nodeCount}`);
     log.info(`  Edges: ${result.builtGraph.stats.edgeCount}`);
     log.info(`  Communities: ${result.communities.count}`);
+
+    return {
+      outputDir,
+      fileCount: result.fileCount,
+      nodeCount: result.builtGraph.stats.nodeCount,
+      edgeCount: result.builtGraph.stats.edgeCount,
+      communityCount: result.communities.count,
+    };
   } finally {
     try {
       rmSync(tmpDir, { recursive: true, force: true });
@@ -131,6 +155,37 @@ export async function runBuild(config: Config, configDir: string, options: Build
       // Ignore cleanup errors
     }
   }
+}
+
+// ─── Public API ──────────────────────────────────────────────────────────────
+
+/**
+ * Build the knowledge graph programmatically.
+ *
+ * This is the public entry point for running a build from code.
+ * Register custom extractors, outline languages, or NL rulesets
+ * BEFORE calling this function — they will be picked up automatically.
+ *
+ * @param configPath - Path to `reponova.yml`. If omitted, auto-detected
+ *                     from standard locations (see Config Resolution docs).
+ * @param options - Build options. `force` deletes existing output and rebuilds.
+ * @returns Build result with output path and graph statistics.
+ *
+ * @example
+ * ```typescript
+ * import { build, registerExtractor } from "reponova";
+ *
+ * registerExtractor(myCustomExtractor);
+ * const result = await build("./reponova.yml");
+ * console.log(`Built: ${result.nodeCount} nodes, ${result.edgeCount} edges`);
+ * ```
+ */
+export async function build(
+  configPath?: string,
+  options?: { force?: boolean },
+): Promise<BuildResult> {
+  const { config, configDir } = loadConfig(configPath);
+  return runBuild(config, configDir, { force: options?.force ?? false });
 }
 
 // ─── Monorepo mode ───────────────────────────────────────────────────────────
@@ -170,8 +225,7 @@ async function buildMonorepo(
   }
 
   if (repoNames.length === 0) {
-    log.error("No repos linked. Check repo paths.");
-    process.exit(1);
+    throw new Error("No repos linked. Check repo paths in reponova.yml");
   }
 
   log.info(`Building unified graph (${repoNames.length} repos)...`);

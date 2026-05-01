@@ -29,6 +29,14 @@ export { classifyQuestion, registerLanguage, getRegisteredLanguages } from "./co
 export { registerExtractor } from "./extract/languages/registry.js";
 export type { LanguageExtractor } from "./extract/types.js";
 
+// Outline layer exports
+export { registerOutlineLanguage } from "./outline/languages/registry.js";
+export type { LanguageSupport } from "./outline/languages/types.js";
+
+// Build API
+export { build } from "./build/orchestrator.js";
+export type { BuildResult } from "./build/orchestrator.js";
+
 export type {
   GraphNode,
   GraphEdge,
