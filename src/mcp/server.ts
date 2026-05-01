@@ -43,7 +43,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   const db = await openDatabase(dbPath, { readonly: true });
 
   // Initialize similarity search (best-effort, non-blocking)
-  const defaultEmbeddingsConfig = { enabled: true, model: "all-MiniLM-L6-v2", dimensions: 384, batch_size: 128, cache_dir: "~/.cache/reponova/models" };
+  const defaultEmbeddingsConfig = { enabled: true, method: "tfidf" as const, model: "all-MiniLM-L6-v2", dimensions: 384, batch_size: 128, cache_dir: "~/.cache/reponova/models" };
   initSimilaritySearch(graphDir, defaultEmbeddingsConfig).catch(() => {
     // Silently degrade — graph_similar will return appropriate error
   });

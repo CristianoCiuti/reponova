@@ -22,7 +22,7 @@ export class MarkdownExtractor implements LanguageExtractor {
   readonly wasmFile = undefined;
 
   extract(_tree: SyntaxTree | null, sourceCode: string, filePath: string): FileExtraction {
-    const lines = sourceCode.split("\n");
+    const lines = sourceCode.split(/\r?\n/);
     const symbols: SymbolNode[] = [];
     const imports: ImportDeclaration[] = [];
     const references: SymbolReference[] = [];
