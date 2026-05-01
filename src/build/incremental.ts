@@ -5,7 +5,7 @@
  * Cached FileExtraction results are stored on disk and reused across builds.
  *
  * Storage layout:
- *   <output>/build-cache/
+ *   <output>/.cache/
  *     hashes.json                   # { "relative/path.py": "sha256hex", ... }
  *     extractions/
  *       <sha256>.json               # cached FileExtraction per file
@@ -66,7 +66,7 @@ export function computeHashes(workspace: string, filePaths: string[]): Map<strin
  * Returns null if no cache exists (first build or --force).
  */
 export function loadBuildCache(outputDir: string): BuildCache | null {
-  const baseDir = join(outputDir, "build-cache");
+  const baseDir = join(outputDir, ".cache");
   const hashesPath = join(baseDir, "hashes.json");
 
   if (!existsSync(hashesPath)) {
@@ -104,7 +104,7 @@ export function saveBuildCache(
   hashes: Map<string, string>,
   extractions: FileExtraction[],
 ): void {
-  const baseDir = join(outputDir, "build-cache");
+  const baseDir = join(outputDir, ".cache");
   const extractionsDir = join(baseDir, "extractions");
   mkdirSync(extractionsDir, { recursive: true });
 
@@ -193,7 +193,7 @@ export function cleanStaleCacheEntries(
   outputDir: string,
   currentHashes: Map<string, string>,
 ): void {
-  const extractionsDir = join(outputDir, "build-cache", "extractions");
+  const extractionsDir = join(outputDir, ".cache", "extractions");
   if (!existsSync(extractionsDir)) return;
 
   const validPathKeys = new Set<string>();
