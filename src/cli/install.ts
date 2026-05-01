@@ -95,12 +95,12 @@ function writeConfigFile(editorDir: string): string | null {
 
 const SKILL_MD = `---
 name: reponova
-description: MCP server for querying the project knowledge graph. Use when searching symbols, analyzing blast radius, tracing paths between nodes, or understanding architecture.
+description: Knowledge graph MCP server with 12 tools for searching symbols, analyzing blast radius, tracing dependency paths, semantic similarity, smart context building, natural language queries, and understanding codebase architecture. Use INSTEAD of grep/find for any structural code question.
 ---
 
 # reponova
 
-MCP server for querying the project's knowledge graph.
+Knowledge graph MCP server — 12 specialized tools for querying your codebase's structure, dependencies, and semantics.
 
 ## Available Tools
 
@@ -118,7 +118,7 @@ Parameters:
 Use when: finding symbols, locating definitions, exploring what exists. Set context_depth > 0 to also see connected nodes around the results.
 
 ### graph_impact
-Blast radius analysis — find everything that depends on a symbol (downstream) and everything it depends on (upstream).
+Blast radius analysis — find everything that depends on a symbol (downstream) and everything it depends on (upstream). Supports fuzzy matching with suggestions when symbol is not found exactly.
 
 Parameters:
 - \`symbol\` (required): symbol name or ID
@@ -129,27 +129,27 @@ Parameters:
 Use when: assessing change risk, understanding dependencies before refactoring.
 
 ### graph_path
-Shortest path between two nodes in the knowledge graph (Dijkstra).
+Weighted shortest path (Dijkstra) between two nodes in the knowledge graph.
 
 Parameters:
 - \`from\` (required): source node name or ID
 - \`to\` (required): target node name or ID
 - \`max_depth\`: max hops (default: 10)
-- \`edge_types\`: filter by relationship types
+- \`edge_types\`: array of edge types to traverse (e.g. ["calls", "imports"])
 
 Use when: understanding how two symbols are connected, tracing call chains.
 
 ### graph_explain
-Full detail on a single node: properties, edges, community membership, centrality metrics.
+Full detail on a single node: properties, edges, community membership, centrality metrics. Optionally includes the file outline.
 
 Parameters:
 - \`symbol\` (required): node name or ID
-- \`include_code\`: also return the file outline (default: false)
+- \`include_code\`: also return the source file outline (default: false)
 
 Use when: deep-diving into a specific symbol, understanding its role in the architecture.
 
 ### graph_community
-List all nodes belonging to a specific community.
+List all nodes belonging to a specific community, ranked by degree centrality. Shows available communities if the requested one is not found.
 
 Parameters:
 - \`community_id\` (required): community ID or name
@@ -166,10 +166,10 @@ Parameters:
 Use when: identifying critical symbols, finding architectural bottlenecks, prioritizing refactoring targets.
 
 ### graph_similar
-Semantic similarity search — find symbols similar to a query using TF-IDF or ONNX embeddings.
+Semantic similarity search — find symbols conceptually similar to a query using TF-IDF or ONNX embeddings.
 
 Parameters:
-- \`query\` (required): search text or symbol name
+- \`query\` (required): natural language query or symbol name
 - \`top_k\`: max results (default: 10)
 - \`type\`: filter by node type
 - \`repo\`: filter by repository
@@ -177,43 +177,47 @@ Parameters:
 Use when: finding related symbols, discovering similar patterns, exploring semantic connections.
 
 ### graph_context
-Smart context builder — assembles relevant context within a token budget by combining search, vectors, and graph expansion.
+Smart context builder — returns token-budgeted, relevance-ranked context by combining text search, vector similarity, graph expansion, and community summaries.
 
 Parameters:
-- \`query\` (required): what you need context about
-- \`budget\`: max tokens (default: 4000)
-- \`strategy\`: "auto", "search", "vector", "graph" (default: "auto")
+- \`query\` (required): natural language query or code reference
+- \`max_tokens\`: token budget (default: 4096)
+- \`scope\`: repo name or path prefix filter
+- \`include_source\`: include source code snippets (default: false)
+- \`format\`: "narrative" (markdown) or "structured" (JSON). Default: "narrative"
 
-Use when: building comprehensive context about a topic, gathering information for analysis.
+Use when: building comprehensive context about a topic, gathering information for analysis, preparing context for code changes.
 
 ### graph_ask
-Natural language query — classifies your question and routes to the right tool automatically.
+Natural language question — classifies intent and routes to the best tool automatically. Supports English and Italian. Zero-LLM at query time.
 
 Parameters:
-- \`question\` (required): natural language question about the codebase
+- \`question\` (required): natural language question about the codebase (English or Italian)
+- \`max_tokens\`: max response tokens (default: 2048)
 
-Use when: asking questions in plain language without knowing which tool to use.
+Use when: asking questions in plain language without knowing which specific tool to use.
 
 ### graph_docs
-Search documentation nodes (markdown, text, rst files).
+Search documentation nodes (markdown, text, rst) with linked code references.
 
 Parameters:
 - \`query\` (required): search text
 - \`top_k\`: max results (default: 10)
+- \`repo\`: filter by repository
 
-Use when: finding documentation, searching through markdown files, looking for written explanations.
+Use when: finding documentation, searching through markdown files, looking for written explanations and their linked code symbols.
 
 ### graph_outline
-File outline: function signatures, class definitions, imports — without reading the full source.
+File outline: function signatures, class definitions, imports — without reading the full source. Uses pre-computed tree-sitter outlines when available, falls back to on-the-fly generation.
 
 Parameters:
 - \`file_path\` (required): relative path to file
 - \`format\`: "markdown" or "json" (default: "markdown")
 
-Use when: getting a quick overview of a file's structure.
+Use when: getting a quick overview of a file's structure without reading the full source.
 
 ### graph_status
-Graph metadata: node/edge counts, repos included, build timestamp.
+Graph metadata: node/edge counts, repos included, build timestamp, reponova version.
 
 No parameters.
 
@@ -221,27 +225,30 @@ Use when: checking if the graph is available and up to date.
 
 ## Best Practices
 
-1. **Prefer graph tools over grep/find** — graph_search uses indexed ranking and understands symbol types.
-2. **Check impact before refactoring** — run graph_impact on any symbol you plan to modify.
+1. **Prefer graph tools over grep/find** — graph_search uses indexed ranking and understands symbol types. Use graph_similar for semantic/conceptual searches.
+2. **Check impact before refactoring** — run graph_impact on any symbol you plan to modify. Check both upstream and downstream.
 3. **Use graph_path to trace connections** — faster and more accurate than manually following imports.
-4. **Use graph_hotspots to find god nodes** — high-degree nodes are architectural risks.
+4. **Use graph_hotspots to find god nodes** — high-degree or high-betweenness nodes are architectural risks.
 5. **Use context_depth for broad exploration** — set context_depth=2 on graph_search to see the neighborhood around results.
-6. **Read report.md** at \`reponova-out/report.md\` for architecture overview, god nodes, and community structure.
-7. **Keep the graph current** — after code changes, run \`reponova build\` to rebuild.
+6. **Use graph_context for comprehensive analysis** — combines search, vectors, and graph expansion within a token budget. More thorough than graph_search alone.
+7. **Use graph_ask for quick questions** — it auto-routes to the right tool. Good for natural language queries when you're unsure which tool fits.
+8. **Read report.md** at \`reponova-out/report.md\` for architecture overview, god nodes, and community structure.
+9. **Keep the graph current** — after code changes, run \`reponova build\` to rebuild (incremental, only re-processes changed files).
 `;
 
 // ─── Context message injected by hooks ───────────────────────────────────────
 
 const HOOK_CONTEXT =
-  "reponova: Knowledge graph MCP server is available. " +
-  "Use graph_search, graph_impact, graph_path, graph_explain tools " +
-  "instead of manually grep/find-ing the codebase. " +
+  "reponova: Knowledge graph MCP server with 12 tools is available. " +
+  "Use graph_search (text search), graph_impact (blast radius), graph_path (shortest path), " +
+  "graph_explain (node detail), graph_similar (semantic search), graph_context (smart context builder), " +
+  "graph_ask (natural language) instead of manually grep/find-ing the codebase. " +
   "Read reponova-out/report.md for architecture overview.";
 
 // ─── OpenCode plugin JS ──────────────────────────────────────────────────────
 
 const OPENCODE_PLUGIN_JS = `// reponova OpenCode plugin
-// Reminds the agent that MCP graph tools are available before bash searches.
+// Reminds the agent that 12 MCP graph tools are available before bash searches.
 import { existsSync } from "fs";
 import { join } from "path";
 
@@ -255,7 +262,7 @@ export const ReponovaMcpPlugin = async ({ directory }) => {
 
       if (input.tool === "bash") {
         output.args.command =
-          'echo "[reponova] Knowledge graph MCP server available. Use graph_search/graph_impact/graph_path tools instead of manual grep." && ' +
+          'echo "[reponova] Knowledge graph MCP server available with 12 tools. Use graph_search (text search), graph_impact (blast radius), graph_similar (semantic search), graph_context (smart context), graph_ask (natural language) instead of manual grep/find. See reponova-out/report.md for architecture overview." && ' +
           output.args.command;
         reminded = true;
       }
