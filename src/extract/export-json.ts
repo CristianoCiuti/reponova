@@ -1,12 +1,8 @@
 /**
  * JSON export — serializes graphology graph to graph.json format.
  *
- * Output format is backward-compatible with the existing graphify output:
- * loadGraphData() in src/core/graph-loader.ts handles both formats.
- *
- * Node fields: id, label, type, file_type, source_file, source_location,
- *              repo, community, norm_label, start_line, end_line
- * Edge fields: source, target, relation, confidence, confidence_score, weight
+ * Node fields: id, label, type, source_file, repo, community, start_line, end_line, properties
+ * Edge fields: source, target, type/relation, confidence
  */
 import { writeFileSync } from "node:fs";
 import type Graph from "graphology";

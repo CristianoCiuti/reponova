@@ -36,7 +36,7 @@ const SAMPLE_DIAGRAM = join(FIXTURES_DIR, "sample_diagram.puml");
 // ─── Incremental Build Tests ─────────────────────────────────────────────────
 
 describe("Incremental Build", () => {
-  const tmpBase = join(tmpdir(), `graphify-test-incr-${Date.now()}`);
+  const tmpBase = join(tmpdir(), `reponova-test-incr-${Date.now()}`);
 
   beforeAll(() => {
     mkdirSync(join(tmpBase, "workspace"), { recursive: true });
@@ -267,7 +267,7 @@ describe("Diagram Extractor", () => {
 // ─── File Detection Tests ────────────────────────────────────────────────────
 
 describe("File Detection", () => {
-  const tmpBase = join(tmpdir(), `graphify-test-detect-${Date.now()}`);
+  const tmpBase = join(tmpdir(), `reponova-test-detect-${Date.now()}`);
 
   beforeAll(() => {
     // Create test directory structure

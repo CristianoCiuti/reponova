@@ -5,16 +5,16 @@ import { log } from "../shared/utils.js";
 
 /**
  * Load graph.json from disk and parse it.
- * Handles graphify's NetworkX format:
- *   - Nodes: { id, label, file_type, source_file, source_location, community, norm_label }
- *   - Edges: stored as "links" with { source, target, relation, confidence_score, confidence, weight }
+ * Handles multiple graph formats:
+ *   - Nodes: { id, label, type, source_file, community, ... }
+ *   - Edges: stored as "edges" or "links" with { source, target, type/relation, ... }
  */
 export function loadGraphData(graphJsonPath: string): GraphData {
   log.info(`Loading graph from ${graphJsonPath}`);
   const raw = readFileSync(graphJsonPath, "utf-8");
   const data = JSON.parse(raw) as Record<string, unknown>;
 
-  // Parse nodes — map graphify fields to our schema
+  // Parse nodes — map raw fields to our schema
   const rawNodes = (data.nodes ?? []) as Array<Record<string, unknown>>;
   const nodes: GraphNode[] = rawNodes.map((n) => {
     // start_line / end_line: use explicit values or parse from source_location ("L4" or "L4-L20")
@@ -49,7 +49,7 @@ export function loadGraphData(graphJsonPath: string): GraphData {
     };
   });
 
-  // Parse edges — graphify uses "links" with "relation" instead of "edges" with "type"
+  // Parse edges — support both "edges" and "links" arrays, "type" and "relation" fields
   const rawEdges = (data.edges ?? data.links ?? []) as Array<Record<string, unknown>>;
   const edges: GraphEdge[] = rawEdges.map((e) => ({
     source: (e.source ?? e._src ?? e.from ?? "") as string,

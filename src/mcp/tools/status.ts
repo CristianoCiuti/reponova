@@ -10,8 +10,8 @@ export function handleStatus(db: Database, graphDir: string, graphJsonPath: stri
 
   const builtAt = getMeta(db, "built_at");
   if (builtAt) lines.push(`Built: ${builtAt}`);
-  const gv = getMeta(db, "graphify_version");
-  if (gv) lines.push(`Graphify version: ${gv}`);
+  const gv = getMeta(db, "reponova_version");
+  if (gv) lines.push(`reponova version: ${gv}`);
   lines.push("");
 
   const nc = getMeta(db, "node_count") ?? "0";

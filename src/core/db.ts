@@ -162,8 +162,8 @@ export function populateDatabase(db: Database, graphData: GraphData): void {
   db.run("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", ["repos", JSON.stringify(repos)]);
   db.run("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", ["built_at", new Date().toISOString()]);
 
-  if (graphData.metadata?.graphify_version) {
-    db.run("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", ["graphify_version", graphData.metadata.graphify_version]);
+  if (graphData.metadata?.reponova_version) {
+    db.run("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", ["reponova_version", graphData.metadata.reponova_version]);
   }
 
   // Rebuild FTS index

@@ -46,8 +46,18 @@ build:
       - "**/node_modules/**"
     parse_puml: true
     parse_svg_text: true
+  embeddings:
+    enabled: true
+    method: tfidf                 # "tfidf" (fast, default) or "onnx" (MiniLM, more accurate)
+  summaries:
+    enabled: true
+    max_communities: 0            # 0 = no limit
+  llm:
+    enabled: false                # set true to use local Qwen 0.5B for richer summaries
+    model: qwen2.5-0.5b-instruct
+    gpu: auto                     # "auto", "cpu", or "cuda"/"vulkan"/"metal"
 
-# Outline generation options
+# Outline generation (auto-detects language from file extension)
 outlines:
   enabled: true
   paths:                          # glob patterns for files to outline (relative to repo root)
@@ -145,6 +155,44 @@ Parameters:
 
 Use when: identifying critical symbols, finding architectural bottlenecks, prioritizing refactoring targets.
 
+### graph_similar
+Semantic similarity search — find symbols similar to a query using TF-IDF or ONNX embeddings.
+
+Parameters:
+- \`query\` (required): search text or symbol name
+- \`top_k\`: max results (default: 10)
+- \`type\`: filter by node type
+- \`repo\`: filter by repository
+
+Use when: finding related symbols, discovering similar patterns, exploring semantic connections.
+
+### graph_context
+Smart context builder — assembles relevant context within a token budget by combining search, vectors, and graph expansion.
+
+Parameters:
+- \`query\` (required): what you need context about
+- \`budget\`: max tokens (default: 4000)
+- \`strategy\`: "auto", "search", "vector", "graph" (default: "auto")
+
+Use when: building comprehensive context about a topic, gathering information for analysis.
+
+### graph_ask
+Natural language query — classifies your question and routes to the right tool automatically.
+
+Parameters:
+- \`question\` (required): natural language question about the codebase
+
+Use when: asking questions in plain language without knowing which tool to use.
+
+### graph_docs
+Search documentation nodes (markdown, text, rst files).
+
+Parameters:
+- \`query\` (required): search text
+- \`top_k\`: max results (default: 10)
+
+Use when: finding documentation, searching through markdown files, looking for written explanations.
+
 ### graph_outline
 File outline: function signatures, class definitions, imports — without reading the full source.
 
@@ -187,7 +235,7 @@ const OPENCODE_PLUGIN_JS = `// reponova OpenCode plugin
 import { existsSync } from "fs";
 import { join } from "path";
 
-export const GraphifyMcpPlugin = async ({ directory }) => {
+export const ReponovaMcpPlugin = async ({ directory }) => {
   let reminded = false;
 
   return {
@@ -276,7 +324,7 @@ function installOpenCode(graphDir: string): void {
 
   if (!config.mcp) config.mcp = {};
   const mcp = config.mcp as Record<string, unknown>;
-  mcp["graphify"] = {
+  mcp["reponova"] = {
     type: "local",
     command: ["npx", "-y", "reponova", "mcp", "--graph", graphDir],
   };
@@ -333,7 +381,7 @@ function installCursor(graphDir: string): void {
 
   if (!mcpConfig.mcpServers) mcpConfig.mcpServers = {};
   const servers = mcpConfig.mcpServers as Record<string, unknown>;
-  servers["graphify"] = {
+  servers["reponova"] = {
     command: "npx",
     args: ["-y", "reponova", "mcp", "--graph", graphDir],
   };
@@ -415,7 +463,7 @@ function installClaude(graphDir: string): void {
   if (configWritten) console.log(`\u2713 Config file created: ${configWritten}`);
   console.log("");
   console.log("  To also register the MCP server, run:");
-  console.log(`  claude mcp add graphify -- npx -y reponova mcp --graph ${graphDir}`);
+    console.log(`  claude mcp add reponova -- npx -y reponova mcp --graph ${graphDir}`);
 }
 
 // ─── VS Code ─────────────────────────────────────────────────────────────────
@@ -434,7 +482,7 @@ function installVSCode(graphDir: string): void {
 
   if (!mcpConfig.servers) mcpConfig.servers = {};
   const servers = mcpConfig.servers as Record<string, unknown>;
-  servers["graphify"] = {
+  servers["reponova"] = {
     type: "stdio",
     command: "npx",
     args: ["-y", "reponova", "mcp", "--graph", graphDir],

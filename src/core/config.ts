@@ -38,7 +38,7 @@ const BuildConfigSchema = z.object({
     cache_dir: z.string().default("~/.cache/reponova/models"),
   }).default({}),
   llm: z.object({
-    enabled: z.boolean().default(true),
+    enabled: z.boolean().default(false),
     model: z.string().default("qwen2.5-0.5b-instruct"),
     quantization: z.string().default("Q4_K_M"),
     gpu: z.enum(["auto", "cpu", "cuda", "metal", "vulkan"]).default("auto"),

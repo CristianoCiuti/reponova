@@ -178,7 +178,33 @@ repos:
 build:
   mode: monorepo                  # "monorepo" or "separate"
   exclude: []                     # directory names to skip (e.g. dist_package, .tox)
+  incremental: true               # use file hash cache for incremental rebuilds
   html: true                      # generate interactive HTML visualizations
+  # html_min_degree: 3            # if set, only include nodes with degree >= this value in HTML
+
+  # Documentation extraction
+  docs:
+    enabled: true
+    patterns:                     # glob patterns to match
+      - "**/*.md"
+      - "**/*.txt"
+      - "**/*.rst"
+    exclude:
+      - "**/CHANGELOG.md"
+      - "**/node_modules/**"
+    max_file_size_kb: 500
+
+  # Diagram/image extraction
+  images:
+    enabled: true
+    patterns:
+      - "**/*.puml"
+      - "**/*.plantuml"
+      - "**/*.svg"
+    exclude:
+      - "**/node_modules/**"
+    parse_puml: true
+    parse_svg_text: true
 
   # Embeddings: vector representations for semantic search
   embeddings:
@@ -189,22 +215,26 @@ build:
   summaries:
     enabled: true
     max_communities: 0            # 0 = no limit
+    generate_node_descriptions: true
+    node_description_threshold: 0.8  # top 20% nodes by degree
 
-  # LLM: local language model for enhanced summaries (optional)
+  # LLM: local language model for enhanced summaries (optional, opt-in)
   llm:
     enabled: false                # set true to use Qwen 0.5B for richer summaries
     model: qwen2.5-0.5b-instruct
     gpu: auto                     # "auto", "cpu", or "cuda"/"vulkan"/"metal"
 
-# Outline generation
+# Outline generation (language auto-detected from file extension)
 outlines:
   enabled: true
-  language: python
   paths:
     - "src/**/*.py"
+    - "src/**/*.ts"
+    - "src/**/*.js"
   exclude:
     - "**/__pycache__/**"
-    - "**/test_*.py"
+    - "**/node_modules/**"
+    - "**/dist/**"
 ```
 
 ## Programmatic API

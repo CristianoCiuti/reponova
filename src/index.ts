@@ -1,8 +1,8 @@
 /**
  * reponova
  *
- * MCP server companion for Graphify: search, impact analysis,
- * and code outlines from knowledge graphs.
+ * Knowledge graph builder & MCP server for AI code assistants:
+ * search, impact analysis, and code outlines from knowledge graphs.
  */
 
 export { startMcpServer } from "./mcp/server.js";

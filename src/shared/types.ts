@@ -24,7 +24,7 @@ export interface GraphEdge {
   properties?: Record<string, unknown>;
 }
 
-/** Community detected by Graphify */
+/** Community detected by community detection */
 export interface GraphCommunity {
   id: string | number;
   name: string;
@@ -32,7 +32,7 @@ export interface GraphCommunity {
   size: number;
 }
 
-/** Full graph structure as produced by Graphify */
+/** Full graph structure */
 export interface GraphData {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -42,7 +42,7 @@ export interface GraphData {
 
 /** Graph metadata */
 export interface GraphMetadata {
-  graphify_version?: string;
+  reponova_version?: string;
   built_at?: string;
   repos?: string[];
   node_count?: number;
@@ -304,7 +304,7 @@ export const DEFAULT_CONFIG: Config = {
       cache_dir: "~/.cache/reponova/models",
     },
     llm: {
-      enabled: true,
+      enabled: false,
       model: "qwen2.5-0.5b-instruct",
       quantization: "Q4_K_M",
       gpu: "auto",

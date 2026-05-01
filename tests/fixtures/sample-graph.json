@@ -209,7 +209,7 @@
     { "id": 4, "name": "Auth & Session Management", "members": ["Class:AuthService", "Function:authenticate_user"], "size": 2 }
   ],
   "metadata": {
-    "graphify_version": "0.5.0",
+    "reponova_version": "0.5.0",
     "built_at": "2026-04-29T10:30:00Z",
     "repos": ["project-core", "project-api", "project-web"],
     "node_count": 13,
