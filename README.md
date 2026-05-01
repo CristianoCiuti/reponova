@@ -3,7 +3,7 @@
 > **⚠️ Alpha — Active Development**
 > This package is under active development. APIs, config format, and CLI may change between releases.
 > It's already usable, but expect rough edges. If you find a bug or something doesn't work as expected,
-> please [open an issue](https://github.com/CristianoCiuti/graphify-mcp-tools/issues) — it helps a lot.
+> please [open an issue](https://github.com/CristianoCiuti/reponova/issues) — it helps a lot.
 
 Knowledge graph builder & MCP server for AI code assistants. Builds a searchable, queryable graph of your codebase — then exposes it to AI agents via MCP tools.
 
