@@ -8,7 +8,7 @@
  *
  * All steps are best-effort: failures don't block the build.
  */
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "../shared/utils.js";
 import type { Config, GraphData, GraphNode } from "../shared/types.js";
@@ -16,7 +16,7 @@ import { EmbeddingEngine, composeNodeText } from "./embeddings.js";
 import { TfidfEmbeddingEngine } from "./tfidf-embeddings.js";
 import { VectorStore, type VectorRecord } from "../core/vector-store.js";
 import { LlmEngine } from "./llm-engine.js";
-import { SummaryGenerator, type CommunityData, type CommunitySummary, type NodeDescription } from "./community-summaries.js";
+import { SummaryGenerator, type CommunityData } from "./community-summaries.js";
 
 export interface IntelligenceResult {
   embeddingsGenerated: number;
@@ -197,22 +197,29 @@ async function runSummaries(
     // Build community data from graph
     const communities = buildCommunityData(graphData);
 
-    // Generate community summaries
+    // ── Phase 1: Community summaries ──────────────────────────────────────
     const communitySummaries = await generator.generateCommunitySummaries(communities);
 
-    // Generate node descriptions
-    const edgeCounts = computeEdgeCounts(graphData);
-    const nodeDescriptions = await generator.generateNodeDescriptions(graphData.nodes, edgeCounts);
-
-    // Save to output directory
+    // Save community summaries immediately (don't lose them if node descriptions fail)
     if (communitySummaries.length > 0) {
       const summariesPath = join(outputDir, "community_summaries.json");
       writeFileSync(summariesPath, JSON.stringify(communitySummaries, null, 2));
+      log.info(`  Saved ${communitySummaries.length} community summaries → community_summaries.json`);
     }
+
+    // ── Phase 2: Node descriptions ────────────────────────────────────────
+    log.info("Computing edge counts for node selection...");
+    const edgeCounts = computeEdgeCounts(graphData);
+    log.info(`  Edge counts computed: ${edgeCounts.size} nodes with edges`);
+
+    const nodeDescriptions = await generator.generateNodeDescriptions(graphData.nodes, edgeCounts);
 
     if (nodeDescriptions.length > 0) {
       const descriptionsPath = join(outputDir, "node_descriptions.json");
       writeFileSync(descriptionsPath, JSON.stringify(nodeDescriptions, null, 2));
+      log.info(`  Saved ${nodeDescriptions.length} node descriptions → node_descriptions.json`);
+    } else {
+      log.info("  No node descriptions generated (disabled or no qualifying nodes)");
     }
 
     return {
@@ -221,7 +228,9 @@ async function runSummaries(
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
     log.warn(`Summaries failed (non-blocking): ${msg}`);
+    if (stack) log.warn(`  Stack: ${stack.split("\n").slice(1, 4).join(" → ")}`);
     return { summaries: 0, descriptions: 0 };
   } finally {
     if (llm) await llm.dispose();

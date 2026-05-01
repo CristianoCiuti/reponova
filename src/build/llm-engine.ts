@@ -152,7 +152,9 @@ export class LlmEngine {
    * Reuses the single context sequence — clears history between calls.
    */
   async generate(options: LlmCompletionOptions): Promise<string | null> {
-    if (!this.available || !this.sequence || !this.ChatSession) return null;
+    if (!this.available || !this.sequence || !this.ChatSession) {
+      return null;
+    }
 
     try {
       // Clear sequence history so each prompt starts fresh
@@ -177,34 +179,6 @@ export class LlmEngine {
       log.warn(`LLM generation failed: ${msg}`);
       return null;
     }
-  }
-
-  /**
-   * Generate multiple completions in batch.
-   */
-  async generateBatch(prompts: LlmCompletionOptions[]): Promise<Array<string | null>> {
-    const results: Array<string | null> = [];
-    let failures = 0;
-
-    for (let i = 0; i < prompts.length; i++) {
-      const result = await this.generate(prompts[i]!);
-      results.push(result);
-
-      if (result === null) failures++;
-
-      // If too many consecutive failures, abort early (model is broken)
-      if (failures > 5 && results.every(r => r === null)) {
-        log.warn(`  LLM producing no results — aborting batch after ${i + 1} attempts`);
-        // Fill remaining with null
-        for (let j = i + 1; j < prompts.length; j++) results.push(null);
-        return results;
-      }
-
-      if (i > 0 && i % 10 === 0) {
-        log.info(`  Generated ${i}/${prompts.length} summaries...`);
-      }
-    }
-    return results;
   }
 
   /**
