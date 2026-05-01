@@ -132,11 +132,13 @@ export class EmbeddingEngine {
   private tokenizer: BertTokenizer | null = null;
   private config: EmbeddingsConfig;
   private cacheDir: string;
+  private downloadOnFirstUse: boolean;
   private available = false;
 
-  constructor(config: EmbeddingsConfig, cacheDir: string) {
+  constructor(config: EmbeddingsConfig, cacheDir: string, downloadOnFirstUse = true) {
     this.config = config;
     this.cacheDir = resolveCacheDir(cacheDir);
+    this.downloadOnFirstUse = downloadOnFirstUse;
   }
 
   /**
@@ -165,6 +167,10 @@ export class EmbeddingEngine {
     const vocabPath = join(modelDir, "vocab.txt");
 
     if (!existsSync(modelPath) || !existsSync(vocabPath)) {
+      if (!this.downloadOnFirstUse) {
+        log.warn(`Embedding model "${modelName}" not found and download_on_first_use is false`);
+        return false;
+      }
       log.info(`Downloading embedding model (${modelName})...`);
       try {
         await this.downloadModel(modelDir);

@@ -130,7 +130,7 @@ async function runOnnxEmbeddings(
   items: Array<{ id: string; text: string }>,
 ): Promise<number> {
   const cacheDir = resolveCacheDir(config.models.cache_dir);
-  const engine = new EmbeddingEngine(config.build.embeddings, cacheDir);
+  const engine = new EmbeddingEngine(config.build.embeddings, cacheDir, config.models.download_on_first_use);
 
   try {
     const ready = await engine.initialize();
