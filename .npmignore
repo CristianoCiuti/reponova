@@ -7,4 +7,3 @@ tsup.config.ts
 .gitignore
 .git
 .opencode
-graphify-mcp-tools.md
