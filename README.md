@@ -283,7 +283,9 @@ reponova check [--graph <path>]
 |----------|-----------|-----------------|
 | Python | `.py`, `.pyw` | Full: functions, classes, methods, imports, signatures, decorators, docstrings |
 
-> **Adding a new language:** Create `src/extract/languages/<lang>.ts` implementing `LanguageExtractor`, register it in `registry.ts`, add the `.wasm` grammar to `grammars/`. Both extraction and outline pick it up automatically.
+> **Adding a new language:** Create `src/extract/languages/<lang>.ts` implementing `LanguageExtractor`, register it in `registry.ts`, add the `.wasm` grammar to `grammars/`. See [Contributing > Adding Language Support](#adding-language-support-extraction) for the full interface reference.
+>
+> **Note:** Extraction and outline are **separate systems** with different registries and interfaces. Registering an extractor gives you graph building (symbols, edges, imports). For code outlines (`graph_outline`), you also need a `LanguageSupport` implementation in `src/outline/languages/` — see [Adding Outline Support](#adding-outline-support).
 
 ### Edge Types
 
@@ -884,13 +886,78 @@ Contributions are welcome.
 
 ### Adding Language Support (Extraction)
 
-Add new programming language extractors via tree-sitter:
+Add new programming language extractors via tree-sitter. An extractor teaches reponova how to parse a language's AST and extract symbols, imports, and references for graph building.
 
+#### Steps
+
+1. **Create** `src/extract/languages/<lang>.ts` implementing the `LanguageExtractor` interface
+2. **Register** it in `src/extract/languages/registry.ts` (or at runtime via `registerExtractor()`)
+3. **Add** the tree-sitter WASM grammar to `grammars/` (e.g., `tree-sitter-javascript.wasm`)
+
+#### `LanguageExtractor` Interface
+
+```typescript
+interface LanguageExtractor {
+  /** Language identifier — must match tree-sitter grammar name (e.g., "javascript") */
+  readonly languageId: string;
+
+  /** File extensions this extractor handles (e.g., [".js", ".mjs", ".cjs"]) */
+  readonly extensions: string[];
+
+  /**
+   * WASM grammar filename (e.g., "tree-sitter-javascript.wasm").
+   * If provided: pipeline parses with tree-sitter and passes the SyntaxTree.
+   * If omitted: extract() receives a null tree and must work from sourceCode directly.
+   * (Markdown and diagram extractors use this — no WASM needed.)
+   */
+  readonly wasmFile?: string;
+
+  /**
+   * Extract symbols, imports, and references from a single source file.
+   * @param tree - Parsed tree-sitter AST (null if wasmFile not set)
+   * @param sourceCode - Raw file content
+   * @param filePath - Relative path (normalized, forward slashes)
+   */
+  extract(tree: SyntaxTree | null, sourceCode: string, filePath: string): FileExtraction;
+
+  /**
+   * Resolve an import module path to candidate file paths.
+   * Example: "config.loader" → ["config/loader.py", "config/loader/__init__.py"]
+   * Return empty array for external/third-party modules.
+   */
+  resolveImportPath(importModule: string, currentFilePath: string): string[];
+}
 ```
-src/extract/languages/registry.ts    # extraction registry
-src/outline/languages/registry.ts    # outline registry
-grammars/                            # tree-sitter WASM grammar files
+
+#### `FileExtraction` Return Type
+
+```typescript
+interface FileExtraction {
+  filePath: string;           // Relative path (forward slashes)
+  language: string;           // Must match languageId
+  symbols: SymbolNode[];      // Functions, classes, methods, variables
+  imports: ImportDeclaration[];  // Import/export statements
+  references: SymbolReference[];  // Calls, type annotations, inheritance refs
+}
 ```
+
+**Key types your extractor produces:**
+
+| Type | Fields | Purpose |
+|------|--------|---------|
+| `SymbolNode` | `name`, `qualifiedName`, `kind`, `signature?`, `decorators`, `docstring?`, `startLine`, `endLine`, `parent?`, `bases?`, `calls` | A symbol defined in the file |
+| `ImportDeclaration` | `module`, `names`, `isWildcard`, `isExport?`, `line` | An import/export statement |
+| `SymbolReference` | `name`, `fromSymbol`, `kind` (`"call"` \| `"type_annotation"` \| `"attribute_access"` \| `"inheritance"`), `line` | A reference to another symbol |
+| `SymbolKind` | `"function"` \| `"class"` \| `"method"` \| `"variable"` \| `"constant"` \| `"interface"` \| `"enum"` \| `"module"` \| `"document"` \| `"section"` | Symbol classification |
+
+See `src/extract/types.ts` for full type definitions and JSDoc.
+
+#### How tree-sitter Parsing Works
+
+1. If `wasmFile` is set, the pipeline loads `grammars/<wasmFile>`, parses the source, and passes a `SyntaxTree` to `extract()`
+2. If `wasmFile` is omitted, `extract()` receives `null` as the tree and must work from `sourceCode` directly
+3. WASM grammars are loaded from the `grammars/` directory relative to the package root
+4. `SyntaxTree` / `SyntaxNode` types match the [web-tree-sitter](https://github.com/nicolo-ribaudo/tree-sitter-wasm-prebuilt) WASM interface
 
 #### Runtime Registration
 
@@ -906,9 +973,52 @@ registerExtractor(myExtractor);
 
 Note: duplicate `languageId` or `extensions` silently overwrite the previous extractor.
 
+#### Reference Implementation
+
+See `src/extract/languages/python.ts` for a full tree-sitter-based extractor, or `src/extract/languages/markdown.ts` for a non-tree-sitter (regex) extractor.
+
+### Adding Outline Support
+
+Outlines (`graph_outline`) use a **separate system** from extraction. They have their own registry, interface, and implementations.
+
+#### Steps
+
+1. **Create** `src/outline/languages/<lang>.ts` implementing the `LanguageSupport` interface
+2. **Register** it in `src/outline/languages/registry.ts` (add to `byLanguage` record and `extToLanguage` mapping)
+3. The same WASM grammar from `grammars/` is shared with the extraction system
+
+#### `LanguageSupport` Interface
+
+```typescript
+interface LanguageSupport {
+  /** WASM grammar filename (e.g., "tree-sitter-python.wasm") */
+  readonly wasmFile: string;
+
+  /** Extract outline from tree-sitter AST (primary method) */
+  treeSitterExtract(rootNode: SyntaxNode, filePath: string, lineCount: number): FileOutline;
+
+  /** Extract outline from raw source via regex (fallback when WASM unavailable) */
+  regexExtract(filePath: string, source: string, lineCount: number): FileOutline;
+}
+```
+
+Unlike extraction, outline registration is static — add your language to the `byLanguage` record and `extToLanguage` extension mapping in `src/outline/languages/registry.ts`.
+
+See `src/outline/languages/python.ts` for the reference implementation.
+
 ### Adding Language Support (Natural Language Queries)
 
-Teach `graph_ask` to understand questions in a new language:
+Teach `graph_ask` to understand questions in a new language. The NL query layer is purely regex-based — no LLM at query time.
+
+#### How the Classifier Works
+
+1. **Language detection**: `detectLanguage(query)` calls `detectScore(query)` on every registered ruleset and picks the highest score. If all scores are 0, defaults to `"en"`. There is no configurable threshold — it's a simple argmax with `"en"` as the initial default.
+2. **Pattern matching**: `classifyQuestion(query)` tries the detected language's ruleset first. Rules are checked in order; within each rule, patterns are tested sequentially. **First match wins.**
+3. **Fallback cascade**: If no pattern matches in the detected language, all other registered rulesets are tried. If still no match, returns `{ strategy: "context", confidence: 0.3 }` as the final fallback.
+4. **Confidence values** are hard-coded: `0.85` for any pattern match, `0.3` for fallback, `0` for empty queries.
+5. **`registerLanguage()` silently overwrites** any existing ruleset for the same language code.
+
+#### Steps
 
 1. **Create a ruleset** — `src/core/classifiers/<lang>.ts`:
 
@@ -922,11 +1032,36 @@ const rules: PatternRule[] = [
     entityExtractor: (match) => [cleanEntity(match[1]!)],
   },
   {
+    strategy: "impact_upstream",
+    patterns: [/de quoi dépend (.+)/i, /qu'est-ce que (.+) utilise/i],
+    entityExtractor: (match) => [cleanEntity(match[1]!)],
+  },
+  {
+    strategy: "path",
+    patterns: [/chemin (?:de|entre) (.+?) (?:à|vers|et) (.+)/i],
+    entityExtractor: (match) => [cleanEntity(match[1]!), cleanEntity(match[2]!)],
+  },
+  {
     strategy: "explain",
     patterns: [/explique (.+)/i, /décris (.+)/i],
     entityExtractor: (match) => [cleanEntity(match[1]!)],
   },
-  // ... one entry per strategy (8 total)
+  {
+    strategy: "search",
+    patterns: [/cherche (.+)/i, /trouve (.+)/i],
+    entityExtractor: (match) => [cleanEntity(match[1]!)],
+  },
+  {
+    strategy: "similar",
+    patterns: [/similaire à (.+)/i, /comme (.+)/i],
+    entityExtractor: (match) => [cleanEntity(match[1]!)],
+  },
+  {
+    strategy: "architecture",
+    patterns: [/architecture/i, /structure du projet/i],
+    entityExtractor: (_match, query) => [query],
+  },
+  // Missing strategies simply won't match — the fallback cascade handles them
 ];
 
 function cleanEntity(s: string): string {
@@ -938,9 +1073,13 @@ export const fr: LanguageRuleset = {
   rules,
   normalizeEntity: cleanEntity,
   detectScore(query: string): number {
-    // Return 0-1 based on French language markers
-    const markers = /\b(qu'est|dépend|explique|cherche|montre|similaire|chemin)\b/i;
-    return markers.test(query) ? 0.8 : 0;
+    // Count French marker words, compute ratio, cap at 1
+    const words = query.toLowerCase().split(/\s+/);
+    const markers = /\b(qu'est|dépend|explique|cherche|montre|similaire|chemin|de quoi)\b/i;
+    const matches = words.filter(w => markers.test(w)).length;
+    // Optional: boost for French-specific characters
+    const accentBoost = /[àâçéèêëîïôûùüÿ]/i.test(query) ? 0.15 : 0;
+    return Math.min(1, matches / Math.max(1, words.length) * 2 + accentBoost);
   },
 };
 ```
@@ -961,9 +1100,17 @@ registerLanguage(fr);
 ```
 
 3. **Interface reference**:
-   - `PatternRule` — `{ strategy: QueryStrategy, patterns: RegExp[], entityExtractor: (match, query) => string[] }`
-   - `LanguageRuleset` — `{ language: string, rules: PatternRule[], normalizeEntity(s): string, detectScore(query): number }`
+   - `PatternRule` — `{ strategy: QueryStrategy, patterns: RegExp[], entityExtractor: (match: RegExpMatchArray, query: string) => string[] }`
+   - `LanguageRuleset` — `{ language: string, rules: PatternRule[], normalizeEntity(s: string): string, detectScore(query: string): number }`
    - `QueryStrategy` — `"impact_downstream" | "impact_upstream" | "path" | "explain" | "search" | "similar" | "architecture" | "context"`
+
+#### Best Practices
+
+- **Order rules by specificity** — more specific patterns first. `path` (which extracts two entities) should come before `search` (which is more generic).
+- **`detectScore`** should return a score proportional to how many language-specific marker words appear, not a flat value. See `en.ts` and `it.ts` for the recommended ratio-based approach.
+- **`entityExtractor` for `path`** must return exactly 2 entities (source and target). All other strategies typically return 1.
+- **You don't need all 8 strategies.** Missing strategies simply won't match for that language — the classifier falls back to other rulesets or the `"context"` strategy.
+- **Reference implementations**: `src/core/classifiers/en.ts` (English), `src/core/classifiers/it.ts` (Italian, includes accent boosting in `detectScore`).
 
 ---
 
