@@ -35,23 +35,23 @@ const BuildConfigSchema = z.object({
     model: z.string().default("all-MiniLM-L6-v2"),
     dimensions: z.number().default(384),
     batch_size: z.number().default(128),
-    cache_dir: z.string().default("~/.cache/graphify-mcp-tools/models"),
+    cache_dir: z.string().default("~/.cache/reponova/models"),
   }).default({}),
   llm: z.object({
     enabled: z.boolean().default(true),
     model: z.string().default("qwen2.5-0.5b-instruct"),
     quantization: z.string().default("Q4_K_M"),
     gpu: z.enum(["auto", "cpu", "cuda", "metal", "vulkan"]).default("auto"),
-    context_size: z.number().default(2048),
+    context_size: z.number().default(512),
     threads: z.number().default(0),
     download_on_first_use: z.boolean().default(true),
-    cache_dir: z.string().default("~/.cache/graphify-mcp-tools/models"),
+    cache_dir: z.string().default("~/.cache/reponova/models"),
   }).default({}),
   summaries: z.object({
     enabled: z.boolean().default(true),
     generate_node_descriptions: z.boolean().default(true),
     node_description_threshold: z.number().min(0).max(1).default(0.8),
-    max_communities: z.number().min(0).default(50),
+    max_communities: z.number().min(0).default(0),
   }).default({}),
 });
 
@@ -64,7 +64,7 @@ const OutlineConfigSchema = z.object({
 const ServerConfigSchema = z.record(z.unknown()).default({});
 
 const ConfigSchema = z.object({
-  output: z.string().default("graphify-out"),
+  output: z.string().default("reponova-out"),
   repos: z.array(RepoConfigSchema).default([]),
   build: BuildConfigSchema.default({}),
   outlines: OutlineConfigSchema.default({}),
@@ -94,7 +94,7 @@ export function loadConfig(configPath?: string): { config: Config; configDir: st
 /**
  * Resolve config file path using priority chain:
  * 1. Explicit path
- * 2. CWD / graphify-mcp-tools.yml
+ * 2. CWD / reponova.yml
  * 3. Editor directory configs (.opencode/, .cursor/, .claude/, .vscode/)
  */
 function resolveConfigPath(explicitPath?: string): string | null {
@@ -105,13 +105,13 @@ function resolveConfigPath(explicitPath?: string): string | null {
   }
 
   // Check project root
-  const cwdConfig = resolve(process.cwd(), "graphify-mcp-tools.yml");
+  const cwdConfig = resolve(process.cwd(), "reponova.yml");
   if (existsSync(cwdConfig)) return cwdConfig;
 
   // Check editor directories
   const editorDirs = [".opencode", ".cursor", ".claude", ".vscode"];
   for (const dir of editorDirs) {
-    const editorConfig = resolve(process.cwd(), dir, "graphify-mcp-tools.yml");
+    const editorConfig = resolve(process.cwd(), dir, "reponova.yml");
     if (existsSync(editorConfig)) return editorConfig;
   }
 

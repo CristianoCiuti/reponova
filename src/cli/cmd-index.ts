@@ -11,13 +11,13 @@ export const indexCommand: CommandModule = {
   builder: (yargs) =>
     yargs.option("graph", {
       type: "string",
-      describe: "Path to graphify-out/ directory",
+      describe: "Path to reponova-out/ directory",
     }),
   handler: async (argv) => {
     const graphDir = resolveGraphPath(argv.graph as string | undefined);
 
     if (!graphDir) {
-      log.error("Could not find graphify-out directory. Use --graph flag.");
+      log.error("Could not find reponova-out directory. Use --graph flag.");
       process.exit(1);
     }
 

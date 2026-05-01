@@ -204,7 +204,7 @@ describe("EmbeddingEngine", () => {
       model: "all-MiniLM-L6-v2",
       dimensions: 384,
       batch_size: 128,
-      cache_dir: "~/.cache/graphify-mcp-tools/models",
+      cache_dir: "~/.cache/reponova/models",
     });
 
     const ready = await engine.initialize();
@@ -245,7 +245,7 @@ describe("LlmEngine", () => {
       context_size: 4096,
       threads: 0,
       download_on_first_use: false,
-      cache_dir: "~/.cache/graphify-mcp-tools/models",
+      cache_dir: "~/.cache/reponova/models",
     });
 
     const ready = await engine.initialize();

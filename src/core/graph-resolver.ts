@@ -4,13 +4,13 @@ import { readdirSync } from "node:fs";
 import { log } from "../shared/utils.js";
 
 /**
- * Auto-detect the path to graphify-out directory.
+ * Auto-detect the path to reponova-out directory.
  *
  * Resolution order:
  * 1. Explicit --graph flag
- * 2. Env var GRAPHIFY_GRAPH_PATH
- * 3. ./graphify-out/ (current directory)
- * 4. ../{sibling}/graphify-out/ - sibling probe
+ * 2. Env var REPONOVA_GRAPH_PATH
+ * 3. ./reponova-out/ (current directory)
+ * 4. ../{sibling}/reponova-out/ - sibling probe
  * 5. null (not found)
  */
 export function resolveGraphPath(explicitPath?: string): string | null {
@@ -26,30 +26,30 @@ export function resolveGraphPath(explicitPath?: string): string | null {
   }
 
   // 2. Environment variable
-  const envPath = process.env["GRAPHIFY_GRAPH_PATH"];
+  const envPath = process.env["REPONOVA_GRAPH_PATH"];
   if (envPath) {
     const abs = resolve(envPath);
     if (existsSync(abs)) {
-      log.debug(`Graph path resolved from GRAPHIFY_GRAPH_PATH: ${abs}`);
+      log.debug(`Graph path resolved from REPONOVA_GRAPH_PATH: ${abs}`);
       return abs;
     }
-    log.warn(`GRAPHIFY_GRAPH_PATH set but path not found: ${abs}`);
+    log.warn(`REPONOVA_GRAPH_PATH set but path not found: ${abs}`);
   }
 
-  // 3. CWD / graphify-out
-  const cwdPath = resolve(process.cwd(), "graphify-out");
+  // 3. CWD / reponova-out
+  const cwdPath = resolve(process.cwd(), "reponova-out");
   if (existsSync(cwdPath)) {
     log.debug(`Graph path resolved from CWD: ${cwdPath}`);
     return cwdPath;
   }
 
-  // 4. Sibling probe: ../<anything>/graphify-out
+  // 4. Sibling probe: ../<anything>/reponova-out
   const parentDir = resolve(process.cwd(), "..");
   try {
     const siblings = readdirSync(parentDir, { withFileTypes: true });
     for (const entry of siblings) {
       if (entry.isDirectory()) {
-        const candidate = join(parentDir, entry.name, "graphify-out");
+        const candidate = join(parentDir, entry.name, "reponova-out");
         if (existsSync(candidate)) {
           log.debug(`Graph path resolved from sibling: ${candidate}`);
           return candidate;
@@ -65,7 +65,7 @@ export function resolveGraphPath(explicitPath?: string): string | null {
 }
 
 /**
- * Resolve the graph.json file path within a graphify-out directory.
+ * Resolve the graph.json file path within a reponova-out directory.
  */
 export function resolveGraphJson(graphDir: string): string | null {
   const graphJson = join(graphDir, "graph.json");
@@ -74,7 +74,7 @@ export function resolveGraphJson(graphDir: string): string | null {
 }
 
 /**
- * Resolve the search database path within a graphify-out directory.
+ * Resolve the search database path within a reponova-out directory.
  */
 export function resolveSearchDb(graphDir: string): string | null {
   const dbPath = join(graphDir, "graph_search.db");

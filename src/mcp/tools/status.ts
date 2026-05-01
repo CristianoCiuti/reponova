@@ -33,6 +33,6 @@ export function handleStatus(db: Database, graphDir: string, graphJsonPath: stri
   if (existsSync(outlinesDir)) {
     lines.push(`Outlines: pre-computed directory exists`);
   }
-  lines.push("", "Staleness: UNKNOWN (run 'graphify-mcp-tools check' for git-based staleness)");
+  lines.push("", "Staleness: UNKNOWN (run 'reponova check' for git-based staleness)");
   return { content: [{ type: "text" as const, text: lines.join("\n") }] };
 }

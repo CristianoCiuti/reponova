@@ -6,13 +6,13 @@ type Target = "opencode" | "cursor" | "claude" | "vscode";
 
 // ─── Default config YAML (written into editor directory) ─────────────────────
 
-const DEFAULT_CONFIG_YAML = `# graphify-mcp-tools.yml
-# Configuration for graphify-mcp-tools
+const DEFAULT_CONFIG_YAML = `# reponova.yml
+# Configuration for reponova
 # All paths are relative to this file's location.
 # Since this file is inside the editor directory, use ../ to reference project root.
 
 # Where to write build output
-output: ../graphify-out
+output: ../reponova-out
 
 # Repositories to include in the build
 repos:
@@ -64,7 +64,7 @@ outlines:
  * Write config file into the editor directory if it doesn't already exist.
  */
 function writeConfigFile(editorDir: string): string | null {
-  const configPath = join(editorDir, "graphify-mcp-tools.yml");
+  const configPath = join(editorDir, "reponova.yml");
   if (existsSync(configPath)) return null; // Don't overwrite existing
   if (!existsSync(editorDir)) mkdirSync(editorDir, { recursive: true });
   writeFileSync(configPath, DEFAULT_CONFIG_YAML);
@@ -74,11 +74,11 @@ function writeConfigFile(editorDir: string): string | null {
 // ─── Skill content ───────────────────────────────────────────────────────────
 
 const SKILL_MD = `---
-name: graphify-mcp-tools
+name: reponova
 description: MCP server for querying the project knowledge graph. Use when searching symbols, analyzing blast radius, tracing paths between nodes, or understanding architecture.
 ---
 
-# graphify-mcp-tools
+# reponova
 
 MCP server for querying the project's knowledge graph.
 
@@ -168,21 +168,21 @@ Use when: checking if the graph is available and up to date.
 3. **Use graph_path to trace connections** — faster and more accurate than manually following imports.
 4. **Use graph_hotspots to find god nodes** — high-degree nodes are architectural risks.
 5. **Use context_depth for broad exploration** — set context_depth=2 on graph_search to see the neighborhood around results.
-6. **Read GRAPH_REPORT.md** at \`graphify-out/GRAPH_REPORT.md\` for architecture overview, god nodes, and community structure.
-7. **Keep the graph current** — after code changes, run \`graphify-mcp-tools build\` to rebuild.
+6. **Read report.md** at \`reponova-out/report.md\` for architecture overview, god nodes, and community structure.
+7. **Keep the graph current** — after code changes, run \`reponova build\` to rebuild.
 `;
 
 // ─── Context message injected by hooks ───────────────────────────────────────
 
 const HOOK_CONTEXT =
-  "graphify-mcp-tools: Knowledge graph MCP server is available. " +
+  "reponova: Knowledge graph MCP server is available. " +
   "Use graph_search, graph_impact, graph_path, graph_explain tools " +
   "instead of manually grep/find-ing the codebase. " +
-  "Read graphify-out/GRAPH_REPORT.md for architecture overview.";
+  "Read reponova-out/report.md for architecture overview.";
 
 // ─── OpenCode plugin JS ──────────────────────────────────────────────────────
 
-const OPENCODE_PLUGIN_JS = `// graphify-mcp-tools OpenCode plugin
+const OPENCODE_PLUGIN_JS = `// reponova OpenCode plugin
 // Reminds the agent that MCP graph tools are available before bash searches.
 import { existsSync } from "fs";
 import { join } from "path";
@@ -193,11 +193,11 @@ export const GraphifyMcpPlugin = async ({ directory }) => {
   return {
     "tool.execute.before": async (input, output) => {
       if (reminded) return;
-      if (!existsSync(join(directory, "graphify-out", "graph.json"))) return;
+      if (!existsSync(join(directory, "reponova-out", "graph.json"))) return;
 
       if (input.tool === "bash") {
         output.args.command =
-          'echo "[graphify-mcp-tools] Knowledge graph MCP server available. Use graph_search/graph_impact/graph_path tools instead of manual grep." && ' +
+          'echo "[reponova] Knowledge graph MCP server available. Use graph_search/graph_impact/graph_path tools instead of manual grep." && ' +
           output.args.command;
         reminded = true;
       }
@@ -209,7 +209,7 @@ export const GraphifyMcpPlugin = async ({ directory }) => {
 // ─── Cursor rule ─────────────────────────────────────────────────────────────
 
 const CURSOR_RULE = `---
-description: graphify-mcp-tools knowledge graph MCP server
+description: reponova knowledge graph MCP server
 alwaysApply: true
 ---
 
@@ -217,9 +217,9 @@ ${SKILL_MD}`;
 
 // ─── VS Code copilot instructions ────────────────────────────────────────────
 
-const VSCODE_SECTION_MARKER = "## graphify-mcp-tools";
+const VSCODE_SECTION_MARKER = "## reponova";
 
-const VSCODE_SECTION = `## graphify-mcp-tools
+const VSCODE_SECTION = `## reponova
 
 ${SKILL_MD}`;
 
@@ -227,7 +227,7 @@ ${SKILL_MD}`;
 
 export const installCommand: CommandModule = {
   command: "install",
-  describe: "Install graphify-mcp-tools MCP server and hooks for your editor",
+  describe: "Install reponova MCP server and hooks for your editor",
   builder: (yargs) =>
     yargs
       .option("target", {
@@ -238,11 +238,11 @@ export const installCommand: CommandModule = {
       })
       .option("graph", {
         type: "string",
-        describe: "Path to graphify-out/ directory (default: ./graphify-out)",
+        describe: "Path to reponova-out/ directory (default: ./reponova-out)",
       }),
   handler: async (argv) => {
     const target = argv.target as Target;
-    const graphDir = (argv.graph as string) ?? "./graphify-out";
+    const graphDir = (argv.graph as string) ?? "./reponova-out";
 
     switch (target) {
       case "opencode":
@@ -278,11 +278,11 @@ function installOpenCode(graphDir: string): void {
   const mcp = config.mcp as Record<string, unknown>;
   mcp["graphify"] = {
     type: "local",
-    command: ["npx", "-y", "graphify-mcp-tools", "mcp", "--graph", graphDir],
+    command: ["npx", "-y", "reponova", "mcp", "--graph", graphDir],
   };
 
   // 2. Register plugin
-  const pluginRelPath = ".opencode/plugins/graphify-mcp-tools.js";
+  const pluginRelPath = ".opencode/plugins/reponova.js";
   const plugins = (config.plugin as string[] | undefined) ?? [];
   if (!plugins.includes(pluginRelPath)) {
     plugins.push(pluginRelPath);
@@ -294,12 +294,12 @@ function installOpenCode(graphDir: string): void {
 
   // 3. Write plugin file
   const pluginDir = resolve(projectDir, ".opencode", "plugins");
-  const pluginPath = join(pluginDir, "graphify-mcp-tools.js");
+  const pluginPath = join(pluginDir, "reponova.js");
   if (!existsSync(pluginDir)) mkdirSync(pluginDir, { recursive: true });
   writeFileSync(pluginPath, OPENCODE_PLUGIN_JS);
 
   // 4. Write skill file
-  const skillDir = resolve(projectDir, ".opencode", "skills", "graphify-mcp-tools");
+  const skillDir = resolve(projectDir, ".opencode", "skills", "reponova");
   const skillPath = join(skillDir, "SKILL.md");
   if (!existsSync(skillDir)) mkdirSync(skillDir, { recursive: true });
   writeFileSync(skillPath, SKILL_MD);
@@ -335,7 +335,7 @@ function installCursor(graphDir: string): void {
   const servers = mcpConfig.mcpServers as Record<string, unknown>;
   servers["graphify"] = {
     command: "npx",
-    args: ["-y", "graphify-mcp-tools", "mcp", "--graph", graphDir],
+    args: ["-y", "reponova", "mcp", "--graph", graphDir],
   };
 
   if (!existsSync(mcpDir)) mkdirSync(mcpDir, { recursive: true });
@@ -343,7 +343,7 @@ function installCursor(graphDir: string): void {
 
   // 2. Write cursor rule
   const rulesDir = resolve(projectDir, ".cursor", "rules");
-  const rulePath = join(rulesDir, "graphify-mcp-tools.mdc");
+  const rulePath = join(rulesDir, "reponova.mdc");
 
   if (!existsSync(rulesDir)) mkdirSync(rulesDir, { recursive: true });
   writeFileSync(rulePath, CURSOR_RULE);
@@ -375,9 +375,9 @@ function installClaude(graphDir: string): void {
   const hooks = (settings.hooks as Record<string, unknown[]> | undefined) ?? {};
   const preToolUse = (hooks.PreToolUse as Array<Record<string, unknown>> | undefined) ?? [];
 
-  // Remove existing graphify-mcp-tools hooks
+  // Remove existing reponova hooks
   const filtered = preToolUse.filter(
-    (h) => !JSON.stringify(h).includes("graphify-mcp-tools"),
+    (h) => !JSON.stringify(h).includes("reponova"),
   );
 
   // Add new hook
@@ -387,7 +387,7 @@ function installClaude(graphDir: string): void {
       {
         type: "command",
         command:
-          '[ -f graphify-out/graph.json ] && echo \'{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"' +
+          '[ -f reponova-out/graph.json ] && echo \'{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"' +
           HOOK_CONTEXT +
           '"}}\' || true',
       },
@@ -401,7 +401,7 @@ function installClaude(graphDir: string): void {
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
 
   // 2. Write skill file
-  const skillDir = resolve(projectDir, ".claude", "skills", "graphify-mcp-tools");
+  const skillDir = resolve(projectDir, ".claude", "skills", "reponova");
   const skillPath = join(skillDir, "SKILL.md");
   if (!existsSync(skillDir)) mkdirSync(skillDir, { recursive: true });
   writeFileSync(skillPath, SKILL_MD);
@@ -415,7 +415,7 @@ function installClaude(graphDir: string): void {
   if (configWritten) console.log(`\u2713 Config file created: ${configWritten}`);
   console.log("");
   console.log("  To also register the MCP server, run:");
-  console.log(`  claude mcp add graphify -- npx -y graphify-mcp-tools mcp --graph ${graphDir}`);
+  console.log(`  claude mcp add graphify -- npx -y reponova mcp --graph ${graphDir}`);
 }
 
 // ─── VS Code ─────────────────────────────────────────────────────────────────
@@ -437,7 +437,7 @@ function installVSCode(graphDir: string): void {
   servers["graphify"] = {
     type: "stdio",
     command: "npx",
-    args: ["-y", "graphify-mcp-tools", "mcp", "--graph", graphDir],
+    args: ["-y", "reponova", "mcp", "--graph", graphDir],
   };
 
   if (!existsSync(vscodeDir)) mkdirSync(vscodeDir, { recursive: true });

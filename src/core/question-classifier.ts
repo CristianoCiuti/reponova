@@ -2,8 +2,12 @@
  * Question classifier — routes natural language questions to the appropriate graph tool strategy.
  *
  * Zero-LLM at query time: uses regex + keyword matching.
- * Supports both English and Italian query patterns.
+ * Extensible multi-language support via classifiers/ modules.
+ *
+ * Built-in languages: English, Italian.
+ * To add a new language: create a LanguageRuleset in classifiers/ and register it.
  */
+import { detectLanguage, getAllRulesets, getLanguageRuleset } from "./classifiers/index.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -25,115 +29,63 @@ export interface ClassificationResult {
   confidence: number;
   /** The original query for fallback */
   original: string;
+  /** Detected language code */
+  language: string;
 }
 
-// ─── Pattern definitions ─────────────────────────────────────────────────────
-
-interface PatternRule {
-  strategy: QueryStrategy;
-  patterns: RegExp[];
-  entityExtractor: (match: RegExpMatchArray, query: string) => string[];
-}
-
-const RULES: PatternRule[] = [
-  // "what depends on X" / "cosa usa X" / "who calls X" / "downstream of X"
-  {
-    strategy: "impact_downstream",
-    patterns: [
-      /what\s+depends?\s+on\s+(.+)/i,
-      /who\s+(?:calls?|uses?|imports?)\s+(.+)/i,
-      /downstream\s+(?:of|from)\s+(.+)/i,
-      /cosa\s+(?:usa|dipende\s+da|chiama)\s+(.+)/i,
-      /chi\s+(?:usa|chiama|importa)\s+(.+)/i,
-      /impatt?o\s+(?:di|su)\s+(.+)/i,
-      /blast\s*radius\s+(?:of|for)\s+(.+)/i,
-    ],
-    entityExtractor: (match) => [cleanEntity(match[1] ?? "")],
-  },
-
-  // "what does X use" / "da cosa dipende X" / "upstream of X"
-  {
-    strategy: "impact_upstream",
-    patterns: [
-      /what\s+does?\s+(.+?)\s+(?:use|depend|import|call)/i,
-      /(?:da\s+cosa|di\s+cosa)\s+(?:dipende|ha\s+bisogno)\s+(.+)/i,
-      /dependencies?\s+(?:of|for)\s+(.+)/i,
-      /upstream\s+(?:of|from)\s+(.+)/i,
-      /cosa\s+importa\s+(.+)/i,
-    ],
-    entityExtractor: (match) => [cleanEntity(match[1] ?? "")],
-  },
-
-  // "how is X connected to Y" / "path from X to Y"
-  {
-    strategy: "path",
-    patterns: [
-      /(?:how\s+is|how\s+are)\s+(.+?)\s+connected\s+to\s+(.+)/i,
-      /path\s+(?:from|between)\s+(.+?)\s+(?:to|and)\s+(.+)/i,
-      /(?:come|qual)\s+[eè]\s+(?:il\s+)?(?:percorso|collegamento)\s+(?:tra|da)\s+(.+?)\s+(?:a|e)\s+(.+)/i,
-      /connection\s+between\s+(.+?)\s+and\s+(.+)/i,
-      /route\s+from\s+(.+?)\s+to\s+(.+)/i,
-    ],
-    entityExtractor: (match) => [cleanEntity(match[1] ?? ""), cleanEntity(match[2] ?? "")],
-  },
-
-  // "what is X" / "explain X" / "describe X" / "cos'è X"
-  {
-    strategy: "explain",
-    patterns: [
-      /(?:what\s+is|explain|describe|tell\s+me\s+about)\s+(.+)/i,
-      /(?:cos['']?\s*[eè]|spiega|descrivi|dimmi\s+(?:di|su))\s+(.+)/i,
-      /(?:detail|info|information)\s+(?:about|on|for)\s+(.+)/i,
-    ],
-    entityExtractor: (match) => [cleanEntity(match[1] ?? "")],
-  },
-
-  // Architecture / hotspots / overview
-  {
-    strategy: "architecture",
-    patterns: [
-      /(?:architecture|overview|main\s+components?|structure|god\s*nodes?|hotspots?)/i,
-      /(?:architettura|panoramica|componenti\s+principali|struttura)/i,
-      /(?:most\s+(?:important|connected|critical))\s*(?:nodes?|symbols?|modules?)?/i,
-      /(?:show|give)\s+(?:me\s+)?(?:the\s+)?(?:architecture|overview|structure)/i,
-    ],
-    entityExtractor: (_match, query) => [query],
-  },
-
-  // "similar to X" / "like X" / "related to X"
-  {
-    strategy: "similar",
-    patterns: [
-      /(?:similar|like|related)\s+to\s+(.+)/i,
-      /(?:simile|come|correlato)\s+(?:a|con)\s+(.+)/i,
-      /find\s+(?:something\s+)?(?:similar|like)\s+(.+)/i,
-    ],
-    entityExtractor: (match) => [cleanEntity(match[1] ?? "")],
-  },
-
-  // Explicit search: "find X" / "search X" / "cerca X"
-  {
-    strategy: "search",
-    patterns: [
-      /(?:find|search|look\s*(?:for|up)|locate|where\s+is)\s+(.+)/i,
-      /(?:cerca|trova|dove\s+[eè]|cerco)\s+(.+)/i,
-    ],
-    entityExtractor: (match) => [cleanEntity(match[1] ?? "")],
-  },
-];
+// Re-export for consumers who want to register new languages
+export { registerLanguage, getRegisteredLanguages } from "./classifiers/index.js";
+export type { LanguageRuleset, PatternRule } from "./classifiers/types.js";
 
 // ─── Classifier ──────────────────────────────────────────────────────────────
 
 /**
  * Classify a natural language question into a graph query strategy.
+ *
+ * @param query - The natural language question
+ * @param language - Optional ISO 639-1 language code to skip detection (e.g., "en", "it")
  */
-export function classifyQuestion(query: string): ClassificationResult {
+export function classifyQuestion(query: string, language?: string): ClassificationResult {
   const trimmed = query.trim();
   if (!trimmed) {
-    return { strategy: "context", entities: [], confidence: 0, original: query };
+    return { strategy: "context", entities: [], confidence: 0, original: query, language: language ?? "en" };
   }
 
-  for (const rule of RULES) {
+  // Detect or use provided language
+  const detectedLang = language ?? detectLanguage(trimmed);
+
+  // Strategy: try the detected language first, then fall back to all others
+  const primaryRuleset = getLanguageRuleset(detectedLang);
+  if (primaryRuleset) {
+    const result = tryRuleset(primaryRuleset, trimmed, query);
+    if (result) return result;
+  }
+
+  // Fall back: try all other registered languages
+  for (const ruleset of getAllRulesets()) {
+    if (ruleset.language === detectedLang) continue;
+    const result = tryRuleset(ruleset, trimmed, query);
+    if (result) return result;
+  }
+
+  // No pattern matched — fallback to graph_context
+  return {
+    strategy: "context",
+    entities: [trimmed],
+    confidence: 0.3,
+    original: query,
+    language: detectedLang,
+  };
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function tryRuleset(
+  ruleset: import("./classifiers/types.js").LanguageRuleset,
+  trimmed: string,
+  original: string,
+): ClassificationResult | null {
+  for (const rule of ruleset.rules) {
     for (const pattern of rule.patterns) {
       const match = trimmed.match(pattern);
       if (match) {
@@ -142,27 +94,11 @@ export function classifyQuestion(query: string): ClassificationResult {
           strategy: rule.strategy,
           entities: entities.filter(e => e.length > 0),
           confidence: 0.85,
-          original: query,
+          original,
+          language: ruleset.language,
         };
       }
     }
   }
-
-  // Fallback: use graph_context for anything unclassified
-  return {
-    strategy: "context",
-    entities: [trimmed],
-    confidence: 0.3,
-    original: query,
-  };
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function cleanEntity(entity: string): string {
-  return entity
-    .replace(/^["'`]+|["'`]+$/g, "") // strip quotes
-    .replace(/\s*\?$/, "") // strip trailing question mark
-    .replace(/^\s*the\s+/i, "") // strip leading "the"
-    .trim();
+  return null;
 }

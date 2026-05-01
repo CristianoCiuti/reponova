@@ -62,7 +62,7 @@ export async function handleSimilar(_db: unknown, args: Record<string, unknown>)
     return {
       content: [{
         type: "text" as const,
-        text: "Semantic search not available. Run `graphify-mcp-tools build` with embeddings enabled to generate vectors.",
+        text: "Semantic search not available. Run `reponova build` with embeddings enabled to generate vectors.",
       }],
       isError: true,
     };

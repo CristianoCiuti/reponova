@@ -219,14 +219,18 @@ function loadCommunitySummaries(outputDir: string): Map<string, string> {
     for (const s of summaries) {
       // Extract a meaningful name from the summary.
       // Algorithmic format: "NNN nodes cluster. Centered around X, Y, Z in path. Spans repos."
-      // LLM format: Free-form descriptive text.
-      // Strategy: prefer "Centered around..." clause, else first sentence.
+      // LLM format: "Community N is a cluster of... focused on..."
+      // Strategy: prefer "Centered around..." clause, else strip redundant "Community N is..." prefix and use first sentence.
       const centeredMatch = s.summary.match(/Centered around ([^.]+)/);
       let name: string;
       if (centeredMatch) {
         name = centeredMatch[1]!.trim();
       } else {
-        name = s.summary.split(/[.!?\n]/)[0]?.trim() ?? "";
+        // Strip "Community N is/are/,/—" prefix (the report header already shows the ID)
+        let cleaned = s.summary.replace(/^Community\s+\d+[\s,—-]+(?:is\s+)?/i, "");
+        // Capitalize first letter after stripping
+        cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+        name = cleaned.split(/[.!?\n]/)[0]?.trim() ?? "";
       }
       if (name.length > 0) {
         map.set(String(s.id), name.length > 80 ? name.slice(0, 77) + "..." : name);

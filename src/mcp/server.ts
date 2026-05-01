@@ -29,13 +29,13 @@ export interface McpServerOptions {
 export async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
   const graphDir = resolveGraphPath(options.graphPath);
   if (!graphDir) {
-    log.error("Could not find graphify-out directory. Use --graph flag, set GRAPHIFY_GRAPH_PATH, or run from a directory containing graphify-out/.");
+    log.error("Could not find reponova-out directory. Use --graph flag, set REPONOVA_GRAPH_PATH, or run from a directory containing reponova-out/.");
     process.exit(1);
   }
 
   const dbPath = resolveSearchDb(graphDir);
   if (!dbPath) {
-    log.error(`Search database not found in ${graphDir}. Run 'graphify-mcp-tools index' first.`);
+    log.error(`Search database not found in ${graphDir}. Run 'reponova index' first.`);
     process.exit(1);
   }
 
@@ -43,7 +43,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   const db = await openDatabase(dbPath, { readonly: true });
 
   // Initialize similarity search (best-effort, non-blocking)
-  const defaultEmbeddingsConfig = { enabled: true, model: "all-MiniLM-L6-v2", dimensions: 384, batch_size: 128, cache_dir: "~/.cache/graphify-mcp-tools/models" };
+  const defaultEmbeddingsConfig = { enabled: true, model: "all-MiniLM-L6-v2", dimensions: 384, batch_size: 128, cache_dir: "~/.cache/reponova/models" };
   initSimilaritySearch(graphDir, defaultEmbeddingsConfig).catch(() => {
     // Silently degrade — graph_similar will return appropriate error
   });
@@ -54,7 +54,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   });
 
   const server = new Server(
-    { name: "graphify-mcp-tools", version: "0.1.0" },
+    { name: "reponova", version: "0.1.0" },
     { capabilities: { tools: {}, resources: {} } },
   );
 
@@ -112,7 +112,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  log.info("graphify-mcp-tools MCP server running on stdio");
+  log.info("reponova MCP server running on stdio");
 
   process.on("SIGINT", async () => { await disposeSimilaritySearch(); await disposeContextBuilder(); db.close(); await server.close(); process.exit(0); });
   process.on("SIGTERM", async () => { await disposeSimilaritySearch(); await disposeContextBuilder(); db.close(); await server.close(); process.exit(0); });

@@ -8,6 +8,12 @@ import { writeFileSync } from "node:fs";
 import type Graph from "graphology";
 import type { CommunityResult } from "./community.js";
 
+/** Summary data for a community (from intelligence layer) */
+export interface CommunitySummaryInfo {
+  id: string;
+  summary: string;
+}
+
 export interface ExportHtmlOptions {
   /** The graphology graph with community attributes */
   graph: Graph;
@@ -17,6 +23,8 @@ export interface ExportHtmlOptions {
   outputPath: string;
   /** Min degree to include (optional filter) */
   minDegree?: number;
+  /** Community summaries from intelligence layer (optional) */
+  communitySummaries?: CommunitySummaryInfo[];
 }
 
 interface VisNode {
@@ -96,10 +104,18 @@ export function exportHtml(options: ExportHtmlOptions): void {
  * Export aggregated community graph as standalone HTML visualization.
  */
 export function exportCommunityHtml(options: ExportHtmlOptions): void {
-  const { graph, communities, outputPath } = options;
+  const { graph, communities, outputPath, communitySummaries } = options;
   const visNodes: VisNode[] = [];
   const visEdges: VisEdge[] = [];
   const edgeCounts = new Map<string, number>();
+
+  // Build summary lookup: community id → summary text
+  const summaryMap = new Map<string, string>();
+  if (communitySummaries) {
+    for (const s of communitySummaries) {
+      summaryMap.set(String(s.id), s.summary);
+    }
+  }
 
   for (const [communityId, members] of communities.communities.entries()) {
     const rankedMembers = members
@@ -118,19 +134,31 @@ export function exportCommunityHtml(options: ExportHtmlOptions): void {
       .map((member) => member.label);
     const repos = Array.from(new Set(rankedMembers.map((member) => member.repo).filter(Boolean) as string[])).sort();
 
+    // Use community summary if available, otherwise fall back to prominent members
+    const summaryText = summaryMap.get(String(communityId));
+    let displayLabel: string;
+    if (summaryText) {
+      // Truncate summary to ~60 chars for label
+      const shortSummary = summaryText.length > 60 ? summaryText.slice(0, 57) + "..." : summaryText;
+      displayLabel = `Community ${communityId}\n${shortSummary} (${members.length})`;
+    } else {
+      displayLabel = prominent.length > 0
+        ? `Community ${communityId}\n${prominent.join(" / ")} (${members.length})`
+        : `Community ${communityId}\n(${members.length})`;
+    }
+
     visNodes.push({
       id: String(communityId),
-      label: prominent.length > 0
-        ? `Community ${communityId}\n${prominent.join(" / ")} (${members.length})`
-        : `Community ${communityId}\n(${members.length})`,
+      label: displayLabel,
       color: COLORS[communityId % COLORS.length]!,
       size: Math.max(18, Math.min(70, 18 + Math.sqrt(members.length) * 8)),
       title: [
         `Community ${communityId}`,
+        summaryText ? `Summary: ${summaryText}` : "",
         `Members: ${members.length}`,
         `Repos: ${repos.length > 0 ? repos.join(", ") : "-"}`,
         `Key members: ${rankedMembers.slice(0, 5).map((member) => `${member.label} (${member.degree})`).join(", ") || "-"}`,
-      ].join("\n"),
+      ].filter(Boolean).join("\n"),
     });
   }
 

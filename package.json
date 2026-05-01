@@ -1,12 +1,12 @@
 {
-  "name": "graphify-mcp-tools",
+  "name": "reponova",
   "version": "0.1.17",
-  "description": "MCP server companion for Graphify: search, impact analysis, and code outlines from knowledge graphs",
+  "description": "Knowledge graph builder & MCP server for AI code assistants: search, impact analysis, semantic similarity, and architecture visualization",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "graphify-mcp-tools": "dist/cli/index.js"
+    "reponova": "dist/cli/index.js"
   },
   "files": [
     "dist",
@@ -47,7 +47,7 @@
     "node": ">=18"
   },
   "keywords": [
-    "graphify",
+    "reponova",
     "mcp",
     "knowledge-graph",
     "code-intelligence",

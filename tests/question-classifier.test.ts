@@ -139,16 +139,21 @@ describe("Question Classifier", () => {
     });
   });
 
-  describe("context (fallback)", () => {
-    it("falls back to context for unstructured queries", () => {
-      const r = classifyQuestion("how does config loading work in the system");
-      expect(r.strategy).toBe("context");
-      expect(r.confidence).toBeLessThan(0.5);
+  describe("language detection", () => {
+    it("detects English queries", () => {
+      const r = classifyQuestion("what depends on authenticate_user");
+      expect(r.language).toBe("en");
     });
 
-    it("falls back for vague queries", () => {
-      const r = classifyQuestion("tell me something interesting");
-      expect(r.strategy).toBe("context");
+    it("detects Italian queries", () => {
+      const r = classifyQuestion("cosa usa load_config");
+      expect(r.language).toBe("it");
+    });
+
+    it("accepts explicit language override", () => {
+      const r = classifyQuestion("cerca validate_schema", "it");
+      expect(r.language).toBe("it");
+      expect(r.strategy).toBe("search");
     });
 
     it("returns empty for blank query", () => {

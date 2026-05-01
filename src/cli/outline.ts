@@ -16,7 +16,7 @@ export const outlineCommand: CommandModule = {
   describe: "Pre-compute outlines for configured file patterns",
   builder: (yargs) =>
     yargs
-      .option("config", { type: "string", describe: "Path to graphify-mcp-tools.yml" })
+      .option("config", { type: "string", describe: "Path to reponova.yml" })
       .option("force", { type: "boolean", describe: "Regenerate all outlines", default: false }),
   handler: async (argv) => {
     const { config, configDir } = loadConfig(argv.config as string | undefined);

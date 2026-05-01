@@ -1,5 +1,5 @@
 /**
- * Shared types for graphify-mcp-tools
+ * Shared types for reponova
  */
 
 /** A node in the knowledge graph */
@@ -275,7 +275,7 @@ export const DEFAULT_EDGE_WEIGHTS: Record<string, number> = {
 
 /** Default config values */
 export const DEFAULT_CONFIG: Config = {
-  output: "graphify-out",
+  output: "reponova-out",
   repos: [],
   build: {
     html: true,
@@ -301,23 +301,23 @@ export const DEFAULT_CONFIG: Config = {
       model: "all-MiniLM-L6-v2",
       dimensions: 384,
       batch_size: 128,
-      cache_dir: "~/.cache/graphify-mcp-tools/models",
+      cache_dir: "~/.cache/reponova/models",
     },
     llm: {
       enabled: true,
       model: "qwen2.5-0.5b-instruct",
       quantization: "Q4_K_M",
       gpu: "auto",
-      context_size: 2048,
+      context_size: 512,
       threads: 0,
       download_on_first_use: true,
-      cache_dir: "~/.cache/graphify-mcp-tools/models",
+      cache_dir: "~/.cache/reponova/models",
     },
     summaries: {
       enabled: true,
       generate_node_descriptions: true,
       node_description_threshold: 0.8,
-      max_communities: 50,
+      max_communities: 0,
     },
   },
   outlines: {

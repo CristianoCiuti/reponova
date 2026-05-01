@@ -1,10 +1,10 @@
-# graphify-mcp-tools.yml
-# Configuration for graphify-mcp-tools
+# reponova.yml
+# Configuration for reponova
 # All paths are relative to this file's location.
 # When placed in an editor directory (e.g. .opencode/), use ../ to reference project root.
 
 # Where to write build output
-output: ../graphify-out
+output: ../reponova-out
 
 # Repositories to include in the build
 repos:

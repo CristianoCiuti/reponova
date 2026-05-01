@@ -1,49 +1,46 @@
-# graphify-mcp-tools
+# reponova
 
 > **⚠️ Alpha — Active Development**
 > This package is under active development. APIs, config format, and CLI may change between releases.
 > It's already usable, but expect rough edges. If you find a bug or something doesn't work as expected,
 > please [open an issue](https://github.com/CristianoCiuti/graphify-mcp-tools/issues) — it helps a lot.
 
-MCP server companion for [Graphify](https://github.com/safishamsi/graphify): exposes knowledge graphs as searchable, queryable tools for AI agents.
+Knowledge graph builder & MCP server for AI code assistants. Builds a searchable, queryable graph of your codebase — then exposes it to AI agents via MCP tools.
 
-## Why This Project?
+## What It Does
 
-Graphify already ships its own MCP server (`python -m graphify.serve`), but it has limitations:
-
-| | Graphify MCP (built-in) | graphify-mcp-tools |
-|---|---|---|
-| **Runtime** | Requires Python + graphify installed | Node.js only (no Python at runtime) |
-| **Search** | Keyword matching (split + score) | Indexed text search with type/repo filters |
-| **Impact analysis** | Not available | BFS blast radius (upstream + downstream) |
-| **Context expansion** | BFS/DFS from keywords | BFS/DFS from ranked search results |
-| **Shortest path** | Unweighted `nx.shortest_path` | Weighted Dijkstra with edge-type filters |
-| **Code outlines** | Not available | Tree-sitter signatures, decorators, docstrings |
-| **Hotspots / God nodes** | Separate tool, degree only | Degree, in/out degree, betweenness centrality |
-| **Community exploration** | Basic listing | Full community membership with degree ranking |
-| **Multi-repo** | Manual merge (no cross-repo edges) | Monorepo mode with cross-repo edge resolution |
+1. **Extracts** symbols (functions, classes, modules, docs, diagrams) from your codebase using tree-sitter WASM parsers
+2. **Builds** a knowledge graph with cross-file and cross-repo relationships
+3. **Detects** communities (Louvain) and generates embeddings (TF-IDF or ONNX)
+4. **Serves** the graph over MCP — AI agents can search, trace impact, find paths, and explore architecture
 
 ```
-Graphify (Python)                    graphify-mcp-tools (Node.js)
+Your Codebase                        reponova
 ┌──────────────────┐                ┌───────────────────────────────────┐
-│ tree-sitter AST  │                │ MCP Server (stdio)                │
-│ semantic extract │  graph.json    │ ├─ graph_search (+BFS/DFS expand) │
-│ community detect │ ────────────►  │ ├─ graph_impact (blast radius)    │
-│ merge-graphs     │                │ ├─ graph_path (weighted Dijkstra) │
-│ HTML/report/wiki │                │ ├─ graph_explain (node detail)    │
-└──────────────────┘                │ ├─ graph_community (membership)   │
+│ Python / TS / JS │                │ MCP Server (stdio)                │
+│ Markdown / Docs  │  reponova      │ ├─ graph_search (+BFS/DFS expand) │
+│ Diagrams / SVG   │  build         │ ├─ graph_impact (blast radius)    │
+│                  │ ────────────►  │ ├─ graph_path (weighted Dijkstra) │
+│ Multi-repo       │                │ ├─ graph_explain (node detail)    │
+└──────────────────┘                │ ├─ graph_similar (semantic)       │
+                                    │ ├─ graph_context (smart context)  │
+                                    │ ├─ graph_ask (NL query)           │
+                                    │ ├─ graph_community (membership)   │
                                     │ ├─ graph_hotspots (god nodes)     │
                                     │ ├─ graph_outline (tree-sitter)    │
+                                    │ ├─ graph_docs (doc search)        │
                                     │ └─ graph_status                   │
                                     └───────────────────────────────────┘
 ```
 
+Zero external runtime dependencies — no Python, no Docker, no database servers. Everything runs locally in Node.js.
+
 ## Install
 
 ```bash
-npm install -g graphify-mcp-tools
+npm install -g reponova
 # or run directly
-npx graphify-mcp-tools
+npx reponova
 ```
 
 Requires Node.js >= 18.
@@ -52,26 +49,17 @@ Requires Node.js >= 18.
 
 1. **Install into your editor** (registers MCP server, hook, skill, and config):
    ```bash
-   graphify-mcp-tools install --target opencode   # or: cursor, claude, vscode
+   reponova install --target opencode   # or: cursor, claude, vscode
    ```
 
-2. **Generate a graph** with [Graphify](https://github.com/safishamsi/graphify):
-
-   From an AI assistant (Claude Code, OpenCode, Cursor, etc.):
-   ```
-   /graphify .
-   ```
-
-   Or via the build command (requires `pip install graphifyy`):
+2. **Build the knowledge graph**:
    ```bash
-   graphify-mcp-tools build
+   reponova build
    ```
 
 3. The MCP server starts automatically with your editor. Use the graph tools directly from the AI assistant.
 
 ## MCP Tools
-
-These tools are exposed to the AI agent via the MCP protocol:
 
 | Tool | Description |
 |------|-------------|
@@ -79,9 +67,13 @@ These tools are exposed to the AI agent via the MCP protocol:
 | `graph_impact` | BFS blast radius — find all upstream/downstream dependents of a symbol. |
 | `graph_path` | Weighted shortest path (Dijkstra) between two symbols. Supports edge-type filters. |
 | `graph_explain` | Full detail on a node: all edges, community membership, centrality metrics. |
+| `graph_similar` | Semantic similarity search using TF-IDF or ONNX embeddings. |
+| `graph_context` | Smart context builder with token budget — combines search, vectors, and graph expansion. |
+| `graph_ask` | Natural language query — classifies intent and routes to the right tool. |
 | `graph_community` | List all nodes belonging to a specific community, ranked by degree. |
 | `graph_hotspots` | Most connected nodes (god nodes / architectural bottlenecks). Supports multiple metrics. |
 | `graph_outline` | Tree-sitter code outline for any file: functions, classes, imports with signatures. |
+| `graph_docs` | Search documentation nodes (markdown, text, rst). |
 | `graph_status` | Graph metadata: node/edge counts, repos included, build timestamp. |
 
 ## CLI Reference
@@ -89,138 +81,130 @@ These tools are exposed to the AI agent via the MCP protocol:
 ### `install` — Set up editor integration
 
 ```bash
-graphify-mcp-tools install --target <editor>
+reponova install --target <editor>
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--target` | **Required.** Editor to configure: `opencode`, `cursor`, `claude`, `vscode` |
-| `--graph` | Path to `graphify-out/` directory (default: `./graphify-out`) |
+| `--graph` | Path to `reponova-out/` directory (default: `./reponova-out`) |
 
 What it does:
 1. Registers the MCP server in the editor's config
 2. Installs a hook/rule that reminds the AI agent to use graph tools
 3. Installs a skill file that teaches the AI agent how to use each tool
-4. Writes `graphify-mcp-tools.yml` config inside the editor directory
+4. Writes `reponova.yml` config inside the editor directory
 
 | Target | MCP Config | Hook/Rule | Skill | Config |
 |--------|-----------|-----------|-------|--------|
-| OpenCode | `.opencode/opencode.json` | `.opencode/plugins/graphify-mcp-tools.js` | `.opencode/skills/graphify-mcp-tools/SKILL.md` | `.opencode/graphify-mcp-tools.yml` |
-| Cursor | `.cursor/mcp.json` | `.cursor/rules/graphify-mcp-tools.mdc` | *(embedded in rule)* | `.cursor/graphify-mcp-tools.yml` |
-| Claude | `claude mcp add` (manual) | `.claude/settings.json` | `.claude/skills/graphify-mcp-tools/SKILL.md` | `.claude/graphify-mcp-tools.yml` |
-| VS Code | `.vscode/mcp.json` | `.github/copilot-instructions.md` | *(embedded in instructions)* | `.vscode/graphify-mcp-tools.yml` |
+| OpenCode | `.opencode/opencode.json` | `.opencode/plugins/reponova.js` | `.opencode/skills/reponova/SKILL.md` | `.opencode/reponova.yml` |
+| Cursor | `.cursor/mcp.json` | `.cursor/rules/reponova.mdc` | *(embedded in rule)* | `.cursor/reponova.yml` |
+| Claude | `claude mcp add` (manual) | `.claude/settings.json` | `.claude/skills/reponova/SKILL.md` | `.claude/reponova.yml` |
+| VS Code | `.vscode/mcp.json` | `.github/copilot-instructions.md` | *(embedded in instructions)* | `.vscode/reponova.yml` |
 
 ### `build` — Build the knowledge graph
 
 ```bash
-graphify-mcp-tools build [--config <path>] [--force]
+reponova build [--config <path>] [--force]
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--config` | Path to `graphify-mcp-tools.yml` (default: auto-detect from editor directories) |
-| `--force` | Clean rebuild: deletes output directory, clears per-repo graphify caches, then rebuilds from scratch |
-
-Requires graphify installed (`pip install graphifyy`). The MCP server does **not** require Python — only `build` does.
+| `--config` | Path to `reponova.yml` (default: auto-detect from editor directories) |
+| `--force` | Clean rebuild: deletes output directory and rebuilds from scratch |
 
 The build pipeline:
-1. For each repo: runs graphify's Python API (`detect` → `extract` → `build` → `cluster` → `to_json`) or `graphify update` for incremental rebuilds
-2. In **monorepo** mode (default): symlinks all repos into a single workspace so graphify resolves cross-repo imports in one batch
-3. In **separate** mode: builds each repo independently, then merges via `graphify merge-graphs`
-4. Normalizes file paths, tags nodes with repo names
-5. Generates `GRAPH_REPORT.md` (architecture overview, god nodes, communities)
-6. Generates `graph.html` and `graph_communities.html` interactive visualizations (if `html: true`)
-7. Generates the search index (`graph_search.db`)
-8. Generates code outlines (if `outlines.enabled: true`)
+1. Detects source files, documentation, and diagrams
+2. Extracts symbols and relationships using tree-sitter WASM parsers
+3. Builds the knowledge graph with cross-file and cross-repo edges
+4. Detects communities (Louvain algorithm)
+5. Generates embeddings (TF-IDF by default, or ONNX MiniLM)
+6. Generates community summaries and node descriptions (algorithmic or LLM-enhanced)
+7. Generates `graph.html` and `graph_communities.html` interactive visualizations
+8. Generates the search index (`graph_search.db`)
+9. Generates code outlines and `report.md`
 
 ### `mcp` — Start the MCP server
 
 ```bash
-graphify-mcp-tools mcp [--graph <path>]
+reponova mcp [--graph <path>]
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--graph` | Path to `graphify-out/` directory (default: auto-detect) |
+| `--graph` | Path to `reponova-out/` directory (default: auto-detect) |
 
-Starts the MCP server over stdio. Normally launched automatically by the editor — you don't need to run this manually.
+Starts the MCP server over stdio. Normally launched automatically by the editor.
 
-### `index` — Rebuild the search index
-
-```bash
-graphify-mcp-tools index [--graph <path>]
-```
-
-Regenerates `graph_search.db` from an existing `graph.json`. Useful if you modified the graph externally.
-
-### `outline` — Generate code outlines
+### `models` — Manage local models
 
 ```bash
-graphify-mcp-tools outline [--config <path>] [--graph <path>]
+reponova models list              # Show downloaded models
+reponova models download          # Download embedding/LLM models
+reponova models remove <name>     # Remove a downloaded model
 ```
-
-Pre-computes tree-sitter outlines for files matching the configured patterns. Results are cached and served by `graph_outline`.
 
 ### `check` — Verify installation
 
 ```bash
-graphify-mcp-tools check [--graph <path>]
+reponova check [--graph <path>]
 ```
 
-Checks if graphify is installed, verifies the graph exists, and reports basic stats.
+Verifies the graph exists and reports basic stats.
 
 ## Configuration
 
-The `install` command writes `graphify-mcp-tools.yml` into the editor directory. All paths in the config are **relative to the config file's location**.
-
-Since the config lives inside the editor directory (e.g. `.opencode/`), use `../` to reference the project root.
+The `install` command writes `reponova.yml` into the editor directory. All paths are **relative to the config file's location**.
 
 The config is auto-detected from these locations (in order):
 1. Explicit `--config` argument
-2. `graphify-mcp-tools.yml` in the project root
-3. `.opencode/graphify-mcp-tools.yml`, `.cursor/graphify-mcp-tools.yml`, `.claude/graphify-mcp-tools.yml`, `.vscode/graphify-mcp-tools.yml`
+2. `reponova.yml` in the project root
+3. `.opencode/reponova.yml`, `.cursor/reponova.yml`, `.claude/reponova.yml`, `.vscode/reponova.yml`
 
 ### Full config reference
 
 ```yaml
-# Where to write build output (graph.json, graph_search.db, GRAPH_REPORT.md, graph.html)
-output: ../graphify-out
+# Where to write build output
+output: ../reponova-out
 
 # Repositories to include in the build
 repos:
-  - name: api-service        # label used for repo tagging
-    path: ../services/api     # path to the repo root (relative to this file)
+  - name: api-service
+    path: ../services/api
   - name: core-lib
     path: ../services/core
 
 # Build options
 build:
-  mode: monorepo                  # "monorepo" (default) or "separate"
-                                  #   monorepo: symlinks all repos into one workspace,
-                                  #     single graphify build — resolves cross-repo imports
-                                  #   separate: builds each repo independently, then merges
-                                  #     with graphify merge-graphs (no cross-repo edges)
-  exclude:                        # directory names to skip during file detection
-    - "dist_package"              #   these are added to graphify's _SKIP_DIRS set
-    - ".tox"                      #   (in addition to built-in: venv/, node_modules/, etc.)
-  graphify_args: []               # extra CLI arguments passed to graphify (merge-graphs, update)
-  html: true                      # generate graph.html and graph_communities.html after build
-  # html_min_degree: 3            # if set, only nodes with degree >= this value are included
-                                  #   in the HTML visualization (omit for full graph)
+  mode: monorepo                  # "monorepo" or "separate"
+  exclude: []                     # directory names to skip (e.g. dist_package, .tox)
+  html: true                      # generate interactive HTML visualizations
 
-# Outline generation options
+  # Embeddings: vector representations for semantic search
+  embeddings:
+    enabled: true
+    method: tfidf                 # "tfidf" (fast, default) or "onnx" (MiniLM, more accurate)
+
+  # Summaries: community summaries and node descriptions
+  summaries:
+    enabled: true
+    max_communities: 0            # 0 = no limit
+
+  # LLM: local language model for enhanced summaries (optional)
+  llm:
+    enabled: false                # set true to use Qwen 0.5B for richer summaries
+    model: qwen2.5-0.5b-instruct
+    gpu: auto                     # "auto", "cpu", or "cuda"/"vulkan"/"metal"
+
+# Outline generation
 outlines:
-  enabled: true                   # generate tree-sitter code outlines during build
-  language: python                # target language for tree-sitter parsing
-  paths:                          # glob patterns for files to outline (relative to repo root)
+  enabled: true
+  language: python
+  paths:
     - "src/**/*.py"
-  exclude:                        # glob patterns to skip
+  exclude:
     - "**/__pycache__/**"
     - "**/test_*.py"
-    - "**/.git/**"
-
-# MCP server options
-server: {}                        # reserved for future configuration
 ```
 
 ## Programmatic API
@@ -235,34 +219,16 @@ import {
   analyzeImpact,
   findShortestPath,
   getNodeDetail,
-} from "graphify-mcp-tools";
+} from "reponova";
 
-// Load graph and create in-memory database
-const graphData = loadGraphData("./graphify-out/graph.json");
+const graphData = loadGraphData("./reponova-out/graph.json");
 const db = await openDatabase(":memory:");
 initializeSchema(db);
 populateDatabase(db, graphData);
 
-// Search
 const results = searchNodes(db, "authentication", { top_k: 5, type: "function" });
-
-// Impact analysis
 const impact = analyzeImpact(db, "Function:authenticate_user", { max_depth: 3 });
-
-// Shortest path
-const path = findShortestPath(db, "Module:auth", "Module:api");
-
-// Node detail
-const detail = getNodeDetail(db, "Class:UserService");
 ```
-
-## How It Works
-
-1. **Loads** Graphify's `graph.json` into an in-memory SQLite database (via sql.js WASM)
-2. **Indexes** nodes with label/type/repo/community fields for fast text search
-3. **Serves** queries over MCP stdio protocol — compatible with any MCP client
-4. **Computes** graph algorithms (BFS, DFS, Dijkstra) on-demand from the edge table
-5. **Outlines** source files using tree-sitter WASM parsers (with regex fallback)
 
 ## License
 

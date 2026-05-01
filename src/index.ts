@@ -1,5 +1,5 @@
 /**
- * graphify-mcp-tools
+ * reponova
  *
  * MCP server companion for Graphify: search, impact analysis,
  * and code outlines from knowledge graphs.
@@ -23,7 +23,7 @@ export { VectorStore } from "./core/vector-store.js";
 export { LlmEngine } from "./build/llm-engine.js";
 export { SummaryGenerator } from "./build/community-summaries.js";
 export { ContextBuilder } from "./core/context-builder.js";
-export { classifyQuestion } from "./core/question-classifier.js";
+export { classifyQuestion, registerLanguage, getRegisteredLanguages } from "./core/question-classifier.js";
 
 export type {
   GraphNode,
@@ -49,4 +49,6 @@ export type {
 export type {
   QueryStrategy,
   ClassificationResult,
+  LanguageRuleset,
+  PatternRule,
 } from "./core/question-classifier.js";

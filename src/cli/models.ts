@@ -12,7 +12,7 @@ import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { log } from "../shared/utils.js";
 
-const DEFAULT_CACHE_DIR = join(homedir(), ".cache", "graphify-mcp-tools", "models");
+const DEFAULT_CACHE_DIR = join(homedir(), ".cache", "reponova", "models");
 
 function resolveCacheDir(dir?: string): string {
   if (!dir) return DEFAULT_CACHE_DIR;
@@ -48,7 +48,7 @@ async function statusAction(cacheDir: string): Promise<void> {
 
   if (!existsSync(resolvedDir)) {
     console.log("  No models downloaded yet.");
-    console.log("  Run 'graphify-mcp-tools models download' or build a project to auto-download.");
+    console.log("  Run 'reponova models download' or build a project to auto-download.");
     return;
   }
 
@@ -165,7 +165,7 @@ export const modelsCommand: CommandModule = {
       })
       .option("cache-dir", {
         type: "string",
-        describe: "Model cache directory (default: ~/.cache/graphify-mcp-tools/models)",
+        describe: "Model cache directory (default: ~/.cache/reponova/models)",
       }),
   handler: async (argv) => {
     const action = argv.action as string;

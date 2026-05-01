@@ -9,7 +9,7 @@ import { installCommand } from "./install.js";
 import { modelsCommand } from "./models.js";
 
 yargs(hideBin(process.argv))
-  .scriptName("graphify-mcp-tools")
+  .scriptName("reponova")
   .usage("$0 <command> [options]")
   .command(mcpCommand)
   .command(buildCommand)
@@ -20,12 +20,12 @@ yargs(hideBin(process.argv))
   .command(modelsCommand)
   .option("graph", {
     type: "string",
-    describe: "Path to graphify-out/ directory",
+    describe: "Path to reponova-out/ directory",
     global: true,
   })
   .option("config", {
     type: "string",
-    describe: "Path to graphify-mcp-tools.yml",
+    describe: "Path to reponova.yml",
     global: true,
   })
   .demandCommand(1, "Please specify a command")

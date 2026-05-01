@@ -4,7 +4,7 @@ import { loadConfig } from "../src/core/config.js";
 describe("loadConfig", () => {
   it("returns default config when no file exists", () => {
     const { config } = loadConfig(undefined);
-    expect(config.output).toBe("graphify-out");
+    expect(config.output).toBe("reponova-out");
     expect(config.repos).toEqual([]);
     expect(config.build.mode).toBe("monorepo");
     expect(config.build.incremental).toBe(true);

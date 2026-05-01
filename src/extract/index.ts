@@ -16,7 +16,6 @@ import { getExtractorForFile, getSupportedExtensions } from "./languages/registr
 import { buildGraph, type BuiltGraph } from "./graph-builder.js";
 import { detectCommunities, type CommunityResult } from "./community.js";
 import { exportJson } from "./export-json.js";
-import { exportHtml, exportCommunityHtml } from "./export-html.js";
 import { log } from "../shared/utils.js";
 
 export { buildGraph, type BuiltGraph } from "./graph-builder.js";
@@ -269,13 +268,9 @@ export interface PipelineOptions {
   excludeDirs?: string[];
   /** Output path for graph.json */
   graphJsonPath: string;
-  /** Output path for graph.html (optional) */
-  htmlPath?: string;
-  /** Output path for graph_communities.html (optional) */
-  htmlCommunityPath?: string;
   /** Repo name for tagging nodes */
   repoName?: string;
-  /** Min degree for HTML filtering */
+  /** Min degree for HTML filtering (passed through for orchestrator use) */
   htmlMinDegree?: number;
   /** Output directory (for incremental cache storage) */
   outputDir?: string;
@@ -307,7 +302,7 @@ export interface PipelineResult {
  * and reuses them for unchanged files on subsequent builds.
  */
 export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
-  const { workspace, excludeDirs = [], graphJsonPath, htmlPath, htmlCommunityPath, repoName, htmlMinDegree, outputDir, incremental, docsConfig, imagesConfig } = options;
+  const { workspace, excludeDirs = [], graphJsonPath, repoName, outputDir, incremental, docsConfig, imagesConfig } = options;
 
   // 1. Detect files
   log.info("Detecting files...");
@@ -326,12 +321,6 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     const emptyGraph = buildGraph({ extractions: [] });
     const emptyCommunities = detectCommunities(emptyGraph.graph);
     exportJson({ graph: emptyGraph.graph, communities: emptyCommunities, outputPath: graphJsonPath });
-    if (htmlPath) {
-      exportHtml({ graph: emptyGraph.graph, communities: emptyCommunities, outputPath: htmlPath, minDegree: htmlMinDegree });
-    }
-    if (htmlCommunityPath) {
-      exportCommunityHtml({ graph: emptyGraph.graph, communities: emptyCommunities, outputPath: htmlCommunityPath });
-    }
     return {
       builtGraph: emptyGraph,
       communities: emptyCommunities,
@@ -394,25 +383,8 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   log.info("Exporting graph.json...");
   exportJson({ graph: builtGraph.graph, communities, outputPath: graphJsonPath });
 
-  // 6. Export HTML (optional)
-  if (htmlPath) {
-    log.info("Generating graph.html...");
-    exportHtml({
-      graph: builtGraph.graph,
-      communities,
-      outputPath: htmlPath,
-      minDegree: htmlMinDegree,
-    });
-  }
-
-  if (htmlCommunityPath) {
-    log.info("Generating graph_communities.html...");
-    exportCommunityHtml({
-      graph: builtGraph.graph,
-      communities,
-      outputPath: htmlCommunityPath,
-    });
-  }
+  // Note: HTML generation is done in the orchestrator AFTER the intelligence
+  // layer, so that community summaries can be injected as community names.
 
   return {
     builtGraph,

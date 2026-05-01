@@ -9,7 +9,7 @@ export const buildCommand: CommandModule = {
     yargs
       .option("config", {
         type: "string",
-        describe: "Path to graphify-mcp-tools.yml",
+        describe: "Path to reponova.yml",
       })
       .option("force", {
         type: "boolean",

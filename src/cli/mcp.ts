@@ -7,7 +7,7 @@ export const mcpCommand: CommandModule = {
   builder: (yargs) =>
     yargs.option("graph", {
       type: "string",
-      describe: "Path to graphify-out/ directory",
+      describe: "Path to reponova-out/ directory",
     }),
   handler: async (argv) => {
     await startMcpServer({

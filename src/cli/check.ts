@@ -9,7 +9,7 @@ export const checkCommand: CommandModule = {
   builder: (yargs) =>
     yargs.option("graph", {
       type: "string",
-      describe: "Path to graphify-out/ directory",
+      describe: "Path to reponova-out/ directory",
     }),
   handler: async (argv) => {
     const checks: Array<{ label: string; status: string; ok: boolean }> = [];
@@ -53,7 +53,7 @@ export const checkCommand: CommandModule = {
         checks.push({ label: "Outlines", status: "not pre-computed", ok: true });
       }
     } else {
-      checks.push({ label: "Graph", status: "graphify-out/ not found ✗", ok: false });
+      checks.push({ label: "Graph", status: "reponova-out/ not found ✗", ok: false });
     }
 
     // Check tree-sitter
@@ -75,7 +75,7 @@ export const checkCommand: CommandModule = {
     const allOk = checks.every((c) => c.ok);
     if (!allOk) {
       console.log("");
-      console.log("Run `graphify-mcp-tools build` to generate the knowledge graph.");
+      console.log("Run `reponova build` to generate the knowledge graph.");
       process.exit(1);
     }
   },
