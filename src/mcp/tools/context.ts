@@ -17,9 +17,10 @@ export async function initContextBuilder(
   db: Database,
   graphDir: string,
   embeddingsConfig?: EmbeddingsConfig,
+  cacheDir?: string,
 ): Promise<void> {
   contextBuilder = new ContextBuilder(db, graphDir);
-  await contextBuilder.initialize(embeddingsConfig);
+  await contextBuilder.initialize(embeddingsConfig, cacheDir);
 }
 
 /**

@@ -70,7 +70,7 @@ async function statusAction(cacheDir: string): Promise<void> {
 
   // Check LLM model
   const llmDir = join(resolvedDir, "llm");
-  console.log("├─ LLM Model (Qwen 2.5 3B Instruct Q4_K_M)");
+  console.log("├─ LLM Models");
   if (existsSync(llmDir)) {
     const size = getDirSize(llmDir);
     if (size > 0) {
@@ -96,13 +96,16 @@ async function downloadAction(cacheDir: string): Promise<void> {
 
   // Download embedding model
   const { EmbeddingEngine } = await import("../build/embeddings.js");
-  const embEngine = new EmbeddingEngine({
-    enabled: true,
-    model: "all-MiniLM-L6-v2",
-    dimensions: 384,
-    batch_size: 128,
-    cache_dir: resolvedDir,
-  });
+  const embEngine = new EmbeddingEngine(
+    {
+      enabled: true,
+      method: "onnx",
+      model: "all-MiniLM-L6-v2",
+      dimensions: 384,
+      batch_size: 128,
+    },
+    resolvedDir,
+  );
 
   log.info("Downloading embedding model (all-MiniLM-L6-v2)...");
   const embReady = await embEngine.initialize();
@@ -113,20 +116,18 @@ async function downloadAction(cacheDir: string): Promise<void> {
     log.warn("  ✗ Failed to download/initialize embedding model");
   }
 
-  // Download LLM model
+  // Download LLM model (default: Qwen 0.5B)
   const { LlmEngine } = await import("../build/llm-engine.js");
   const llmEngine = new LlmEngine({
-    enabled: true,
-    model: "qwen2.5-3b-instruct",
-    quantization: "Q4_K_M",
+    modelUri: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M",
+    cacheDir: resolvedDir,
     gpu: "auto",
-    context_size: 4096,
+    contextSize: 512,
     threads: 0,
-    download_on_first_use: true,
-    cache_dir: resolvedDir,
+    downloadOnFirstUse: true,
   });
 
-  log.info("Downloading LLM model (Qwen 2.5 3B Instruct Q4_K_M)...");
+  log.info("Downloading LLM model (Qwen 2.5 0.5B Instruct Q4_K_M)...");
   const llmReady = await llmEngine.initialize();
   if (llmReady) {
     log.info("  ✓ LLM model ready");

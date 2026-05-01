@@ -9,9 +9,24 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { log } from "../shared/utils.js";
-import type { LlmConfig } from "../shared/types.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
+
+/** Options for creating an LLM engine instance. */
+export interface LlmEngineOptions {
+  /** Model URI: HF URI (hf:user/repo:quant) or local file path */
+  modelUri: string;
+  /** Root cache directory for model downloads */
+  cacheDir: string;
+  /** GPU backend */
+  gpu: "auto" | "cpu" | "cuda" | "metal" | "vulkan";
+  /** Context window size in tokens */
+  contextSize: number;
+  /** CPU threads (0 = auto-detect) */
+  threads: number;
+  /** Auto-download model on first use */
+  downloadOnFirstUse: boolean;
+}
 
 export interface LlmCompletionOptions {
   systemPrompt: string;
@@ -54,13 +69,13 @@ export class LlmEngine {
   private context: LlamaContext | null = null;
   private sequence: LlamaSequence | null = null;
   private ChatSession: LlamaChatSessionConstructor | null = null;
-  private config: LlmConfig;
+  private options: LlmEngineOptions;
   private cacheDir: string;
   private available = false;
 
-  constructor(config: LlmConfig) {
-    this.config = config;
-    this.cacheDir = resolveCacheDir(config.cache_dir);
+  constructor(options: LlmEngineOptions) {
+    this.options = options;
+    this.cacheDir = resolveCacheDir(options.cacheDir);
   }
 
   /**
@@ -68,11 +83,6 @@ export class LlmEngine {
    * Returns false if node-llama-cpp is not available.
    */
   async initialize(): Promise<boolean> {
-    if (!this.config.enabled) {
-      log.info("LLM disabled in config");
-      return false;
-    }
-
     let nodeLlamaCpp: {
       getLlama(opts: unknown): Promise<LlamaInstance>;
       resolveModelFile(uri: string, dir: string, opts?: unknown): Promise<string>;
@@ -87,7 +97,7 @@ export class LlmEngine {
     }
 
     // Determine GPU setting
-    const gpuSetting = this.config.gpu === "auto" ? "auto" : this.config.gpu === "cpu" ? false : this.config.gpu;
+    const gpuSetting = this.options.gpu === "auto" ? "auto" : this.options.gpu === "cpu" ? false : this.options.gpu;
 
     try {
       // Initialize llama backend
@@ -96,12 +106,12 @@ export class LlmEngine {
         logLevel: "warn",
       });
 
-      // Download model if needed
+      // Ensure models directory exists
       const modelsDir = join(this.cacheDir, "llm");
       if (!existsSync(modelsDir)) mkdirSync(modelsDir, { recursive: true });
 
-      const modelUri = this.buildModelUri();
-      log.info(`Loading LLM model: ${this.config.model} (${this.config.quantization})...`);
+      const modelUri = this.options.modelUri;
+      log.info(`Loading LLM model: ${modelUri}...`);
 
       let modelPath: string;
       try {
@@ -109,7 +119,7 @@ export class LlmEngine {
           cli: false,
         });
       } catch {
-        if (!this.config.download_on_first_use) {
+        if (!this.options.downloadOnFirstUse) {
           log.warn("LLM model not found and download_on_first_use is false");
           await this.dispose();
           return false;
@@ -128,9 +138,9 @@ export class LlmEngine {
       });
 
       // Create context + single reusable sequence
-      const threads = this.config.threads > 0 ? { ideal: this.config.threads } : undefined;
+      const threads = this.options.threads > 0 ? { ideal: this.options.threads } : undefined;
       this.context = await this.model.createContext({
-        contextSize: this.config.context_size,
+        contextSize: this.options.contextSize,
         threads,
       });
       this.sequence = this.context.getSequence();
@@ -200,37 +210,55 @@ export class LlmEngine {
   get isAvailable(): boolean {
     return this.available;
   }
+}
 
-  /**
-   * Build the HuggingFace GGUF URI from config model name.
-   * Maps shorthand model names to HF repo paths.
-   */
-  private buildModelUri(): string {
-    const model = this.config.model.toLowerCase();
-    const quant = this.config.quantization;
+// ─── Model Resolution Utilities ──────────────────────────────────────────────
 
-    // Map common shorthand names to HF GGUF repos
-    if (model.includes("qwen2.5-0.5b")) {
-      return `hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:${quant}`;
-    }
-    if (model.includes("qwen2.5-1.5b")) {
-      return `hf:Qwen/Qwen2.5-1.5B-Instruct-GGUF:${quant}`;
-    }
-    if (model.includes("qwen2.5-3b")) {
-      return `hf:Qwen/Qwen2.5-3B-Instruct-GGUF:${quant}`;
-    }
-    if (model.includes("qwen2.5-7b")) {
-      return `hf:Qwen/Qwen2.5-7B-Instruct-GGUF:${quant}`;
-    }
-
-    // If it already looks like a HF URI, use as-is
-    if (model.startsWith("hf:")) {
-      return model;
-    }
-
-    // Default fallback: treat as qwen2.5 0.5B
-    return `hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:${quant}`;
+/**
+ * Try to resolve a model URI to its local absolute path without downloading.
+ * Returns null if node-llama-cpp is unavailable or model is not cached locally.
+ */
+export async function resolveModelPath(modelUri: string, cacheDir: string): Promise<string | null> {
+  try {
+    const nodeLlamaCpp = await import("node-llama-cpp") as unknown as {
+      resolveModelFile(uri: string, dir: string, opts?: unknown): Promise<string>;
+    };
+    const modelsDir = join(resolveCacheDir(cacheDir), "llm");
+    if (!existsSync(modelsDir)) return null;
+    // cli: false throws if model is not cached — no download triggered
+    return await nodeLlamaCpp.resolveModelFile(modelUri, modelsDir, { cli: false });
+  } catch {
+    return null;
   }
+}
+
+/**
+ * Compare two model URIs for equivalence using resolve-then-compare.
+ *
+ * Strategy:
+ * 1. String equality (covers identical URIs)
+ * 2. Both local paths → resolve absolute paths and compare
+ * 3. Try node-llama-cpp resolveModelFile for cached HF URIs
+ * 4. Fallback: treat as different
+ */
+export async function areModelsEquivalent(uriA: string, uriB: string, cacheDir: string): Promise<boolean> {
+  // 1. String equality
+  if (uriA === uriB) return true;
+
+  // 2. Both local paths → resolve and compare absolute paths
+  if (!uriA.startsWith("hf:") && !uriB.startsWith("hf:")) {
+    return resolve(uriA) === resolve(uriB);
+  }
+
+  // 3. Try resolve-then-compare for cached models
+  const [pathA, pathB] = await Promise.all([
+    resolveModelPath(uriA, cacheDir),
+    resolveModelPath(uriB, cacheDir),
+  ]);
+
+  if (pathA && pathB) return pathA === pathB;
+
+  return false;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

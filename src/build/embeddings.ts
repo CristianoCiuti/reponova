@@ -31,7 +31,6 @@ interface OrtModule {
 
 // ─── Model URLs ──────────────────────────────────────────────────────────────
 
-const MODEL_BASE_URL = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main";
 const MODEL_FILES = {
   model: "onnx/model.onnx",
   vocab: "vocab.txt",
@@ -135,9 +134,9 @@ export class EmbeddingEngine {
   private cacheDir: string;
   private available = false;
 
-  constructor(config: EmbeddingsConfig) {
+  constructor(config: EmbeddingsConfig, cacheDir: string) {
     this.config = config;
-    this.cacheDir = resolveCacheDir(config.cache_dir);
+    this.cacheDir = resolveCacheDir(cacheDir);
   }
 
   /**
@@ -160,12 +159,13 @@ export class EmbeddingEngine {
     }
 
     // Ensure model is downloaded
-    const modelDir = join(this.cacheDir, "all-MiniLM-L6-v2");
+    const modelName = this.config.model;
+    const modelDir = join(this.cacheDir, modelName);
     const modelPath = join(modelDir, "model.onnx");
     const vocabPath = join(modelDir, "vocab.txt");
 
     if (!existsSync(modelPath) || !existsSync(vocabPath)) {
-      log.info("Downloading embedding model (all-MiniLM-L6-v2)...");
+      log.info(`Downloading embedding model (${modelName})...`);
       try {
         await this.downloadModel(modelDir);
       } catch (err) {
@@ -186,7 +186,7 @@ export class EmbeddingEngine {
         graphOptimizationLevel: "all",
       }) as unknown as OnnxSession;
       this.available = true;
-      log.info("Embedding engine initialized (all-MiniLM-L6-v2, 384-dim)");
+      log.info(`Embedding engine initialized (${this.config.model}, ${EMBEDDING_DIM}-dim)`);
       return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -292,8 +292,10 @@ export class EmbeddingEngine {
   private async downloadModel(modelDir: string): Promise<void> {
     if (!existsSync(modelDir)) mkdirSync(modelDir, { recursive: true });
 
+    const baseUrl = `https://huggingface.co/sentence-transformers/${this.config.model}/resolve/main`;
+
     for (const [key, relativePath] of Object.entries(MODEL_FILES)) {
-      const url = `${MODEL_BASE_URL}/${relativePath}`;
+      const url = `${baseUrl}/${relativePath}`;
       const localPath = join(modelDir, key === "model" ? "model.onnx" : relativePath.split("/").pop()!);
 
       if (existsSync(localPath)) continue;

@@ -6,9 +6,10 @@
  * 2. LLM-enhanced (when node-llama-cpp available): Rich natural language summaries
  *
  * Also generates node descriptions for high-degree nodes.
+ * Community summaries and node descriptions are fully independent features.
  */
 import { log } from "../shared/utils.js";
-import type { SummariesConfig, GraphNode } from "../shared/types.js";
+import type { CommunitySummariesConfig, NodeDescriptionsConfig, GraphNode } from "../shared/types.js";
 import type { LlmEngine } from "./llm-engine.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -35,30 +36,39 @@ export interface CommunityData {
 // ─── Summary Generator ───────────────────────────────────────────────────────
 
 export class SummaryGenerator {
-  private config: SummariesConfig;
-  private llm: LlmEngine | null;
+  private summariesConfig: CommunitySummariesConfig;
+  private descriptionsConfig: NodeDescriptionsConfig;
+  private summariesLlm: LlmEngine | null;
+  private descriptionsLlm: LlmEngine | null;
 
-  constructor(config: SummariesConfig, llm: LlmEngine | null) {
-    this.config = config;
-    this.llm = llm;
+  constructor(
+    summariesConfig: CommunitySummariesConfig,
+    descriptionsConfig: NodeDescriptionsConfig,
+    summariesLlm: LlmEngine | null,
+    descriptionsLlm: LlmEngine | null,
+  ) {
+    this.summariesConfig = summariesConfig;
+    this.descriptionsConfig = descriptionsConfig;
+    this.summariesLlm = summariesLlm;
+    this.descriptionsLlm = descriptionsLlm;
   }
 
   /**
    * Generate summaries for all communities.
    */
   async generateCommunitySummaries(communities: CommunityData[]): Promise<CommunitySummary[]> {
-    if (!this.config.enabled) {
-      log.info("Community summaries disabled (summaries.enabled=false)");
+    if (!this.summariesConfig.enabled) {
+      log.info("Community summaries disabled (community_summaries.enabled=false)");
       return [];
     }
 
     // Limit to top N communities by size (largest first) to avoid LLM timeout
-    const maxCommunities = this.config.max_communities;
+    const maxNumber = this.summariesConfig.max_number;
     const sorted = [...communities].sort((a, b) => b.nodes.length - a.nodes.length);
-    const selected = maxCommunities > 0 ? sorted.slice(0, maxCommunities) : sorted;
+    const selected = maxNumber > 0 ? sorted.slice(0, maxNumber) : sorted;
 
-    const mode = this.llm?.isAvailable ? "LLM" : "algorithmic";
-    log.info(`Generating community summaries (${selected.length}/${communities.length} communities, max=${maxCommunities}, mode=${mode})...`);
+    const mode = this.summariesLlm?.isAvailable ? "LLM" : "algorithmic";
+    log.info(`Generating community summaries (${selected.length}/${communities.length} communities, max=${maxNumber}, mode=${mode})...`);
 
     const summaries: CommunitySummary[] = [];
     const startTime = Date.now();
@@ -87,17 +97,13 @@ export class SummaryGenerator {
     nodes: GraphNode[],
     edgeCounts: Map<string, number>,
   ): Promise<NodeDescription[]> {
-    if (!this.config.enabled) {
-      log.info("Node descriptions skipped: summaries.enabled=false");
-      return [];
-    }
-    if (!this.config.generate_node_descriptions) {
-      log.info("Node descriptions skipped: generate_node_descriptions=false");
+    if (!this.descriptionsConfig.enabled) {
+      log.info("Node descriptions skipped: node_descriptions.enabled=false");
       return [];
     }
 
     // Select top N% nodes by degree
-    const threshold = this.config.node_description_threshold;
+    const threshold = this.descriptionsConfig.threshold;
     const sorted = [...edgeCounts.entries()].sort((a, b) => b[1] - a[1]);
     const cutoff = Math.ceil(sorted.length * (1 - threshold));
     const topNodeIds = new Set(sorted.slice(0, cutoff).map(([id]) => id));
@@ -110,7 +116,8 @@ export class SummaryGenerator {
       return [];
     }
 
-    const mode = this.llm?.isAvailable ? "LLM" : "algorithmic";
+    const llm = this.descriptionsLlm;
+    const mode = llm?.isAvailable ? "LLM" : "algorithmic";
     log.info(`Generating node descriptions (${targetNodes.length} high-degree nodes, mode=${mode})...`);
 
     const descriptions: NodeDescription[] = [];
@@ -119,13 +126,13 @@ export class SummaryGenerator {
     let llmCount = 0;
     let fallbackCount = 0;
 
-    if (this.llm?.isAvailable) {
+    if (llm?.isAvailable) {
       // LLM-enhanced descriptions (sequential with progress)
       for (let i = 0; i < targetNodes.length; i++) {
         const node = targetNodes[i]!;
         const degree = edgeCounts.get(node.id) ?? 0;
 
-        const result = await this.llm.generate({
+        const result = await llm.generate({
           systemPrompt: "You are a technical documentation writer. Generate a concise one-sentence description of the given code symbol based on its metadata. Be specific about its purpose.",
           userPrompt: this.composeNodePrompt(node),
           maxTokens: 100,
@@ -194,8 +201,8 @@ export class SummaryGenerator {
 
     // Try LLM enhancement
     let summary = algorithmicSummary;
-    if (this.llm?.isAvailable && nodes.length >= 3) {
-      const llmSummary = await this.llm.generate({
+    if (this.summariesLlm?.isAvailable && nodes.length >= 3) {
+      const llmSummary = await this.summariesLlm.generate({
         systemPrompt: "You are a software architect. Generate a concise 1-2 sentence summary of a code community (cluster of related symbols). Focus on the community's purpose and role in the architecture.",
         userPrompt: this.composeCommunityPrompt(community),
         maxTokens: 150,

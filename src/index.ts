@@ -31,14 +31,15 @@ export type {
   GraphData,
   GraphCommunity,
   Config,
+  ModelsConfig,
+  CommunitySummariesConfig,
+  NodeDescriptionsConfig,
   SearchResult,
   ImpactResult,
   PathResult,
   NodeDetail,
   FileOutline,
   EmbeddingsConfig,
-  LlmConfig,
-  SummariesConfig,
 } from "./shared/types.js";
 
 export type {

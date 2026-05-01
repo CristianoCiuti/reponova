@@ -40,7 +40,7 @@ AI agents read files one at a time. They don't understand how your codebase fits
 - **Zero external dependencies** — no Python, no Docker, no database servers. Pure Node.js
 - **Multi-repo support** — build one graph spanning multiple repositories
 - **Incremental builds** — only re-processes changed files (SHA256 hash cache)
-- **Local LLM-enhanced** — optional Qwen 0.5B for richer community summaries (runs on CPU)
+- **Local LLM-enhanced** — optional local LLM for richer community summaries and node descriptions (runs on CPU)
 - **12 MCP tools** — from text search to weighted Dijkstra, semantic similarity to natural language queries
 - **Works with any MCP client** — OpenCode, Cursor, Claude Code, VS Code Copilot
 
@@ -333,6 +333,36 @@ repos:
   - name: core-lib
     path: ../services/core
 
+# ── Centralized Model Management ─────────────────────────────────────────────
+# Shared settings for all models (LLM, ONNX embeddings).
+# Individual features (community_summaries, node_descriptions) can specify
+# their own model via a `model` field. These settings apply to all of them.
+models:
+  # Directory to cache downloaded models (ONNX embeddings + LLM weights)
+  # Type: string
+  # Default: "~/.cache/reponova/models"
+  cache_dir: ~/.cache/reponova/models
+
+  # GPU acceleration backend for LLM inference
+  # Values: "auto" | "cpu" | "cuda" | "metal" | "vulkan"
+  #   - auto:    auto-detect best available backend
+  #   - cpu:     force CPU inference (slower but always works)
+  #   - cuda:    NVIDIA GPU (requires CUDA drivers)
+  #   - metal:   Apple Silicon GPU (macOS only)
+  #   - vulkan:  Cross-platform GPU (AMD, Intel, NVIDIA)
+  # Default: "auto"
+  gpu: auto
+
+  # Number of CPU threads for LLM inference
+  # Type: number
+  # Default: 0 (auto-detect based on available cores)
+  threads: 0
+
+  # Automatically download models on first use
+  # Type: boolean
+  # Default: true
+  download_on_first_use: true
+
 # ── Build Options ─────────────────────────────────────────────────────────────
 build:
 
@@ -343,10 +373,17 @@ build:
   # Default: "monorepo"
   mode: monorepo
 
-  # Directory names to skip during file detection
+  # Glob patterns for source code files to include
+  # Type: string[]
+  # Default: [] (empty = auto-detect by file extension using registered extractors)
+  # Example: ["src/**/*.py", "lib/**/*.ts"]
+  patterns: []
+
+  # Glob patterns to exclude from source code detection
   # Type: string[]
   # Default: []
-  # Example: ["dist_package", ".tox", "__pycache__", "vendor"]
+  # Example: ["**/generated/**", "**/*.test.ts", "**/vendor/**"]
+  # Note: common directories (node_modules, .git, __pycache__, etc.) are always skipped.
   exclude: []
 
   # Incremental builds: only re-process files whose SHA256 hash changed
@@ -453,15 +490,11 @@ build:
     # Default: 128
     batch_size: 128
 
-    # Directory to cache downloaded models
-    # Type: string
-    # Default: "~/.cache/reponova/models"
-    cache_dir: ~/.cache/reponova/models
-
-  # ── Summaries ─────────────────────────────────────────────────────────────
-  # Community summaries and node descriptions
-  summaries:
-    # Enable/disable summary generation
+  # ── Community Summaries ───────────────────────────────────────────────────
+  # Natural-language summaries for each detected community (cluster of related symbols).
+  # Independent from node descriptions — can enable one without the other.
+  community_summaries:
+    # Enable/disable community summary generation
     # Type: boolean
     # Default: true
     enabled: true
@@ -470,12 +503,27 @@ build:
     # Type: integer (>= 0)
     # Default: 0 (no limit — summarize all communities)
     # Set to a positive number to cap processing time on large graphs
-    max_communities: 0
+    max_number: 0
 
-    # Generate natural-language descriptions for high-degree nodes
+    # LLM model for richer summaries (optional)
+    # Type: string | null
+    # Default: null (algorithmic summaries — still useful, just less prose)
+    # Uncomment to enable LLM-enhanced summaries:
+    # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
+
+    # Context window size for LLM inference (only used when model is set)
+    # Type: number
+    # Default: 512
+    context_size: 512
+
+  # ── Node Descriptions ─────────────────────────────────────────────────────
+  # Natural-language descriptions for high-degree (important) nodes.
+  # Independent from community summaries — can enable one without the other.
+  node_descriptions:
+    # Enable/disable node description generation
     # Type: boolean
     # Default: true
-    generate_node_descriptions: true
+    enabled: true
 
     # Degree threshold for node description generation
     # Type: number (0.0 – 1.0)
@@ -485,58 +533,18 @@ build:
     #   - 0.5 = top 50% of nodes
     #   - 0.0 = all nodes (expensive!)
     #   - 1.0 = no nodes
-    node_description_threshold: 0.8
+    threshold: 0.8
 
-  # ── LLM (Local Language Model) ────────────────────────────────────────────
-  # Optional local LLM for richer community summaries and node descriptions.
-  # When disabled, summaries are generated algorithmically (still useful, just less prose).
-  # When enabled, uses Qwen 0.5B quantized — runs on CPU, ~350MB download.
-  llm:
-    # Enable/disable local LLM
-    # Type: boolean
-    # Default: false (opt-in — LLM is NOT required for a useful graph)
-    enabled: false
+    # LLM model for richer descriptions (optional)
+    # Type: string | null
+    # Default: null (algorithmic descriptions)
+    # Uncomment to enable LLM-enhanced descriptions:
+    # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
 
-    # Model identifier (used for download and cache)
-    # Type: string
-    # Default: "qwen2.5-0.5b-instruct"
-    model: qwen2.5-0.5b-instruct
-
-    # Quantization format
-    # Type: string
-    # Default: "Q4_K_M"
-    quantization: Q4_K_M
-
-    # GPU acceleration backend
-    # Values: "auto" | "cpu" | "cuda" | "metal" | "vulkan"
-    #   - auto:    auto-detect best available backend
-    #   - cpu:     force CPU inference (slower but always works)
-    #   - cuda:    NVIDIA GPU (requires CUDA drivers)
-    #   - metal:   Apple Silicon GPU (macOS only)
-    #   - vulkan:  Cross-platform GPU (AMD, Intel, NVIDIA)
-    # Default: "auto"
-    gpu: auto
-
-    # Context window size in tokens
+    # Context window size for LLM inference (only used when model is set)
     # Type: number
     # Default: 512
-    # Lower = faster inference. Prompts are ~150 tokens, so 512 is sufficient.
     context_size: 512
-
-    # Number of CPU threads for inference
-    # Type: number
-    # Default: 0 (auto-detect based on available cores)
-    threads: 0
-
-    # Automatically download the model on first use
-    # Type: boolean
-    # Default: true
-    download_on_first_use: true
-
-    # Directory to cache downloaded models
-    # Type: string
-    # Default: "~/.cache/reponova/models"
-    cache_dir: ~/.cache/reponova/models
 
 # ── Outlines ──────────────────────────────────────────────────────────────────
 # Tree-sitter code outlines: functions, classes, imports with signatures.
@@ -606,14 +614,20 @@ output: ../reponova-out
 repos:
   - name: my-project
     path: ..
+models:
+  gpu: auto                 # auto-detect GPU, falls back to CPU
+  download_on_first_use: true
 build:
-  llm:
-    enabled: true     # downloads Qwen 0.5B (~350MB) on first use
-    gpu: auto         # auto-detect GPU, falls back to CPU
-  summaries:
+  community_summaries:
     enabled: true
-    node_description_threshold: 0.5   # describe top 50% nodes by degree
+    model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"   # ~350MB download
+  node_descriptions:
+    enabled: true
+    threshold: 0.5          # describe top 50% nodes by degree
+    model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"   # same model, auto-shared
 ```
+
+> When `community_summaries.model` and `node_descriptions.model` resolve to the same file, reponova shares a single engine instance — no double memory usage.
 
 ---
 
@@ -681,7 +695,7 @@ No. Everything runs locally. The optional LLM is a local model (Qwen 0.5B) — n
 **How big are the models?**
 - TF-IDF embeddings: no model needed (computed in-process)
 - ONNX embeddings: ~86MB (MiniLM-L6-v2)
-- LLM: ~350MB (Qwen 0.5B Q4_K_M)
+- LLM (optional): ~350MB (Qwen 0.5B Q4_K_M) — only downloaded when `community_summaries.model` or `node_descriptions.model` is set
 
 **How long does a build take?**
 Depends on codebase size. Rough benchmarks:

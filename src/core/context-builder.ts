@@ -137,7 +137,7 @@ export class ContextBuilder {
    * Initialize optional components (vector store, community summaries).
    * Non-blocking: works in degraded mode without them.
    */
-  async initialize(embeddingsConfig?: EmbeddingsConfig): Promise<void> {
+  async initialize(embeddingsConfig?: EmbeddingsConfig, cacheDir?: string): Promise<void> {
     // Load community summaries if available
     const summariesPath = join(this.graphDir, "community_summaries.json");
     if (existsSync(summariesPath)) {
@@ -174,7 +174,7 @@ export class ContextBuilder {
         const loaded = engine.loadVocabulary(this.graphDir);
         if (loaded) this.tfidfEngine = engine;
       } else {
-        this.embeddingEngine = new EmbeddingEngine(embeddingsConfig);
+        this.embeddingEngine = new EmbeddingEngine(embeddingsConfig, cacheDir ?? "~/.cache/reponova/models");
         const ready = await this.embeddingEngine.initialize();
         if (!ready) this.embeddingEngine = null;
       }

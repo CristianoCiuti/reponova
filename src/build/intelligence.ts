@@ -6,16 +6,23 @@
  * 2. Generates community summaries (LLM or algorithmic fallback)
  * 3. Generates node descriptions for high-degree nodes
  *
+ * Community summaries and node descriptions are fully independent features.
+ * Each can independently enable/disable LLM enhancement via its own model field.
+ *
+ * When both features reference the same model, resolve-then-compare deduplicates
+ * the engine instance to avoid loading the model twice (~350MB saved).
+ *
  * All steps are best-effort: failures don't block the build.
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { homedir } from "node:os";
 import { log } from "../shared/utils.js";
-import type { Config, GraphData, GraphNode } from "../shared/types.js";
+import type { Config, ModelsConfig, CommunitySummariesConfig, NodeDescriptionsConfig, GraphData, GraphNode } from "../shared/types.js";
 import { EmbeddingEngine, composeNodeText } from "./embeddings.js";
 import { TfidfEmbeddingEngine } from "./tfidf-embeddings.js";
 import { VectorStore, type VectorRecord } from "../core/vector-store.js";
-import { LlmEngine } from "./llm-engine.js";
+import { LlmEngine, areModelsEquivalent, type LlmEngineOptions } from "./llm-engine.js";
 import { SummaryGenerator, type CommunityData } from "./community-summaries.js";
 
 export interface IntelligenceResult {
@@ -48,10 +55,13 @@ export async function runIntelligenceLayer(
     result.embeddingsGenerated = embCount;
   }
 
-  // ─── Phase 2.2: Summaries ──────────────────────────────────────────────────
+  // ─── Phase 2.2: Summaries & Descriptions (independent features) ────────────
 
-  if (config.build.summaries.enabled) {
-    const { summaries, descriptions } = await runSummaries(config, outputDir, graphData);
+  const summariesEnabled = config.build.community_summaries.enabled;
+  const descriptionsEnabled = config.build.node_descriptions.enabled;
+
+  if (summariesEnabled || descriptionsEnabled) {
+    const { summaries, descriptions } = await runSummariesAndDescriptions(config, outputDir, graphData);
     result.communitySummaries = summaries;
     result.nodeDescriptions = descriptions;
   }
@@ -119,7 +129,8 @@ async function runOnnxEmbeddings(
   graphData: GraphData,
   items: Array<{ id: string; text: string }>,
 ): Promise<number> {
-  const engine = new EmbeddingEngine(config.build.embeddings);
+  const cacheDir = resolveCacheDir(config.models.cache_dir);
+  const engine = new EmbeddingEngine(config.build.embeddings, cacheDir);
 
   try {
     const ready = await engine.initialize();
@@ -172,72 +183,175 @@ async function storeEmbeddings(
   return embeddings.length;
 }
 
-// ─── Summaries ───────────────────────────────────────────────────────────────
+// ─── Summaries & Descriptions ────────────────────────────────────────────────
 
-async function runSummaries(
+/**
+ * Run community summaries and node descriptions as independent features.
+ *
+ * Uses resolve-then-compare to deduplicate model instances when both features
+ * reference the same model (avoids loading ~350MB twice).
+ */
+async function runSummariesAndDescriptions(
   config: Config,
   outputDir: string,
   graphData: GraphData,
 ): Promise<{ summaries: number; descriptions: number }> {
-  let llm: LlmEngine | null = null;
+  const summariesCfg = config.build.community_summaries;
+  const descriptionsCfg = config.build.node_descriptions;
+  const modelsCfg = config.models;
+  const cacheDir = modelsCfg.cache_dir;
+
+  // Determine which models are needed
+  const summariesModel = summariesCfg.enabled ? (summariesCfg.model ?? null) : null;
+  const descriptionsModel = descriptionsCfg.enabled ? (descriptionsCfg.model ?? null) : null;
+
+  let summariesLlm: LlmEngine | null = null;
+  let descriptionsLlm: LlmEngine | null = null;
+  let sharedEngine = false;
 
   try {
-    // Try to initialize LLM (optional enhancement)
-    if (config.build.llm.enabled) {
-      llm = new LlmEngine(config.build.llm);
-      const llmReady = await llm.initialize();
-      if (!llmReady) {
-        llm = null;
-        log.info("  LLM not available — using algorithmic summaries");
+    // ── Resolve-then-compare for model dedup ──────────────────────────────
+    if (summariesModel && descriptionsModel) {
+      const sameModel = await areModelsEquivalent(summariesModel, descriptionsModel, cacheDir);
+
+      if (sameModel) {
+        // Same model → create one shared engine with larger context
+        log.info("Both features reference the same model — sharing engine instance");
+        const maxContext = Math.max(summariesCfg.context_size, descriptionsCfg.context_size);
+        summariesLlm = createLlmEngine(summariesModel, maxContext, modelsCfg);
+        const ready = await summariesLlm.initialize();
+        if (ready) {
+          descriptionsLlm = summariesLlm;
+          sharedEngine = true;
+        } else {
+          summariesLlm = null;
+          log.info("  LLM not available — using algorithmic for both");
+        }
+      } else {
+        // Different models → create summaries engine now, descriptions engine later
+        summariesLlm = createLlmEngine(summariesModel, summariesCfg.context_size, modelsCfg);
+        const ready = await summariesLlm.initialize();
+        if (!ready) {
+          summariesLlm = null;
+          log.info("  Summaries LLM not available — using algorithmic");
+        }
+        // Descriptions engine created after summaries complete (sequential to limit memory)
+      }
+    } else if (summariesModel) {
+      summariesLlm = createLlmEngine(summariesModel, summariesCfg.context_size, modelsCfg);
+      const ready = await summariesLlm.initialize();
+      if (!ready) {
+        summariesLlm = null;
+        log.info("  Summaries LLM not available — using algorithmic");
+      }
+    } else if (descriptionsModel) {
+      descriptionsLlm = createLlmEngine(descriptionsModel, descriptionsCfg.context_size, modelsCfg);
+      const ready = await descriptionsLlm.initialize();
+      if (!ready) {
+        descriptionsLlm = null;
+        log.info("  Descriptions LLM not available — using algorithmic");
       }
     }
 
-    const generator = new SummaryGenerator(config.build.summaries, llm);
-
-    // Build community data from graph
-    const communities = buildCommunityData(graphData);
+    // ── Create generator with resolved engines ────────────────────────────
+    const generator = new SummaryGenerator(summariesCfg, descriptionsCfg, summariesLlm, descriptionsLlm);
 
     // ── Phase 1: Community summaries ──────────────────────────────────────
-    const communitySummaries = await generator.generateCommunitySummaries(communities);
+    let summaryCount = 0;
+    if (summariesCfg.enabled) {
+      const communities = buildCommunityData(graphData);
+      const communitySummaries = await generator.generateCommunitySummaries(communities);
 
-    // Save community summaries immediately (don't lose them if node descriptions fail)
-    if (communitySummaries.length > 0) {
-      const summariesPath = join(outputDir, "community_summaries.json");
-      writeFileSync(summariesPath, JSON.stringify(communitySummaries, null, 2));
-      log.info(`  Saved ${communitySummaries.length} community summaries → community_summaries.json`);
+      if (communitySummaries.length > 0) {
+        const summariesPath = join(outputDir, "community_summaries.json");
+        writeFileSync(summariesPath, JSON.stringify(communitySummaries, null, 2));
+        log.info(`  Saved ${communitySummaries.length} community summaries → community_summaries.json`);
+      }
+      summaryCount = communitySummaries.length;
+    }
+
+    // ── Dispose summaries engine if different from descriptions engine ────
+    if (summariesLlm && !sharedEngine) {
+      await summariesLlm.dispose();
+      summariesLlm = null;
+    }
+
+    // ── Create separate descriptions engine if needed (sequential load) ───
+    if (descriptionsModel && !descriptionsLlm) {
+      descriptionsLlm = createLlmEngine(descriptionsModel, descriptionsCfg.context_size, modelsCfg);
+      const ready = await descriptionsLlm.initialize();
+      if (!ready) {
+        descriptionsLlm = null;
+        log.info("  Descriptions LLM not available — using algorithmic");
+      }
+      // Update generator with the new descriptions engine
+      // (generator was created with null descriptionsLlm — create a new one)
+      if (descriptionsLlm) {
+        const updatedGenerator = new SummaryGenerator(summariesCfg, descriptionsCfg, null, descriptionsLlm);
+        return {
+          summaries: summaryCount,
+          descriptions: await runNodeDescriptions(updatedGenerator, descriptionsCfg, graphData, outputDir),
+        };
+      }
     }
 
     // ── Phase 2: Node descriptions ────────────────────────────────────────
-    log.info("Computing edge counts for node selection...");
-    const edgeCounts = computeEdgeCounts(graphData);
-    log.info(`  Edge counts computed: ${edgeCounts.size} nodes with edges`);
-
-    const nodeDescriptions = await generator.generateNodeDescriptions(graphData.nodes, edgeCounts);
-
-    if (nodeDescriptions.length > 0) {
-      const descriptionsPath = join(outputDir, "node_descriptions.json");
-      writeFileSync(descriptionsPath, JSON.stringify(nodeDescriptions, null, 2));
-      log.info(`  Saved ${nodeDescriptions.length} node descriptions → node_descriptions.json`);
-    } else {
-      log.info("  No node descriptions generated (disabled or no qualifying nodes)");
+    let descriptionCount = 0;
+    if (descriptionsCfg.enabled) {
+      descriptionCount = await runNodeDescriptions(generator, descriptionsCfg, graphData, outputDir);
     }
 
-    return {
-      summaries: communitySummaries.length,
-      descriptions: nodeDescriptions.length,
-    };
+    return { summaries: summaryCount, descriptions: descriptionCount };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : undefined;
-    log.warn(`Summaries failed (non-blocking): ${msg}`);
+    log.warn(`Summaries/descriptions failed (non-blocking): ${msg}`);
     if (stack) log.warn(`  Stack: ${stack.split("\n").slice(1, 4).join(" → ")}`);
     return { summaries: 0, descriptions: 0 };
   } finally {
-    if (llm) await llm.dispose();
+    if (summariesLlm && !sharedEngine) await summariesLlm.dispose();
+    if (descriptionsLlm) await descriptionsLlm.dispose();
   }
 }
 
+async function runNodeDescriptions(
+  generator: SummaryGenerator,
+  descriptionsCfg: NodeDescriptionsConfig,
+  graphData: GraphData,
+  outputDir: string,
+): Promise<number> {
+  if (!descriptionsCfg.enabled) return 0;
+
+  log.info("Computing edge counts for node selection...");
+  const edgeCounts = computeEdgeCounts(graphData);
+  log.info(`  Edge counts computed: ${edgeCounts.size} nodes with edges`);
+
+  const nodeDescriptions = await generator.generateNodeDescriptions(graphData.nodes, edgeCounts);
+
+  if (nodeDescriptions.length > 0) {
+    const descriptionsPath = join(outputDir, "node_descriptions.json");
+    writeFileSync(descriptionsPath, JSON.stringify(nodeDescriptions, null, 2));
+    log.info(`  Saved ${nodeDescriptions.length} node descriptions → node_descriptions.json`);
+  } else {
+    log.info("  No node descriptions generated (disabled or no qualifying nodes)");
+  }
+
+  return nodeDescriptions.length;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function createLlmEngine(modelUri: string, contextSize: number, modelsCfg: ModelsConfig): LlmEngine {
+  const options: LlmEngineOptions = {
+    modelUri,
+    cacheDir: modelsCfg.cache_dir,
+    gpu: modelsCfg.gpu,
+    contextSize,
+    threads: modelsCfg.threads,
+    downloadOnFirstUse: modelsCfg.download_on_first_use,
+  };
+  return new LlmEngine(options);
+}
 
 function buildCommunityData(graphData: GraphData): CommunityData[] {
   // Group nodes by community
@@ -270,4 +384,11 @@ function computeEdgeCounts(graphData: GraphData): Map<string, number> {
   }
 
   return counts;
+}
+
+function resolveCacheDir(configPath: string): string {
+  if (configPath.startsWith("~")) {
+    return resolve(homedir(), configPath.slice(2));
+  }
+  return resolve(configPath);
 }

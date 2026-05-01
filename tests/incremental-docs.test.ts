@@ -294,7 +294,7 @@ describe("File Detection", () => {
   });
 
   it("should detect doc files with config", () => {
-    const docs = detectDocFiles(tmpBase, [], {
+    const docs = detectDocFiles(tmpBase, {
       enabled: true,
       patterns: ["**/*.md", "**/*.txt"],
       exclude: [],
@@ -306,7 +306,7 @@ describe("File Detection", () => {
   });
 
   it("should return empty when docs disabled", () => {
-    const docs = detectDocFiles(tmpBase, [], {
+    const docs = detectDocFiles(tmpBase, {
       enabled: false,
       patterns: ["**/*.md"],
       exclude: [],
@@ -316,7 +316,7 @@ describe("File Detection", () => {
   });
 
   it("should detect diagram files with config", () => {
-    const diagrams = detectDiagramFiles(tmpBase, [], {
+    const diagrams = detectDiagramFiles(tmpBase, {
       enabled: true,
       patterns: ["**/*.puml", "**/*.svg"],
       exclude: [],
@@ -329,7 +329,7 @@ describe("File Detection", () => {
   });
 
   it("should return empty when images disabled", () => {
-    const diagrams = detectDiagramFiles(tmpBase, [], {
+    const diagrams = detectDiagramFiles(tmpBase, {
       enabled: false,
       patterns: ["**/*.puml"],
       exclude: [],
@@ -341,8 +341,8 @@ describe("File Detection", () => {
 
   it("should skip node_modules in all detection modes", () => {
     const code = detectFiles(tmpBase);
-    const docs = detectDocFiles(tmpBase, [], { enabled: true, patterns: ["**/*.md"], exclude: [], max_file_size_kb: 500 });
-    const diagrams = detectDiagramFiles(tmpBase, [], { enabled: true, patterns: ["**/*.puml"], exclude: [], parse_puml: true, parse_svg_text: true });
+    const docs = detectDocFiles(tmpBase, { enabled: true, patterns: ["**/*.md"], exclude: [], max_file_size_kb: 500 });
+    const diagrams = detectDiagramFiles(tmpBase, { enabled: true, patterns: ["**/*.puml"], exclude: [], parse_puml: true, parse_svg_text: true });
     
     for (const f of [...code, ...docs, ...diagrams]) {
       expect(f).not.toContain("node_modules");

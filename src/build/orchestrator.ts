@@ -173,7 +173,7 @@ async function buildMonorepo(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn(`  Symlink failed for ${repo.name}: ${msg}, falling back to copy...`);
-      copyDirRecursive(repoPath, linkPath, config.build.exclude);
+      copyDirRecursive(repoPath, linkPath);
       repoNames.push(repo.name);
     }
   }
@@ -187,7 +187,8 @@ async function buildMonorepo(
 
   return runPipeline({
     workspace,
-    excludeDirs: config.build.exclude,
+    patterns: config.build.patterns,
+    excludeGlobs: config.build.exclude,
     graphJsonPath: mergedPath,
     htmlMinDegree: config.build.html_min_degree,
     outputDir,
@@ -225,13 +226,14 @@ async function buildSeparate(
     try {
       symlinkSync(repoPath, linkPath, "junction");
     } catch {
-      copyDirRecursive(repoPath, linkPath, config.build.exclude);
+      copyDirRecursive(repoPath, linkPath);
     }
   }
 
   return runPipeline({
     workspace,
-    excludeDirs: config.build.exclude,
+    patterns: config.build.patterns,
+    excludeGlobs: config.build.exclude,
     graphJsonPath: mergedPath,
     htmlMinDegree: config.build.html_min_degree,
     outputDir,
@@ -264,19 +266,26 @@ function tagNodesWithRepo(graphJsonPath: string, repoNames: string[]): void {
 }
 
 /**
- * Recursive directory copy with exclusion support.
+ * Recursive directory copy. Always-skip directories (node_modules, .git, etc.)
+ * are excluded automatically. Glob-based exclusion happens at file detection time.
  */
-function copyDirRecursive(src: string, dest: string, excludeDirs: string[]): void {
-  const excludeSet = new Set(excludeDirs);
+function copyDirRecursive(src: string, dest: string): void {
+  const COPY_SKIP = new Set([
+    "node_modules", "__pycache__", ".git", ".svn", ".hg",
+    "venv", ".venv", "env", ".env", ".tox",
+    "site-packages", "dist", "build", ".eggs",
+    ".mypy_cache", ".pytest_cache", ".ruff_cache",
+    "target", "bin", "obj",
+  ]);
   mkdirSync(dest, { recursive: true });
 
   for (const entry of readdirSync(src)) {
-    if (excludeSet.has(entry)) continue;
+    if (COPY_SKIP.has(entry)) continue;
     const srcPath = join(src, entry);
     const destPath = join(dest, entry);
     const stat = statSync(srcPath);
     if (stat.isDirectory()) {
-      copyDirRecursive(srcPath, destPath, excludeDirs);
+      copyDirRecursive(srcPath, destPath);
     } else {
       copyFileSync(srcPath, destPath);
     }

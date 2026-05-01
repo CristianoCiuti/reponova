@@ -10,9 +10,17 @@ const RepoConfigSchema = z.object({
   path: z.string(),
 });
 
+const ModelsConfigSchema = z.object({
+  cache_dir: z.string().default("~/.cache/reponova/models"),
+  gpu: z.enum(["auto", "cpu", "cuda", "metal", "vulkan"]).default("auto"),
+  threads: z.number().default(0),
+  download_on_first_use: z.boolean().default(true),
+});
+
 const BuildConfigSchema = z.object({
   html: z.boolean().default(true),
   html_min_degree: z.number().int().min(1).optional(),
+  patterns: z.array(z.string()).default([]),
   exclude: z.array(z.string()).default([]),
   mode: z.enum(["monorepo", "separate"]).default("monorepo"),
   incremental: z.boolean().default(true),
@@ -35,23 +43,18 @@ const BuildConfigSchema = z.object({
     model: z.string().default("all-MiniLM-L6-v2"),
     dimensions: z.number().default(384),
     batch_size: z.number().default(128),
-    cache_dir: z.string().default("~/.cache/reponova/models"),
   }).default({}),
-  llm: z.object({
-    enabled: z.boolean().default(false),
-    model: z.string().default("qwen2.5-0.5b-instruct"),
-    quantization: z.string().default("Q4_K_M"),
-    gpu: z.enum(["auto", "cpu", "cuda", "metal", "vulkan"]).default("auto"),
-    context_size: z.number().default(512),
-    threads: z.number().default(0),
-    download_on_first_use: z.boolean().default(true),
-    cache_dir: z.string().default("~/.cache/reponova/models"),
-  }).default({}),
-  summaries: z.object({
+  community_summaries: z.object({
     enabled: z.boolean().default(true),
-    generate_node_descriptions: z.boolean().default(true),
-    node_description_threshold: z.number().min(0).max(1).default(0.8),
-    max_communities: z.number().min(0).default(0),
+    max_number: z.number().min(0).default(0),
+    model: z.string().nullable().optional(),
+    context_size: z.number().default(512),
+  }).default({}),
+  node_descriptions: z.object({
+    enabled: z.boolean().default(true),
+    threshold: z.number().min(0).max(1).default(0.8),
+    model: z.string().nullable().optional(),
+    context_size: z.number().default(512),
   }).default({}),
 });
 
@@ -66,6 +69,7 @@ const ServerConfigSchema = z.record(z.unknown()).default({});
 const ConfigSchema = z.object({
   output: z.string().default("reponova-out"),
   repos: z.array(RepoConfigSchema).default([]),
+  models: ModelsConfigSchema.default({}),
   build: BuildConfigSchema.default({}),
   outlines: OutlineConfigSchema.default({}),
   server: ServerConfigSchema.default({}),

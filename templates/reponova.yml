@@ -11,10 +11,18 @@ repos:
   - name: my-project
     path: ..
 
+# ── Centralized model management ─────────────────────────────────────────────
+models:
+  cache_dir: ~/.cache/reponova/models
+  gpu: auto                       # "auto", "cpu", "cuda", "metal", or "vulkan"
+  threads: 0                      # 0 = auto-detect
+  download_on_first_use: true
+
 # Build options
 build:
   mode: monorepo                  # "monorepo" (default) or "separate"
-  exclude: []                     # directory names to skip during detect (e.g. dist_package, .tox)
+  patterns: []                    # glob patterns for source files (empty = auto-detect by extension)
+  exclude: []                     # glob patterns to exclude (e.g. ["**/generated/**", "**/*.test.ts"])
   incremental: true               # incremental builds using file hash cache
   html: true                      # generate graph.html and graph_communities.html visualizations
   # html_min_degree: 3            # if set, only include nodes with degree >= this value in HTML
@@ -41,13 +49,16 @@ build:
   embeddings:
     enabled: true
     method: tfidf                 # "tfidf" (fast, default) or "onnx" (MiniLM, more accurate)
-  summaries:
+  community_summaries:
     enabled: true
-    max_communities: 0            # 0 = no limit
-  llm:
-    enabled: false                # set true to use local Qwen 0.5B for richer summaries
-    model: qwen2.5-0.5b-instruct
-    gpu: auto                     # "auto", "cpu", or "cuda"/"vulkan"/"metal"
+    max_number: 0                 # 0 = no limit
+    # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM-enhanced summaries
+    context_size: 512
+  node_descriptions:
+    enabled: true
+    threshold: 0.8                # top 20% of nodes by degree
+    # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM-enhanced descriptions
+    context_size: 512
 
 # Outline generation (auto-detects language from file extension)
 outlines:

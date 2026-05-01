@@ -67,6 +67,7 @@ export interface AdjacencyEntry {
 export interface Config {
   output: string;
   repos: RepoConfig[];
+  models: ModelsConfig;
   build: BuildConfig;
   outlines: OutlineConfig;
   server: ServerConfig;
@@ -77,17 +78,28 @@ export interface RepoConfig {
   path: string;
 }
 
+/** Centralized model management */
+export interface ModelsConfig {
+  cache_dir: string;
+  gpu: "auto" | "cpu" | "cuda" | "metal" | "vulkan";
+  threads: number;
+  download_on_first_use: boolean;
+}
+
 export interface BuildConfig {
   html: boolean;
   html_min_degree?: number;
+  /** Glob patterns for source code files to include */
+  patterns: string[];
+  /** Glob patterns to exclude from source code detection */
   exclude: string[];
   mode: "monorepo" | "separate";
   incremental: boolean;
   docs: DocsConfig;
   images: ImagesConfig;
   embeddings: EmbeddingsConfig;
-  llm: LlmConfig;
-  summaries: SummariesConfig;
+  community_summaries: CommunitySummariesConfig;
+  node_descriptions: NodeDescriptionsConfig;
 }
 
 export interface DocsConfig {
@@ -111,25 +123,25 @@ export interface EmbeddingsConfig {
   model: string;
   dimensions: number;
   batch_size: number;
-  cache_dir: string;
 }
 
-export interface LlmConfig {
+/** Community summaries — independent from node descriptions */
+export interface CommunitySummariesConfig {
   enabled: boolean;
-  model: string;
-  quantization: string;
-  gpu: "auto" | "cpu" | "cuda" | "metal" | "vulkan";
+  max_number: number;
+  /** HF URI, local path, or null/omitted for algorithmic */
+  model?: string | null;
   context_size: number;
-  threads: number;
-  download_on_first_use: boolean;
-  cache_dir: string;
 }
 
-export interface SummariesConfig {
+/** Node descriptions — independent from community summaries */
+export interface NodeDescriptionsConfig {
   enabled: boolean;
-  generate_node_descriptions: boolean;
-  node_description_threshold: number;
-  max_communities: number;
+  /** Degree percentile threshold: 0.8 = top 20%, 0.0 = all */
+  threshold: number;
+  /** HF URI, local path, or null/omitted for algorithmic */
+  model?: string | null;
+  context_size: number;
 }
 
 export interface OutlineConfig {
@@ -277,8 +289,15 @@ export const DEFAULT_EDGE_WEIGHTS: Record<string, number> = {
 export const DEFAULT_CONFIG: Config = {
   output: "reponova-out",
   repos: [],
+  models: {
+    cache_dir: "~/.cache/reponova/models",
+    gpu: "auto",
+    threads: 0,
+    download_on_first_use: true,
+  },
   build: {
     html: true,
+    patterns: [],
     exclude: [],
     mode: "monorepo",
     incremental: true,
@@ -301,23 +320,16 @@ export const DEFAULT_CONFIG: Config = {
       model: "all-MiniLM-L6-v2",
       dimensions: 384,
       batch_size: 128,
-      cache_dir: "~/.cache/reponova/models",
     },
-    llm: {
-      enabled: false,
-      model: "qwen2.5-0.5b-instruct",
-      quantization: "Q4_K_M",
-      gpu: "auto",
-      context_size: 512,
-      threads: 0,
-      download_on_first_use: true,
-      cache_dir: "~/.cache/reponova/models",
-    },
-    summaries: {
+    community_summaries: {
       enabled: true,
-      generate_node_descriptions: true,
-      node_description_threshold: 0.8,
-      max_communities: 0,
+      max_number: 0,
+      context_size: 512,
+    },
+    node_descriptions: {
+      enabled: true,
+      threshold: 0.8,
+      context_size: 512,
     },
   },
   outlines: {

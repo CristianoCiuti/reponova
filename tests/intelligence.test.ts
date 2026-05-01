@@ -6,7 +6,7 @@ import { EmbeddingEngine, composeNodeText, type NodeEmbeddingInput } from "../sr
 import { VectorStore, type VectorRecord } from "../src/core/vector-store.js";
 import { SummaryGenerator, type CommunityData } from "../src/build/community-summaries.js";
 import { LlmEngine } from "../src/build/llm-engine.js";
-import type { GraphNode } from "../src/shared/types.js";
+import type { GraphNode, CommunitySummariesConfig, NodeDescriptionsConfig } from "../src/shared/types.js";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync, rmSync, existsSync } from "node:fs";
@@ -137,10 +137,24 @@ describe("VectorStore (fallback mode)", () => {
 // ─── SummaryGenerator (algorithmic mode) ──────────────────────────────────────
 
 describe("SummaryGenerator (algorithmic)", () => {
+  const defaultSummariesConfig: CommunitySummariesConfig = {
+    enabled: true,
+    max_number: 50,
+    context_size: 512,
+  };
+
+  const defaultDescriptionsConfig: NodeDescriptionsConfig = {
+    enabled: true,
+    threshold: 0.8,
+    context_size: 512,
+  };
+
   it("generates algorithmic community summaries", async () => {
     const generator = new SummaryGenerator(
-      { enabled: true, generate_node_descriptions: true, node_description_threshold: 0.8, max_communities: 50 },
-      null, // no LLM
+      defaultSummariesConfig,
+      defaultDescriptionsConfig,
+      null, // no summaries LLM
+      null, // no descriptions LLM
     );
 
     const communities: CommunityData[] = [
@@ -165,7 +179,9 @@ describe("SummaryGenerator (algorithmic)", () => {
 
   it("generates algorithmic node descriptions", async () => {
     const generator = new SummaryGenerator(
-      { enabled: true, generate_node_descriptions: true, node_description_threshold: 0.5, max_communities: 50 },
+      defaultSummariesConfig,
+      { ...defaultDescriptionsConfig, threshold: 0.5 },
+      null,
       null,
     );
 
@@ -184,14 +200,32 @@ describe("SummaryGenerator (algorithmic)", () => {
     expect(descriptions[0].description).toContain("10 connections");
   });
 
-  it("respects disabled config", async () => {
+  it("respects disabled community_summaries config", async () => {
     const generator = new SummaryGenerator(
-      { enabled: false, generate_node_descriptions: true, node_description_threshold: 0.8, max_communities: 50 },
+      { ...defaultSummariesConfig, enabled: false },
+      defaultDescriptionsConfig,
+      null,
       null,
     );
 
     const summaries = await generator.generateCommunitySummaries([{ id: "0", nodes: [] }]);
     expect(summaries).toHaveLength(0);
+  });
+
+  it("respects disabled node_descriptions config", async () => {
+    const generator = new SummaryGenerator(
+      defaultSummariesConfig,
+      { ...defaultDescriptionsConfig, enabled: false },
+      null,
+      null,
+    );
+
+    const nodes: GraphNode[] = [
+      { id: "1", label: "main_function", type: "function", source_file: "main.py" },
+    ];
+    const edgeCounts = new Map([["1", 10]]);
+    const descriptions = await generator.generateNodeDescriptions(nodes, edgeCounts);
+    expect(descriptions).toHaveLength(0);
   });
 });
 
@@ -199,13 +233,16 @@ describe("SummaryGenerator (algorithmic)", () => {
 
 describe("EmbeddingEngine", () => {
   it("should report unavailable when disabled", async () => {
-    const engine = new EmbeddingEngine({
-      enabled: false,
-      model: "all-MiniLM-L6-v2",
-      dimensions: 384,
-      batch_size: 128,
-      cache_dir: "~/.cache/reponova/models",
-    });
+    const engine = new EmbeddingEngine(
+      {
+        enabled: false,
+        method: "onnx",
+        model: "all-MiniLM-L6-v2",
+        dimensions: 384,
+        batch_size: 128,
+      },
+      "~/.cache/reponova/models",
+    );
 
     const ready = await engine.initialize();
     expect(ready).toBe(false);
@@ -216,13 +253,16 @@ describe("EmbeddingEngine", () => {
   it("should gracefully handle missing onnxruntime-node", { timeout: 30000 }, async () => {
     // This test validates that if onnxruntime-node IS available but model is not downloaded,
     // the engine handles it without crashing. In CI without the model, it will fail gracefully.
-    const engine = new EmbeddingEngine({
-      enabled: true,
-      model: "all-MiniLM-L6-v2",
-      dimensions: 384,
-      batch_size: 128,
-      cache_dir: join(tmpdir(), `gmt-test-nonexistent-${Date.now()}`),
-    });
+    const engine = new EmbeddingEngine(
+      {
+        enabled: true,
+        method: "onnx",
+        model: "all-MiniLM-L6-v2",
+        dimensions: 384,
+        batch_size: 128,
+      },
+      join(tmpdir(), `gmt-test-nonexistent-${Date.now()}`),
+    );
 
     // This should not throw — it should return false gracefully
     const ready = await engine.initialize();
@@ -236,21 +276,20 @@ describe("EmbeddingEngine", () => {
 // ─── LlmEngine (graceful degradation) ────────────────────────────────────────
 
 describe("LlmEngine", () => {
-  it("should report unavailable when disabled", async () => {
+  it("should gracefully handle missing node-llama-cpp", async () => {
     const engine = new LlmEngine({
-      enabled: false,
-      model: "qwen2.5-3b-instruct",
-      quantization: "Q4_K_M",
+      modelUri: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M",
+      cacheDir: "~/.cache/reponova/models",
       gpu: "auto",
-      context_size: 4096,
+      contextSize: 512,
       threads: 0,
-      download_on_first_use: false,
-      cache_dir: "~/.cache/reponova/models",
+      downloadOnFirstUse: false,
     });
 
+    // Should not throw — returns false if node-llama-cpp not available
     const ready = await engine.initialize();
-    expect(ready).toBe(false);
-    expect(engine.isAvailable).toBe(false);
+    expect(typeof ready).toBe("boolean");
+    expect(engine.isAvailable).toBe(ready);
     await engine.dispose();
   });
 });

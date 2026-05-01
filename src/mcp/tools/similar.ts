@@ -14,7 +14,7 @@ let tfidfEngine: TfidfEmbeddingEngine | null = null;
  * Initialize the similarity search backend.
  * Called once when the MCP server starts.
  */
-export async function initSimilaritySearch(graphDir: string, embeddingsConfig: EmbeddingsConfig): Promise<boolean> {
+export async function initSimilaritySearch(graphDir: string, embeddingsConfig: EmbeddingsConfig, cacheDir: string): Promise<boolean> {
   vectorStore = new VectorStore(graphDir);
   const hasData = await vectorStore.loadExisting();
 
@@ -38,7 +38,7 @@ export async function initSimilaritySearch(graphDir: string, embeddingsConfig: E
   }
 
   // ONNX method
-  embeddingEngine = new EmbeddingEngine(embeddingsConfig);
+  embeddingEngine = new EmbeddingEngine(embeddingsConfig, cacheDir);
   const engineReady = await embeddingEngine.initialize();
 
   if (!engineReady) {

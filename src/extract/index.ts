@@ -24,9 +24,32 @@ export { exportJson } from "./export-json.js";
 export { exportHtml, exportCommunityHtml } from "./export-html.js";
 export type { FileExtraction } from "./types.js";
 
+// ─── Glob Matching ───────────────────────────────────────────────────────────
+
+/**
+ * Convert a glob pattern to a RegExp.
+ * Supports: ** (any path), * (any segment), ? (single char).
+ */
+function globToRegex(glob: string): RegExp {
+  const regex = glob
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")  // Escape regex specials (except * and ?)
+    .replace(/\*\*/g, "\0GLOBSTAR\0")        // Placeholder for **
+    .replace(/\*/g, "[^/]*")                 // * = any chars except separator
+    .replace(/\?/g, "[^/]")                  // ? = single char except separator
+    .replace(/\0GLOBSTAR\0/g, ".*");         // ** = any chars including separator
+  return new RegExp(`^${regex}$`);
+}
+
+/**
+ * Test whether a relative path matches a glob pattern.
+ */
+function matchGlob(pattern: string, filePath: string): boolean {
+  return globToRegex(pattern).test(filePath);
+}
+
 // ─── File Detection ──────────────────────────────────────────────────────────
 
-/** Default directories to skip during file detection */
+/** Default directories to always skip during file detection */
 const SKIP_DIRS = new Set([
   "node_modules", "__pycache__", ".git", ".svn", ".hg",
   "venv", ".venv", "env", ".env", ".tox",
@@ -56,10 +79,20 @@ function getCodeExtensions(): Set<string> {
 /**
  * Detect all source code files under a workspace directory.
  * Returns relative paths (forward slashes). Excludes doc files.
+ *
+ * @param workspace - Root directory to walk
+ * @param patterns - Glob patterns for files to include (empty = auto-detect by extension)
+ * @param excludeGlobs - Glob patterns to exclude from results
  */
-export function detectFiles(workspace: string, excludeDirs: string[] = []): string[] {
-  const extraExcludes = new Set(excludeDirs);
-  const extensions = getCodeExtensions();
+export function detectFiles(
+  workspace: string,
+  patterns: string[] = [],
+  excludeGlobs: string[] = [],
+): string[] {
+  const usePatterns = patterns.length > 0;
+  const extensions = usePatterns ? null : getCodeExtensions();
+  const patternRegexes = patterns.map(globToRegex);
+  const excludeRegexes = excludeGlobs.map(globToRegex);
   const files: string[] = [];
 
   function walk(dir: string): void {
@@ -75,13 +108,25 @@ export function detectFiles(workspace: string, excludeDirs: string[] = []): stri
       const isDir = entry.isDirectory() || (entry.isSymbolicLink() && isDirectoryPath(fullPath));
 
       if (isDir) {
-        if (SKIP_DIRS.has(entry.name) || extraExcludes.has(entry.name)) continue;
+        if (SKIP_DIRS.has(entry.name)) continue;
         walk(fullPath);
       } else if (entry.isFile()) {
-        const ext = "." + (entry.name.split(".").pop()?.toLowerCase() ?? "");
-        if (extensions.has(ext)) {
-          const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
-          files.push(relPath);
+        const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
+
+        // Check exclude globs
+        if (excludeRegexes.some(r => r.test(relPath))) continue;
+
+        if (usePatterns) {
+          // Pattern-based: include only files matching at least one pattern
+          if (patternRegexes.some(r => r.test(relPath))) {
+            files.push(relPath);
+          }
+        } else {
+          // Extension-based: auto-detect by supported extensions
+          const ext = "." + (entry.name.split(".").pop()?.toLowerCase() ?? "");
+          if (extensions!.has(ext)) {
+            files.push(relPath);
+          }
         }
       }
     }
@@ -95,14 +140,12 @@ export function detectFiles(workspace: string, excludeDirs: string[] = []): stri
  * Detect documentation files under a workspace directory.
  * Respects docs config (patterns, excludes, max file size).
  */
-export function detectDocFiles(workspace: string, excludeDirs: string[] = [], docsConfig?: DocsConfig): string[] {
+export function detectDocFiles(workspace: string, docsConfig?: DocsConfig): string[] {
   if (!docsConfig?.enabled) return [];
 
-  const extraExcludes = new Set(excludeDirs);
   const maxSizeBytes = (docsConfig.max_file_size_kb ?? 500) * 1024;
-
-  // Build exclude patterns (simplified glob → prefix matching)
-  const excludePatterns = docsConfig.exclude.map((p) => p.replace(/\*\*/g, "").replace(/\*/g, ""));
+  const patternRegexes = docsConfig.patterns.map(globToRegex);
+  const excludeRegexes = docsConfig.exclude.map(globToRegex);
 
   const files: string[] = [];
 
@@ -119,7 +162,7 @@ export function detectDocFiles(workspace: string, excludeDirs: string[] = [], do
       const isDir = entry.isDirectory() || (entry.isSymbolicLink() && isDirectoryPath(fullPath));
 
       if (isDir) {
-        if (SKIP_DIRS.has(entry.name) || extraExcludes.has(entry.name)) continue;
+        if (SKIP_DIRS.has(entry.name)) continue;
         walk(fullPath);
       } else if (entry.isFile()) {
         const ext = "." + (entry.name.split(".").pop()?.toLowerCase() ?? "");
@@ -127,8 +170,11 @@ export function detectDocFiles(workspace: string, excludeDirs: string[] = [], do
 
         const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
 
+        // Check patterns (include only matching files)
+        if (!patternRegexes.some(r => r.test(relPath))) continue;
+
         // Check exclude patterns
-        if (excludePatterns.some((p) => relPath.includes(p.replace(/^\//, "")))) continue;
+        if (excludeRegexes.some(r => r.test(relPath))) continue;
 
         // Check file size
         try {
@@ -151,12 +197,12 @@ export function detectDocFiles(workspace: string, excludeDirs: string[] = [], do
  * Detect diagram/image files under a workspace directory.
  * Respects images config (patterns, excludes).
  */
-export function detectDiagramFiles(workspace: string, excludeDirs: string[] = [], imagesConfig?: ImagesConfig): string[] {
+export function detectDiagramFiles(workspace: string, imagesConfig?: ImagesConfig): string[] {
   if (!imagesConfig?.enabled) return [];
 
-  const extraExcludes = new Set(excludeDirs);
   const diagramExts = new Set([".puml", ".plantuml", ".svg", ".png", ".jpg", ".jpeg", ".gif"]);
-  const excludePatterns = imagesConfig.exclude.map((p) => p.replace(/\*\*/g, "").replace(/\*/g, ""));
+  const patternRegexes = imagesConfig.patterns.map(globToRegex);
+  const excludeRegexes = imagesConfig.exclude.map(globToRegex);
 
   const files: string[] = [];
 
@@ -173,7 +219,7 @@ export function detectDiagramFiles(workspace: string, excludeDirs: string[] = []
       const isDir = entry.isDirectory() || (entry.isSymbolicLink() && isDirectoryPath(fullPath));
 
       if (isDir) {
-        if (SKIP_DIRS.has(entry.name) || extraExcludes.has(entry.name)) continue;
+        if (SKIP_DIRS.has(entry.name)) continue;
         walk(fullPath);
       } else if (entry.isFile()) {
         const ext = "." + (entry.name.split(".").pop()?.toLowerCase() ?? "");
@@ -181,8 +227,11 @@ export function detectDiagramFiles(workspace: string, excludeDirs: string[] = []
 
         const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
 
+        // Check patterns (include only matching files)
+        if (!patternRegexes.some(r => r.test(relPath))) continue;
+
         // Check exclude patterns
-        if (excludePatterns.some((p) => relPath.includes(p.replace(/^\//, "")))) continue;
+        if (excludeRegexes.some(r => r.test(relPath))) continue;
 
         // Skip binary images unless puml/svg config says to parse them
         if ((ext === ".png" || ext === ".jpg" || ext === ".jpeg" || ext === ".gif")) {
@@ -264,8 +313,10 @@ export async function extractAll(workspace: string, filePaths: string[]): Promis
 export interface PipelineOptions {
   /** Workspace root directory */
   workspace: string;
-  /** Directory names to exclude from file detection */
-  excludeDirs?: string[];
+  /** Glob patterns for source code files (empty = auto-detect by extension) */
+  patterns?: string[];
+  /** Glob patterns to exclude from source code detection */
+  excludeGlobs?: string[];
   /** Output path for graph.json */
   graphJsonPath: string;
   /** Repo name for tagging nodes */
@@ -302,13 +353,23 @@ export interface PipelineResult {
  * and reuses them for unchanged files on subsequent builds.
  */
 export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
-  const { workspace, excludeDirs = [], graphJsonPath, repoName, outputDir, incremental, docsConfig, imagesConfig } = options;
+  const {
+    workspace,
+    patterns = [],
+    excludeGlobs = [],
+    graphJsonPath,
+    repoName,
+    outputDir,
+    incremental,
+    docsConfig,
+    imagesConfig,
+  } = options;
 
   // 1. Detect files
   log.info("Detecting files...");
-  const codeFiles = detectFiles(workspace, excludeDirs);
-  const docFiles = detectDocFiles(workspace, excludeDirs, docsConfig);
-  const diagramFiles = detectDiagramFiles(workspace, excludeDirs, imagesConfig);
+  const codeFiles = detectFiles(workspace, patterns, excludeGlobs);
+  const docFiles = detectDocFiles(workspace, docsConfig);
+  const diagramFiles = detectDiagramFiles(workspace, imagesConfig);
   const files = [...codeFiles, ...docFiles, ...diagramFiles];
 
   const extras: string[] = [];
