@@ -201,14 +201,7 @@ function getFileTypeLabel(sourceFile: string): string {
 
 function escapeMarkdownText(value: string): string {
   return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\[/g, "\\[")
-    .replace(/\]/g, "\\]")
-    .replace(/\*/g, "\\*")
-    .replace(/_/g, "\\_")
-    .replace(/`/g, "\\`");
+    .replace(/\|/g, "\\|");
 }
 
 /**

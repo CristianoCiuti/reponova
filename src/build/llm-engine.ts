@@ -31,8 +31,12 @@ interface LlamaModel {
 }
 
 interface LlamaContext {
-  getSequence(): unknown;
+  getSequence(): LlamaSequence;
   dispose(): Promise<void>;
+}
+
+interface LlamaSequence {
+  clearHistory(): void;
 }
 
 interface LlamaChatSessionInstance {
@@ -40,13 +44,16 @@ interface LlamaChatSessionInstance {
   dispose(): Promise<void>;
 }
 
+type LlamaChatSessionConstructor = new (opts: unknown) => LlamaChatSessionInstance;
+
 // ─── LLM Engine ──────────────────────────────────────────────────────────────
 
 export class LlmEngine {
   private llama: LlamaInstance | null = null;
   private model: LlamaModel | null = null;
   private context: LlamaContext | null = null;
-  private session: LlamaChatSessionInstance | null = null;
+  private sequence: LlamaSequence | null = null;
+  private ChatSession: LlamaChatSessionConstructor | null = null;
   private config: LlmConfig;
   private cacheDir: string;
   private available = false;
@@ -69,7 +76,7 @@ export class LlmEngine {
     let nodeLlamaCpp: {
       getLlama(opts: unknown): Promise<LlamaInstance>;
       resolveModelFile(uri: string, dir: string, opts?: unknown): Promise<string>;
-      LlamaChatSession: new (opts: unknown) => LlamaChatSessionInstance;
+      LlamaChatSession: LlamaChatSessionConstructor;
     };
 
     try {
@@ -93,7 +100,7 @@ export class LlmEngine {
       const modelsDir = join(this.cacheDir, "llm");
       if (!existsSync(modelsDir)) mkdirSync(modelsDir, { recursive: true });
 
-      const modelUri = `hf:Qwen/Qwen2.5-3B-Instruct-GGUF:${this.config.quantization}`;
+      const modelUri = this.buildModelUri();
       log.info(`Loading LLM model: ${this.config.model} (${this.config.quantization})...`);
 
       let modelPath: string;
@@ -101,7 +108,7 @@ export class LlmEngine {
         modelPath = await nodeLlamaCpp.resolveModelFile(modelUri, modelsDir, {
           cli: false,
         });
-      } catch (err) {
+      } catch {
         if (!this.config.download_on_first_use) {
           log.warn("LLM model not found and download_on_first_use is false");
           await this.dispose();
@@ -120,17 +127,14 @@ export class LlmEngine {
         gpuLayers: "auto",
       });
 
-      // Create context
+      // Create context + single reusable sequence
       const threads = this.config.threads > 0 ? { ideal: this.config.threads } : undefined;
       this.context = await this.model.createContext({
         contextSize: this.config.context_size,
         threads,
       });
-
-      // Create session
-      this.session = new nodeLlamaCpp.LlamaChatSession({
-        contextSequence: this.context.getSequence(),
-      });
+      this.sequence = this.context.getSequence();
+      this.ChatSession = nodeLlamaCpp.LlamaChatSession;
 
       this.available = true;
       log.info("LLM engine initialized");
@@ -145,31 +149,28 @@ export class LlmEngine {
 
   /**
    * Generate a text completion.
+   * Reuses the single context sequence — clears history between calls.
    */
   async generate(options: LlmCompletionOptions): Promise<string | null> {
-    if (!this.available || !this.session) return null;
+    if (!this.available || !this.sequence || !this.ChatSession) return null;
 
     try {
-      // For each generation, we create a fresh session to avoid context pollution
-      let nodeLlamaCpp: { LlamaChatSession: new (opts: unknown) => LlamaChatSessionInstance };
-      try {
-        nodeLlamaCpp = await import("node-llama-cpp") as unknown as typeof nodeLlamaCpp;
-      } catch {
-        return null;
-      }
+      // Clear sequence history so each prompt starts fresh
+      this.sequence.clearHistory();
 
-      // Create a fresh session with the system prompt
-      const freshSession = new nodeLlamaCpp.LlamaChatSession({
-        contextSequence: this.context!.getSequence(),
+      // Create session on the reused sequence (autoDisposeSequence: false)
+      const session = new this.ChatSession({
+        contextSequence: this.sequence,
+        autoDisposeSequence: false,
         systemPrompt: options.systemPrompt,
       });
 
-      const result = await freshSession.prompt(options.userPrompt, {
+      const result = await session.prompt(options.userPrompt, {
         maxTokens: options.maxTokens ?? 200,
         temperature: options.temperature ?? 0.7,
       });
 
-      await freshSession.dispose();
+      await session.dispose();
       return result;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -183,9 +184,21 @@ export class LlmEngine {
    */
   async generateBatch(prompts: LlmCompletionOptions[]): Promise<Array<string | null>> {
     const results: Array<string | null> = [];
+    let failures = 0;
+
     for (let i = 0; i < prompts.length; i++) {
       const result = await this.generate(prompts[i]!);
       results.push(result);
+
+      if (result === null) failures++;
+
+      // If too many consecutive failures, abort early (model is broken)
+      if (failures > 5 && results.every(r => r === null)) {
+        log.warn(`  LLM producing no results — aborting batch after ${i + 1} attempts`);
+        // Fill remaining with null
+        for (let j = i + 1; j < prompts.length; j++) results.push(null);
+        return results;
+      }
 
       if (i > 0 && i % 10 === 0) {
         log.info(`  Generated ${i}/${prompts.length} summaries...`);
@@ -195,11 +208,12 @@ export class LlmEngine {
   }
 
   /**
-   * Dispose all resources (session → context → model → llama).
+   * Dispose all resources (context → model → llama).
    */
   async dispose(): Promise<void> {
     try {
-      if (this.session) { await this.session.dispose(); this.session = null; }
+      this.sequence = null;
+      this.ChatSession = null;
       if (this.context) { await this.context.dispose(); this.context = null; }
       if (this.model) { await this.model.dispose(); this.model = null; }
       if (this.llama) { await this.llama.dispose(); this.llama = null; }
@@ -211,6 +225,37 @@ export class LlmEngine {
 
   get isAvailable(): boolean {
     return this.available;
+  }
+
+  /**
+   * Build the HuggingFace GGUF URI from config model name.
+   * Maps shorthand model names to HF repo paths.
+   */
+  private buildModelUri(): string {
+    const model = this.config.model.toLowerCase();
+    const quant = this.config.quantization;
+
+    // Map common shorthand names to HF GGUF repos
+    if (model.includes("qwen2.5-0.5b")) {
+      return `hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:${quant}`;
+    }
+    if (model.includes("qwen2.5-1.5b")) {
+      return `hf:Qwen/Qwen2.5-1.5B-Instruct-GGUF:${quant}`;
+    }
+    if (model.includes("qwen2.5-3b")) {
+      return `hf:Qwen/Qwen2.5-3B-Instruct-GGUF:${quant}`;
+    }
+    if (model.includes("qwen2.5-7b")) {
+      return `hf:Qwen/Qwen2.5-7B-Instruct-GGUF:${quant}`;
+    }
+
+    // If it already looks like a HF URI, use as-is
+    if (model.startsWith("hf:")) {
+      return model;
+    }
+
+    // Default fallback: treat as qwen2.5 0.5B
+    return `hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:${quant}`;
   }
 }
 

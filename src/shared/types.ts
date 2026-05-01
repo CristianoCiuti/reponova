@@ -303,10 +303,10 @@ export const DEFAULT_CONFIG: Config = {
     },
     llm: {
       enabled: true,
-      model: "qwen2.5-3b-instruct",
+      model: "qwen2.5-0.5b-instruct",
       quantization: "Q4_K_M",
       gpu: "auto",
-      context_size: 4096,
+      context_size: 2048,
       threads: 0,
       download_on_first_use: true,
       cache_dir: "~/.cache/graphify-mcp-tools/models",

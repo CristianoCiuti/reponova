@@ -38,10 +38,10 @@ const BuildConfigSchema = z.object({
   }).default({}),
   llm: z.object({
     enabled: z.boolean().default(true),
-    model: z.string().default("qwen2.5-3b-instruct"),
+    model: z.string().default("qwen2.5-0.5b-instruct"),
     quantization: z.string().default("Q4_K_M"),
     gpu: z.enum(["auto", "cpu", "cuda", "metal", "vulkan"]).default("auto"),
-    context_size: z.number().default(4096),
+    context_size: z.number().default(2048),
     threads: z.number().default(0),
     download_on_first_use: z.boolean().default(true),
     cache_dir: z.string().default("~/.cache/graphify-mcp-tools/models"),
