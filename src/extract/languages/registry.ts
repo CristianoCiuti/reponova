@@ -25,7 +25,7 @@ const byLanguageId = new Map<string, LanguageExtractor>();
 
 // ─── Registration ────────────────────────────────────────────────────────────
 
-function registerExtractor(extractor: LanguageExtractor): void {
+export function registerExtractor(extractor: LanguageExtractor): void {
   byLanguageId.set(extractor.languageId, extractor);
   for (const ext of extractor.extensions) {
     byExtension.set(ext, extractor);

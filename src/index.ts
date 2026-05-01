@@ -25,6 +25,10 @@ export { SummaryGenerator } from "./build/community-summaries.js";
 export { ContextBuilder } from "./core/context-builder.js";
 export { classifyQuestion, registerLanguage, getRegisteredLanguages } from "./core/question-classifier.js";
 
+// Extraction layer exports
+export { registerExtractor } from "./extract/languages/registry.js";
+export type { LanguageExtractor } from "./extract/types.js";
+
 export type {
   GraphNode,
   GraphEdge,
