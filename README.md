@@ -243,13 +243,19 @@ reponova mcp [--graph <path>]
 
 ### `reponova models`
 
-Manage local models (ONNX embeddings, LLM).
+Manage local AI models (ONNX embeddings, LLM). See [Models](#models) for details.
 
 ```bash
-reponova models list              # Show downloaded models and sizes
-reponova models download          # Download all configured models
-reponova models remove <name>     # Remove a downloaded model
+reponova models status              # Show configured and cached models
+reponova models download            # Pre-download all models needed by config
+reponova models remove <name>       # Remove a specific cached model
+reponova models clear               # Remove all cached models
 ```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--config` | No | Path to `reponova.yml`. Default: auto-detected |
+| `--cache-dir` | No | Override model cache directory |
 
 ### `reponova check`
 
@@ -366,13 +372,6 @@ models:
 # ── Build Options ─────────────────────────────────────────────────────────────
 build:
 
-  # Build mode: how to treat multiple repos
-  # Values: "monorepo" | "separate"
-  #   - monorepo:  all repos merged into one graph (cross-repo edges resolved)
-  #   - separate:  each repo gets its own graph (no cross-repo edges)
-  # Default: "monorepo"
-  mode: monorepo
-
   # Glob patterns for source code files to include
   # Type: string[]
   # Default: [] (empty = auto-detect by file extension using registered extractors)
@@ -383,7 +382,12 @@ build:
   # Type: string[]
   # Default: []
   # Example: ["**/generated/**", "**/*.test.ts", "**/vendor/**"]
-  # Note: common directories (node_modules, .git, __pycache__, etc.) are always skipped.
+  #
+  # Note: the following directories are ALWAYS skipped (regardless of patterns/exclude):
+  #   node_modules, __pycache__, .git, .svn, .hg, venv, .venv, env, .env, .tox,
+  #   site-packages, dist, build, .eggs, .mypy_cache, .pytest_cache, .ruff_cache,
+  #   target, bin, obj
+  # This applies to source code, documentation, and diagram detection.
   exclude: []
 
   # Incremental builds: only re-process files whose SHA256 hash changed
@@ -476,6 +480,9 @@ build:
     method: tfidf
 
     # ONNX model name (only used when method: "onnx")
+    # Must be a sentence-transformers/ model on HuggingFace with ONNX export
+    # and BERT-compatible tokenizer. Dimensions must match 'dimensions' below.
+    # See the "Models" section for compatible models and details.
     # Type: string
     # Default: "all-MiniLM-L6-v2"
     model: all-MiniLM-L6-v2
@@ -502,13 +509,15 @@ build:
     # Maximum number of communities to summarize
     # Type: integer (>= 0)
     # Default: 0 (no limit — summarize all communities)
-    # Set to a positive number to cap processing time on large graphs
+    # Communities are sorted by size (largest first). When max_number > 0,
+    # only the top N largest communities are summarized.
+    # Communities with fewer than 3 nodes are always excluded.
     max_number: 0
 
     # LLM model for richer summaries (optional)
+    # Uses hf: URI notation — see the "Models" section for details.
     # Type: string | null
     # Default: null (algorithmic summaries — still useful, just less prose)
-    # Uncomment to enable LLM-enhanced summaries:
     # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
 
     # Context window size for LLM inference (only used when model is set)
@@ -536,9 +545,9 @@ build:
     threshold: 0.8
 
     # LLM model for richer descriptions (optional)
+    # Uses hf: URI notation — see the "Models" section for details.
     # Type: string | null
     # Default: null (algorithmic descriptions)
-    # Uncomment to enable LLM-enhanced descriptions:
     # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
 
     # Context window size for LLM inference (only used when model is set)
@@ -601,8 +610,6 @@ repos:
     path: ../services/core
   - name: shared
     path: ../libs/shared
-build:
-  mode: monorepo    # merge into one graph with cross-repo edges
 ```
 
 ### LLM-enhanced Config
@@ -649,7 +656,67 @@ build:
     - "**/*.generated.ts"
 ```
 
-> When `patterns` is empty (default), reponova auto-detects source files by extension using all registered extractors. Common directories (`node_modules`, `.git`, `__pycache__`, `dist`, etc.) are always skipped regardless of patterns.
+> When `patterns` is empty (default), reponova auto-detects source files by extension using all registered extractors.
+> The following directories are **always skipped** regardless of configuration: `node_modules`, `__pycache__`, `.git`, `.svn`, `.hg`, `venv`, `.venv`, `env`, `.env`, `.tox`, `site-packages`, `dist`, `build`, `.eggs`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `target`, `bin`, `obj`.
+> This filter applies at every depth — any directory matching these names is excluded along with all its contents.
+
+---
+
+## Models
+
+reponova uses two types of AI models, both downloaded automatically on first use and cached locally. No API keys, no cloud services.
+
+### ONNX Embeddings
+
+Sentence-transformer models for semantic similarity search (`graph_similar`, `graph_context`).
+
+| Property | Value |
+|----------|-------|
+| **Config field** | `build.embeddings.model` |
+| **Notation** | Plain model name (e.g., `all-MiniLM-L6-v2`) |
+| **Source** | `huggingface.co/sentence-transformers/{model}` |
+| **Cache path** | `{models.cache_dir}/{model-name}/` |
+| **Files downloaded** | `model.onnx`, `vocab.txt`, `tokenizer_config.json` |
+| **Required when** | `build.embeddings.method: onnx` |
+
+Compatible models (all 384-dim, must match `embeddings.dimensions`):
+
+| Model | Size | Notes |
+|-------|------|-------|
+| `all-MiniLM-L6-v2` | ~86 MB | Default. Good speed/quality balance |
+| `all-MiniLM-L12-v2` | ~130 MB | More accurate, slower |
+| `paraphrase-MiniLM-L6-v2` | ~86 MB | Optimized for paraphrase detection |
+| `multi-qa-MiniLM-L6-cos-v1` | ~86 MB | Optimized for Q&A |
+
+Any model under the `sentence-transformers/` org on HuggingFace that provides an ONNX export with BERT-compatible tokenizer (WordPiece) should work. The `dimensions` config field **must** match the model's output dimension.
+
+### LLM (GGUF)
+
+Local language models for richer community summaries and node descriptions, powered by [node-llama-cpp](https://github.com/withcatai/node-llama-cpp).
+
+| Property | Value |
+|----------|-------|
+| **Config field** | `build.community_summaries.model`, `build.node_descriptions.model` |
+| **Notation** | `hf:` URI (e.g., `hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M`) |
+| **Format** | `hf:{user}/{repo}:{quantization}` |
+| **Cache path** | `{models.cache_dir}/llm/` |
+| **Required when** | `community_summaries.model` or `node_descriptions.model` is set |
+| **Dependency** | `node-llama-cpp` (optional peer dependency) |
+
+When both `community_summaries.model` and `node_descriptions.model` resolve to the same file, reponova shares a single engine instance — no double memory usage.
+
+> **Why different notations?** ONNX embeddings use direct HTTP fetch from a fixed HuggingFace org (`sentence-transformers/`), downloading specific files (model.onnx, vocab.txt). LLM models delegate entirely to node-llama-cpp's `resolveModelFile()`, which handles the `hf:` URI protocol, download, and caching. The two systems are technically incompatible — the notation reflects this.
+
+### Model Management CLI
+
+```bash
+reponova models status              # Show configured and cached models
+reponova models download            # Pre-download all models needed by config
+reponova models remove <name>       # Remove a specific cached model
+reponova models clear               # Remove all cached models
+```
+
+Models are also downloaded automatically during `reponova build` when `models.download_on_first_use: true` (default). The CLI commands let you manage the cache independently of the build.
 
 ---
 
@@ -718,6 +785,30 @@ const path = findShortestPath(db, graphData, "ModuleA", "ModuleB");
 const detail = getNodeDetail(db, graphData, "Function:process_payment");
 ```
 
+### Advanced API
+
+```typescript
+import {
+  classifyQuestion,
+  registerLanguage,
+  ContextBuilder,
+  loadConfig,
+} from "reponova";
+
+// Natural language query classification
+const result = classifyQuestion("what depends on ConfigLoader?");
+// → { strategy: "impact_downstream", entities: ["ConfigLoader"], confidence: 0.85, language: "en" }
+
+// Smart context assembly (search + vectors + graph expansion)
+const { config } = loadConfig("./reponova.yml");
+const builder = new ContextBuilder(db, graphData, "./reponova-out");
+await builder.initialize(config.build.embeddings);
+const context = await builder.buildContext({
+  query: "authentication flow",
+  maxTokens: 4000,
+});
+```
+
 ---
 
 ## Natural Language Query Layer
@@ -757,25 +848,32 @@ const result2 = classifyQuestion("spiega authenticate_user");
 
 ## FAQ
 
-**Do I need an API key?**
+### Do I need an API key?
+
 No. Everything runs locally. The optional LLM is a local model (Qwen 0.5B) — no cloud, no API keys, no data leaves your machine.
 
-**How big are the models?**
-- TF-IDF embeddings: no model needed (computed in-process)
-- ONNX embeddings: ~86MB (MiniLM-L6-v2)
-- LLM (optional): ~350MB (Qwen 0.5B Q4_K_M) — only downloaded when `community_summaries.model` or `node_descriptions.model` is set
+### How big are the models?
 
-**How long does a build take?**
+| Model | Size | When downloaded |
+|-------|------|----------------|
+| TF-IDF embeddings | None (computed in-process) | Never |
+| ONNX embeddings | ~86 MB (MiniLM-L6-v2) | First build with `method: onnx` |
+| LLM (Qwen 0.5B Q4_K_M) | ~350 MB | When `community_summaries.model` or `node_descriptions.model` is set |
+
+### How long does a build take?
+
 Depends on codebase size. Rough benchmarks:
 - Small project (500 files): ~5-10 seconds
 - Medium project (5,000 files): ~30-60 seconds
 - Large monorepo (20,000+ files): 2-5 minutes
 - LLM summaries add ~2-3 seconds per community
 
-**Can I use it without an editor?**
+### Can I use it without an editor?
+
 Yes. Use the CLI (`reponova build`, `reponova check`) and the programmatic API. The MCP server is just one way to query the graph.
 
-**What about TypeScript / JavaScript extraction?**
+### What about TypeScript / JavaScript extraction?
+
 Tree-sitter grammars are ready. The extractor implementation is on the roadmap — contributions welcome.
 
 ---
@@ -793,6 +891,20 @@ src/extract/languages/registry.ts    # extraction registry
 src/outline/languages/registry.ts    # outline registry
 grammars/                            # tree-sitter WASM grammar files
 ```
+
+#### Runtime Registration
+
+You can also register extractors at runtime via the public API (must be called before `build`):
+
+```typescript
+import { registerExtractor } from "reponova";
+import type { LanguageExtractor } from "reponova";
+
+const myExtractor: LanguageExtractor = { /* ... */ };
+registerExtractor(myExtractor);
+```
+
+Note: duplicate `languageId` or `extensions` silently overwrite the previous extractor.
 
 ### Adding Language Support (Natural Language Queries)
 
