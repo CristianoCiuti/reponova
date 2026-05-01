@@ -22,7 +22,6 @@ const BuildConfigSchema = z.object({
   html_min_degree: z.number().int().min(1).optional(),
   patterns: z.array(z.string()).default([]),
   exclude: z.array(z.string()).default([]),
-  mode: z.enum(["monorepo", "separate"]).default("monorepo"),
   incremental: z.boolean().default(true),
   docs: z.object({
     enabled: z.boolean().default(true),

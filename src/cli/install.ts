@@ -28,7 +28,6 @@ models:
 
 # Build options
 build:
-  mode: monorepo                  # "monorepo" (default) or "separate"
   patterns: []                    # glob patterns for source files (empty = auto-detect by extension)
   exclude: []                     # glob patterns to exclude (e.g. ["**/generated/**", "**/*.test.ts"])
   incremental: true               # incremental builds using file hash cache

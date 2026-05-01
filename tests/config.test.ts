@@ -6,7 +6,6 @@ describe("loadConfig", () => {
     const { config } = loadConfig(undefined);
     expect(config.output).toBe("reponova-out");
     expect(config.repos).toEqual([]);
-    expect(config.build.mode).toBe("monorepo");
     expect(config.build.incremental).toBe(true);
     expect(config.build.patterns).toEqual([]);
     expect(config.build.exclude).toEqual([]);

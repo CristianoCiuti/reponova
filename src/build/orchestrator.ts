@@ -47,23 +47,14 @@ export async function runBuild(config: Config, configDir: string, options: Build
 
   try {
     const mergedPath = join(outputDir, "graph.json");
-    const mode = config.build.mode;
     const incremental = config.build.incremental && !options.force;
-    log.info(`Build mode: ${mode}${incremental ? " (incremental)" : ""}`);
+    log.info(`Build${incremental ? " (incremental)" : ""}...`);
 
-    let result: PipelineResult;
+    const result = await buildMonorepo(config, configDir, options, tmpDir, mergedPath, outputDir, incremental);
 
-    if (mode === "monorepo") {
-      result = await buildMonorepo(config, configDir, options, tmpDir, mergedPath, outputDir, incremental);
-    } else {
-      result = await buildSeparate(config, configDir, options, tmpDir, mergedPath, outputDir, incremental);
-    }
-
-    // Tag nodes with repo name (monorepo: from first path component)
-    if (mode === "monorepo") {
-      const repoNames = config.repos.map((r) => r.name);
-      tagNodesWithRepo(mergedPath, repoNames);
-    }
+    // Tag nodes with repo name (from first path component)
+    const repoNames = config.repos.map((r) => r.name);
+    tagNodesWithRepo(mergedPath, repoNames);
 
     log.info(`Graph: ${result.builtGraph.stats.nodeCount} nodes, ${result.builtGraph.stats.edgeCount} edges, ${result.communities.count} communities`);
     if (result.incrementalStats) {
@@ -184,51 +175,6 @@ async function buildMonorepo(
   }
 
   log.info(`Building unified graph (${repoNames.length} repos)...`);
-
-  return runPipeline({
-    workspace,
-    patterns: config.build.patterns,
-    excludeGlobs: config.build.exclude,
-    graphJsonPath: mergedPath,
-    htmlMinDegree: config.build.html_min_degree,
-    outputDir,
-    incremental,
-    docsConfig: config.build.docs,
-    imagesConfig: config.build.images,
-  });
-}
-
-// ─── Separate mode ───────────────────────────────────────────────────────────
-
-async function buildSeparate(
-  config: Config,
-  configDir: string,
-  _options: BuildOptions,
-  tmpDir: string,
-  mergedPath: string,
-  outputDir: string,
-  incremental: boolean,
-): Promise<PipelineResult> {
-  // In separate mode, we build each repo independently then merge
-  // For now, use the same monorepo approach (symlink into workspace)
-  // The extraction engine handles multi-repo by default via file path prefixes
-  const workspace = join(tmpDir, "workspace");
-  mkdirSync(workspace, { recursive: true });
-
-  for (const repo of config.repos) {
-    const repoPath = resolve(configDir, repo.path);
-    if (!existsSync(repoPath)) {
-      log.warn(`Repo not found, skipping: ${repoPath}`);
-      continue;
-    }
-
-    const linkPath = join(workspace, repo.name);
-    try {
-      symlinkSync(repoPath, linkPath, "junction");
-    } catch {
-      copyDirRecursive(repoPath, linkPath);
-    }
-  }
 
   return runPipeline({
     workspace,

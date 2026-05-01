@@ -93,7 +93,6 @@ export interface BuildConfig {
   patterns: string[];
   /** Glob patterns to exclude from source code detection */
   exclude: string[];
-  mode: "monorepo" | "separate";
   incremental: boolean;
   docs: DocsConfig;
   images: ImagesConfig;
@@ -299,7 +298,6 @@ export const DEFAULT_CONFIG: Config = {
     html: true,
     patterns: [],
     exclude: [],
-    mode: "monorepo",
     incremental: true,
     docs: {
       enabled: true,
