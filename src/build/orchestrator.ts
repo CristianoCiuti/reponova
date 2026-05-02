@@ -10,7 +10,8 @@ import { generateGraphReport } from "./report.js";
 import { exportHtml, exportCommunityHtml, type CommunitySummaryInfo } from "../extract/export-html.js";
 import { log } from "../shared/utils.js";
 import { runPipeline, type PipelineResult } from "../extract/index.js";
-import { loadPreviousBuildConfig, type ConfigDiff } from "./config-diff.js";
+import { loadPreviousBuildConfig } from "./config-diff.js";
+import { cleanStaleArtifacts } from "./artifact-cleanup.js";
 
 export interface BuildOptions {
   force: boolean;
@@ -77,6 +78,8 @@ export async function runBuild(config: Config, configDir: string, options: Build
       if (configDiff.communitySummariesChanged) log.info("  → Community summaries config changed — will regenerate summaries");
       if (configDiff.nodeDescriptionsChanged) log.info("  → Node descriptions config changed — will regenerate descriptions");
     }
+
+    cleanStaleArtifacts(outputDir, configDiff, config);
 
     const result = await buildMonorepo(config, configDir, options, tmpDir, mergedPath, outputDir, incremental);
 
