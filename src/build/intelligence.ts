@@ -31,6 +31,12 @@ export interface IntelligenceResult {
   nodeDescriptions: number;
 }
 
+export interface IntelligenceRunOptions {
+  skipEmbeddings?: boolean;
+  skipSummaries?: boolean;
+  skipDescriptions?: boolean;
+}
+
 /**
  * Run the full intelligence layer pipeline.
  */
@@ -38,6 +44,7 @@ export async function runIntelligenceLayer(
   config: Config,
   outputDir: string,
   graphJsonPath: string,
+  options: IntelligenceRunOptions = {},
 ): Promise<IntelligenceResult> {
   const result: IntelligenceResult = {
     embeddingsGenerated: 0,
@@ -50,18 +57,33 @@ export async function runIntelligenceLayer(
 
   // ─── Phase 2.1: Embeddings ─────────────────────────────────────────────────
 
-  if (config.build.embeddings.enabled) {
+  if (config.build.embeddings.enabled && !options.skipEmbeddings) {
     const embCount = await runEmbeddings(config, outputDir, graphData);
     result.embeddingsGenerated = embCount;
   }
 
   // ─── Phase 2.2: Summaries & Descriptions (independent features) ────────────
 
-  const summariesEnabled = config.build.community_summaries.enabled;
-  const descriptionsEnabled = config.build.node_descriptions.enabled;
+  const summariesCfg: CommunitySummariesConfig = {
+    ...config.build.community_summaries,
+    enabled: config.build.community_summaries.enabled && !options.skipSummaries,
+  };
+  const descriptionsCfg: NodeDescriptionsConfig = {
+    ...config.build.node_descriptions,
+    enabled: config.build.node_descriptions.enabled && !options.skipDescriptions,
+  };
+
+  const summariesEnabled = summariesCfg.enabled;
+  const descriptionsEnabled = descriptionsCfg.enabled;
 
   if (summariesEnabled || descriptionsEnabled) {
-    const { summaries, descriptions } = await runSummariesAndDescriptions(config, outputDir, graphData);
+    const { summaries, descriptions } = await runSummariesAndDescriptions(
+      summariesCfg,
+      descriptionsCfg,
+      config.models,
+      outputDir,
+      graphData,
+    );
     result.communitySummaries = summaries;
     result.nodeDescriptions = descriptions;
   }
@@ -192,13 +214,12 @@ async function storeEmbeddings(
  * reference the same model (avoids loading ~350MB twice).
  */
 async function runSummariesAndDescriptions(
-  config: Config,
+  summariesCfg: CommunitySummariesConfig,
+  descriptionsCfg: NodeDescriptionsConfig,
+  modelsCfg: ModelsConfig,
   outputDir: string,
   graphData: GraphData,
 ): Promise<{ summaries: number; descriptions: number }> {
-  const summariesCfg = config.build.community_summaries;
-  const descriptionsCfg = config.build.node_descriptions;
-  const modelsCfg = config.models;
   const cacheDir = modelsCfg.cache_dir;
 
   // Determine which models are needed

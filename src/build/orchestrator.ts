@@ -5,7 +5,7 @@ import type { Config, GraphData } from "../shared/types.js";
 import { loadConfig } from "../core/config.js";
 import { runIndexer } from "./indexer.js";
 import { runOutlineGeneration } from "./outlines.js";
-import { runIntelligenceLayer } from "./intelligence.js";
+import { runIntelligenceLayer, type IntelligenceResult } from "./intelligence.js";
 import { generateGraphReport } from "./report.js";
 import { exportHtml, exportCommunityHtml, type CommunitySummaryInfo } from "../extract/export-html.js";
 import { log } from "../shared/utils.js";
@@ -105,6 +105,64 @@ export async function runBuild(config: Config, configDir: string, options: Build
       };
     }
 
+    if (result.incrementalStats?.reextractedFiles === 0 && configDiff.hasChanges && !options.force) {
+      log.info("No source changes detected — selectively regenerating changed subsystems");
+
+      if (config.outlines.enabled && configDiff.outlinesChanged) {
+        log.info("Generating outlines...");
+        const outlineCount = await runOutlineGeneration(config, configDir, outputDir, { force: true });
+        log.info(`  ✓ ${outlineCount} outlines generated`);
+      }
+
+      const shouldRunIntelligence =
+        configDiff.embeddingsChanged ||
+        configDiff.communitySummariesChanged ||
+        configDiff.nodeDescriptionsChanged;
+
+      const intelligenceResult: IntelligenceResult = shouldRunIntelligence
+        ? await runIntelligenceLayer(config, outputDir, mergedPath, {
+            skipEmbeddings: !configDiff.embeddingsChanged,
+            skipSummaries: !configDiff.communitySummariesChanged,
+            skipDescriptions: !configDiff.nodeDescriptionsChanged,
+          })
+        : { embeddingsGenerated: 0, communitySummaries: 0, nodeDescriptions: 0 };
+
+      if (shouldRunIntelligence) {
+        log.info(`Intelligence: ${intelligenceResult.embeddingsGenerated} embeddings, ${intelligenceResult.communitySummaries} community summaries, ${intelligenceResult.nodeDescriptions} node descriptions`);
+      }
+
+      if (configDiff.communitySummariesChanged) {
+        const communitySummaries = loadCommunitySummaries(outputDir);
+
+        if (config.build.html) {
+          const htmlCommunityPath = join(outputDir, "graph_communities.html");
+          log.info("Generating graph_communities.html...");
+          exportCommunityHtml({
+            graph: result.builtGraph.graph,
+            communities: result.communities,
+            outputPath: htmlCommunityPath,
+            communitySummaries,
+          });
+        }
+
+        log.info("Generating report.md...");
+        generateGraphReport({
+          graph: result.builtGraph.graph,
+          communities: result.communities,
+          outputDir,
+          outputPath: join(outputDir, "report.md"),
+        });
+      }
+
+      return {
+        outputDir,
+        fileCount: result.fileCount,
+        nodeCount: result.builtGraph.stats.nodeCount,
+        edgeCount: result.builtGraph.stats.edgeCount,
+        communityCount: result.communities.count,
+      };
+    }
+
     const previousGraphHash = loadPreviousGraphHash(outputDir);
     const currentGraphHash = computeSemanticGraphHash(result.builtGraph.graph);
     saveGraphHash(outputDir, currentGraphHash);
@@ -198,6 +256,17 @@ export async function runBuild(config: Config, configDir: string, options: Build
     } catch {
       // Ignore cleanup errors
     }
+  }
+}
+
+function loadCommunitySummaries(outputDir: string): CommunitySummaryInfo[] | undefined {
+  const summariesPath = join(outputDir, "community_summaries.json");
+  if (!existsSync(summariesPath)) return undefined;
+
+  try {
+    return JSON.parse(readFileSync(summariesPath, "utf-8")) as CommunitySummaryInfo[];
+  } catch {
+    return undefined;
   }
 }
 
