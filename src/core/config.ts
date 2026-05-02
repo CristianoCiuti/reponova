@@ -21,6 +21,7 @@ const ModelsConfigSchema = z.object({
 const BuildConfigSchema = z.object({
   html: z.boolean().default(true),
   html_min_degree: z.number().int().min(1).optional(),
+  exclude_common: z.boolean().default(true),
   patterns: z.array(z.string()).default([]),
   exclude: z.array(z.string()).default([]),
   incremental: z.boolean().default(true),

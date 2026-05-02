@@ -30,6 +30,7 @@
     "graphology-types": "^0.24.8",
     "js-tiktoken": "^1.0.21",
     "js-yaml": "^4.1.0",
+    "picomatch": "^4.0.4",
     "sql.js": "^1.11.0",
     "web-tree-sitter": "^0.25.10",
     "yargs": "^17.7.0",
@@ -38,6 +39,7 @@
   "devDependencies": {
     "@types/js-yaml": "^4.0.0",
     "@types/node": "^20.0.0",
+    "@types/picomatch": "^4.0.3",
     "@types/yargs": "^17.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",

@@ -63,16 +63,19 @@ export interface BuildConfigFingerprint {
     enabled: boolean;
     paths: string[];
     exclude: string[];
+    exclude_common: boolean;
   };
   community_summaries: {
     enabled: boolean;
     max_number: number;
     model: string | null;
+    context_size: number;
   };
   node_descriptions: {
     enabled: boolean;
     threshold: number;
     model: string | null;
+    context_size: number;
   };
 }
 
@@ -116,6 +119,8 @@ export interface ModelsConfig {
 export interface BuildConfig {
   html: boolean;
   html_min_degree?: number;
+  /** Exclude common non-source directories (node_modules, venv, .git, etc.) */
+  exclude_common: boolean;
   /** Glob patterns for source code files to include */
   patterns: string[];
   /** Glob patterns to exclude from source code detection */
@@ -323,6 +328,7 @@ export const DEFAULT_CONFIG: Config = {
   },
   build: {
     html: true,
+    exclude_common: true,
     patterns: [],
     exclude: [],
     incremental: true,
