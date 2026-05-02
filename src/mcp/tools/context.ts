@@ -9,6 +9,21 @@ import { ContextBuilder } from "../../core/context-builder.js";
 import type { EmbeddingsConfig } from "../../shared/types.js";
 
 let contextBuilder: ContextBuilder | null = null;
+let _initPromise: Promise<void> | null = null;
+
+async function _doInit(
+  db: Database,
+  graphDir: string,
+  embeddingsConfig?: EmbeddingsConfig,
+  cacheDir?: string,
+): Promise<void> {
+  try {
+    contextBuilder = new ContextBuilder(db, graphDir);
+    await contextBuilder.initialize(embeddingsConfig, cacheDir);
+  } catch {
+    contextBuilder = null;
+  }
+}
 
 /**
  * Initialize the context builder. Called once at MCP server start.
@@ -19,8 +34,8 @@ export async function initContextBuilder(
   embeddingsConfig?: EmbeddingsConfig,
   cacheDir?: string,
 ): Promise<void> {
-  contextBuilder = new ContextBuilder(db, graphDir);
-  await contextBuilder.initialize(embeddingsConfig, cacheDir);
+  _initPromise = _doInit(db, graphDir, embeddingsConfig, cacheDir);
+  return _initPromise;
 }
 
 /**
@@ -30,6 +45,10 @@ export async function handleContext(db: Database, graphDir: string, args: Record
   const query = args.query as string;
   if (!query) {
     return { content: [{ type: "text" as const, text: "Error: 'query' parameter is required" }], isError: true };
+  }
+
+  if (_initPromise) {
+    await _initPromise;
   }
 
   // Lazy init if not already done
@@ -76,4 +95,5 @@ export async function disposeContextBuilder(): Promise<void> {
     await contextBuilder.dispose();
     contextBuilder = null;
   }
+  _initPromise = null;
 }
