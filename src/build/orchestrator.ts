@@ -10,6 +10,7 @@ import { generateGraphReport } from "./report.js";
 import { exportHtml, exportCommunityHtml, type CommunitySummaryInfo } from "../extract/export-html.js";
 import { log } from "../shared/utils.js";
 import { runPipeline, type PipelineResult } from "../extract/index.js";
+import { loadPreviousBuildConfig, type ConfigDiff } from "./config-diff.js";
 
 export interface BuildOptions {
   force: boolean;
@@ -66,6 +67,17 @@ export async function runBuild(config: Config, configDir: string, options: Build
     const incremental = config.build.incremental && !options.force;
     log.info(`Build${incremental ? " (incremental)" : ""}...`);
 
+    // ── Config change detection ──────────────────────────────────────────
+    const configDiff = loadPreviousBuildConfig(mergedPath, config);
+
+    if (configDiff.hasChanges) {
+      log.info("Config changes detected since last build:");
+      if (configDiff.embeddingsChanged) log.info("  → Embeddings config changed — will regenerate vectors");
+      if (configDiff.outlinesChanged) log.info("  → Outlines config changed — will regenerate outlines");
+      if (configDiff.communitySummariesChanged) log.info("  → Community summaries config changed — will regenerate summaries");
+      if (configDiff.nodeDescriptionsChanged) log.info("  → Node descriptions config changed — will regenerate descriptions");
+    }
+
     const result = await buildMonorepo(config, configDir, options, tmpDir, mergedPath, outputDir, incremental);
 
     // Tag nodes with repo name (from first path component)
@@ -82,8 +94,9 @@ export async function runBuild(config: Config, configDir: string, options: Build
 
     // Generate outlines (if enabled)
     if (config.outlines.enabled) {
+      const outlineForce = options.force || configDiff.outlinesChanged;
       log.info("Generating outlines...");
-      const outlineCount = await runOutlineGeneration(config, configDir, outputDir, { force: options.force });
+      const outlineCount = await runOutlineGeneration(config, configDir, outputDir, { force: outlineForce });
       log.info(`  ✓ ${outlineCount} outlines generated`);
     }
 
