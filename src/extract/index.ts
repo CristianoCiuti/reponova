@@ -300,6 +300,7 @@ export interface PipelineResult {
   incrementalStats?: {
     cachedFiles: number;
     reextractedFiles: number;
+    removedFiles: number;
   };
 }
 
@@ -353,7 +354,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
   // 2. Extract (with optional incremental caching)
   let extractions: FileExtraction[];
-  let incrementalStats: { cachedFiles: number; reextractedFiles: number } | undefined;
+  let incrementalStats: { cachedFiles: number; reextractedFiles: number; removedFiles: number } | undefined;
 
   if (outputDir) {
     // Lazy-import to avoid circular dependencies
@@ -380,6 +381,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     incrementalStats = {
       cachedFiles: diff.unchangedFiles.length,
       reextractedFiles: diff.changedFiles.length,
+      removedFiles: diff.removedFiles.length,
     };
 
     // Save cache only when incremental builds are enabled

@@ -30,6 +30,8 @@ export interface IncrementalResult {
   changedFiles: string[];
   /** Files that are unchanged (use cached extraction) */
   unchangedFiles: string[];
+  /** Files that existed in cache but were removed from the workspace */
+  removedFiles: string[];
   /** Cached extractions loaded from disk */
   cachedExtractions: FileExtraction[];
 }
@@ -158,12 +160,14 @@ export function diffFiles(
     return {
       changedFiles: [...currentHashes.keys()],
       unchangedFiles: [],
+      removedFiles: [],
       cachedExtractions: [],
     };
   }
 
   const changedFiles: string[] = [];
   const unchangedFiles: string[] = [];
+  const removedFiles: string[] = [];
   const cachedExtractions: FileExtraction[] = [];
 
   for (const [relPath, hash] of currentHashes) {
@@ -183,7 +187,13 @@ export function diffFiles(
     }
   }
 
-  return { changedFiles, unchangedFiles, cachedExtractions };
+  for (const prevPath of cache.hashes.keys()) {
+    if (!currentHashes.has(prevPath)) {
+      removedFiles.push(prevPath);
+    }
+  }
+
+  return { changedFiles, unchangedFiles, removedFiles, cachedExtractions };
 }
 
 /**

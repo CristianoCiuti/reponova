@@ -90,10 +90,14 @@ export async function runBuild(config: Config, configDir: string, options: Build
 
     log.info(`Graph: ${result.builtGraph.stats.nodeCount} nodes, ${result.builtGraph.stats.edgeCount} edges, ${result.communities.count} communities`);
     if (result.incrementalStats) {
-      log.info(`  Incremental: ${result.incrementalStats.cachedFiles} cached, ${result.incrementalStats.reextractedFiles} re-extracted`);
+      const removed = result.incrementalStats.removedFiles ?? 0;
+      log.info(`  Incremental: ${result.incrementalStats.cachedFiles} cached, ${result.incrementalStats.reextractedFiles} re-extracted${removed > 0 ? `, ${removed} removed` : ""}`);
     }
 
-    if (result.incrementalStats?.reextractedFiles === 0 && !configDiff.hasChanges && !options.force) {
+    const noFileChanges = result.incrementalStats?.reextractedFiles === 0
+      && (result.incrementalStats?.removedFiles ?? 0) === 0;
+
+    if (noFileChanges && !configDiff.hasChanges && !options.force) {
       log.info("No changes detected — graph is up to date");
       const existingCounts = readExistingGraphCounts(mergedPath);
       return {
@@ -105,7 +109,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
       };
     }
 
-    if (result.incrementalStats?.reextractedFiles === 0 && configDiff.hasChanges && !options.force) {
+    if (noFileChanges && configDiff.hasChanges && !options.force) {
       log.info("No source changes detected — selectively regenerating changed subsystems");
 
       if (config.outlines.enabled && configDiff.outlinesChanged) {
