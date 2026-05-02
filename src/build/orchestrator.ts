@@ -12,6 +12,7 @@ import { log } from "../shared/utils.js";
 import { runPipeline, type PipelineResult } from "../extract/index.js";
 import { loadPreviousBuildConfig } from "./config-diff.js";
 import { cleanStaleArtifacts } from "./artifact-cleanup.js";
+import { computeSemanticGraphHash, loadPreviousGraphHash, saveGraphHash } from "./graph-hash.js";
 
 export interface BuildOptions {
   force: boolean;
@@ -101,6 +102,21 @@ export async function runBuild(config: Config, configDir: string, options: Build
         nodeCount: existingCounts.nodeCount,
         edgeCount: existingCounts.edgeCount,
         communityCount: existingCounts.communityCount,
+      };
+    }
+
+    const previousGraphHash = loadPreviousGraphHash(outputDir);
+    const currentGraphHash = computeSemanticGraphHash(result.builtGraph.graph);
+    saveGraphHash(outputDir, currentGraphHash);
+
+    if (previousGraphHash === currentGraphHash && !configDiff.hasChanges && !options.force) {
+      log.info("Semantic graph unchanged — skipping downstream regeneration");
+      return {
+        outputDir,
+        fileCount: result.fileCount,
+        nodeCount: result.builtGraph.stats.nodeCount,
+        edgeCount: result.builtGraph.stats.edgeCount,
+        communityCount: result.communities.count,
       };
     }
 
