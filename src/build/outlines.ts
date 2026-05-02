@@ -9,6 +9,7 @@ import { resolve, join, relative, dirname } from "node:path";
 import { generateOutline, formatOutlineJson } from "../outline/index.js";
 import { log } from "../shared/utils.js";
 import type { Config } from "../shared/types.js";
+import { hashFile } from "./incremental.js";
 
 export interface OutlineOptions {
   force: boolean;
@@ -26,6 +27,8 @@ export async function runOutlineGeneration(
 ): Promise<number> {
   const outlinesDir = join(outputDir, "outlines");
   if (!existsSync(outlinesDir)) mkdirSync(outlinesDir, { recursive: true });
+  const previousHashes = loadOutlineHashes(outputDir);
+  const nextHashes = new Map<string, string>();
 
   let count = 0;
 
@@ -42,8 +45,10 @@ export async function runOutlineGeneration(
       for (const file of files) {
         const relPath = `${repo.name}/${relative(repoPath, file)}`.split("\\").join("/");
         const outPath = join(outlinesDir, relPath + ".outline.json");
+        const fileHash = hashFile(file);
+        nextHashes.set(relPath, fileHash);
 
-        if (!options.force && existsSync(outPath)) continue;
+        if (!options.force && existsSync(outPath) && previousHashes.get(relPath) === fileHash) continue;
 
         try {
           const source = readFileSync(file, "utf-8");
@@ -61,7 +66,33 @@ export async function runOutlineGeneration(
     }
   }
 
+  saveOutlineHashes(outputDir, nextHashes);
+
   return count;
+}
+
+export function loadOutlineHashes(outputDir: string): Map<string, string> {
+  const hashesPath = join(outputDir, ".cache", "outline-hashes.json");
+  if (!existsSync(hashesPath)) return new Map();
+
+  try {
+    const raw = JSON.parse(readFileSync(hashesPath, "utf-8")) as Record<string, string>;
+    return new Map(Object.entries(raw));
+  } catch {
+    return new Map();
+  }
+}
+
+export function saveOutlineHashes(outputDir: string, hashes: Map<string, string>): void {
+  const cacheDir = join(outputDir, ".cache");
+  mkdirSync(cacheDir, { recursive: true });
+
+  const serialized: Record<string, string> = {};
+  for (const [filePath, hash] of hashes) {
+    serialized[filePath] = hash;
+  }
+
+  writeFileSync(join(cacheDir, "outline-hashes.json"), JSON.stringify(serialized, null, 2));
 }
 
 // ─── File discovery (shared) ────────────────────────────────────────────────────
