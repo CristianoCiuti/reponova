@@ -88,16 +88,10 @@ export class VectorStore {
   async upsert(records: VectorRecord[]): Promise<void> {
     if (records.length === 0) return;
 
+    this.persistSidecar(records);
+
     if (this.useFallback) {
       this.fallbackData = records;
-      // Persist to disk for reload
-      const fallbackPath = join(this.dbPath.replace("/vectors", ""), "vectors.json");
-      const dir = join(this.dbPath.replace("/vectors", ""));
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      writeFileSync(fallbackPath, JSON.stringify(records.map(r => ({
-        ...r,
-        vector: Array.from(r.vector),
-      }))));
       log.info(`  Vector fallback: saved ${records.length} records to disk`);
       return;
     }
@@ -209,6 +203,19 @@ export class VectorStore {
     return false;
   }
 
+  async loadAllRecords(): Promise<VectorRecord[]> {
+    const sidecarPath = this.getSidecarPath();
+    if (existsSync(sidecarPath)) {
+      try {
+        return JSON.parse(readFileSync(sidecarPath, "utf-8")) as VectorRecord[];
+      } catch {
+        return [];
+      }
+    }
+
+    return [...this.fallbackData];
+  }
+
   private bruteForceSearch(queryVector: number[], topK: number, options: VectorQueryOptions): SimilarityResult[] {
     let data = this.fallbackData;
 
@@ -243,6 +250,24 @@ export class VectorStore {
   async dispose(): Promise<void> {
     this.table = null;
     this.db = null;
+  }
+
+  private persistSidecar(records: VectorRecord[]): void {
+    const sidecarPath = this.getSidecarPath();
+    const dir = this.getBaseDir();
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(sidecarPath, JSON.stringify(records.map((record) => ({
+      ...record,
+      vector: Array.from(record.vector),
+    }))));
+  }
+
+  private getBaseDir(): string {
+    return this.dbPath;
+  }
+
+  private getSidecarPath(): string {
+    return join(this.getBaseDir(), "vectors.json");
   }
 }
 

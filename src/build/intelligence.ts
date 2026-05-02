@@ -14,7 +14,7 @@
  *
  * All steps are best-effort: failures don't block the build.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { log } from "../shared/utils.js";
@@ -110,34 +110,49 @@ async function runEmbeddings(config: Config, outputDir: string, graphData: Graph
     }),
   }));
 
-  if (method === "tfidf") {
-    return runTfidfEmbeddings(config, outputDir, graphData, items);
+  const currentTexts = new Map(items.map((item) => [item.id, item.text]));
+  const previousTexts = loadNodeTextCache(outputDir);
+  const changedIds = getChangedNodeIds(currentTexts, previousTexts);
+  const removedIds = getRemovedNodeIds(currentTexts, previousTexts);
+  const vectorStore = new VectorStore(outputDir);
+  await vectorStore.initialize();
+  const existingRecords = await vectorStore.loadAllRecords();
+  await vectorStore.dispose();
+  const existingVectors = new Map(existingRecords.map((record) => [record.id, record.vector]));
+
+  const itemsNeedingEmbeddings = items.filter((item) => changedIds.has(item.id) || !existingVectors.has(item.id));
+
+  if (itemsNeedingEmbeddings.length === 0 && removedIds.size === 0) {
+    saveNodeTextCache(outputDir, currentTexts);
+    return 0;
   }
-  return runOnnxEmbeddings(config, outputDir, graphData, items);
+
+  if (method === "tfidf") {
+    return runTfidfEmbeddings(config, outputDir, graphData, items, itemsNeedingEmbeddings, existingRecords, currentTexts);
+  }
+  return runOnnxEmbeddings(config, outputDir, graphData, itemsNeedingEmbeddings, existingRecords, currentTexts);
 }
 
 async function runTfidfEmbeddings(
   config: Config,
   outputDir: string,
   graphData: GraphData,
-  items: Array<{ id: string; text: string }>,
+  allItems: Array<{ id: string; text: string }>,
+  itemsToEmbed: Array<{ id: string; text: string }>,
+  existingRecords: VectorRecord[],
+  currentTexts: Map<string, string>,
 ): Promise<number> {
   try {
     const engine = new TfidfEmbeddingEngine(config.build.embeddings);
 
     log.info("Generating TF-IDF embeddings...");
-    engine.buildVocabulary(items.map(i => i.text));
+    engine.buildVocabulary(allItems.map(i => i.text));
 
-    const embeddings = engine.embedBatch(items);
+    const embeddings = itemsToEmbed.length > 0 ? engine.embedBatch(itemsToEmbed) : [];
     engine.saveVocabulary(outputDir);
     engine.dispose();
 
-    if (embeddings.length === 0) {
-      log.warn("  No embeddings generated");
-      return 0;
-    }
-
-    return storeEmbeddings(outputDir, graphData, embeddings);
+    return storeEmbeddings(outputDir, graphData, embeddings, existingRecords, currentTexts);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.warn(`TF-IDF embeddings failed (non-blocking): ${msg}`);
@@ -150,6 +165,8 @@ async function runOnnxEmbeddings(
   outputDir: string,
   graphData: GraphData,
   items: Array<{ id: string; text: string }>,
+  existingRecords: VectorRecord[],
+  currentTexts: Map<string, string>,
 ): Promise<number> {
   const cacheDir = resolveCacheDir(config.models.cache_dir);
   const engine = new EmbeddingEngine(config.build.embeddings, cacheDir, config.models.download_on_first_use);
@@ -161,12 +178,7 @@ async function runOnnxEmbeddings(
     log.info("Generating ONNX embeddings...");
     const embeddings = await engine.embedBatch(items);
 
-    if (embeddings.length === 0) {
-      log.warn("  No embeddings generated");
-      return 0;
-    }
-
-    return storeEmbeddings(outputDir, graphData, embeddings);
+    return storeEmbeddings(outputDir, graphData, embeddings, existingRecords, currentTexts);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.warn(`ONNX embeddings failed (non-blocking): ${msg}`);
@@ -180,26 +192,34 @@ async function storeEmbeddings(
   outputDir: string,
   graphData: GraphData,
   embeddings: Array<{ id: string; text: string; vector: Float32Array }>,
+  existingRecords: VectorRecord[],
+  currentTexts: Map<string, string>,
 ): Promise<number> {
   const vectorStore = new VectorStore(outputDir);
   await vectorStore.initialize();
 
-  const records: VectorRecord[] = embeddings.map(emb => {
-    const node = graphData.nodes.find(n => n.id === emb.id);
+  const updatedVectors = new Map(embeddings.map((embedding) => [embedding.id, Array.from(embedding.vector)]));
+  const existingVectorMap = new Map(existingRecords.map((record) => [record.id, record.vector]));
+
+  const records: VectorRecord[] = graphData.nodes.flatMap((node) => {
+    const vector = updatedVectors.get(node.id) ?? existingVectorMap.get(node.id);
+    if (!vector) return [];
+
     return {
-      id: emb.id,
-      label: node?.label ?? "",
-      type: node?.type ?? "",
-      repo: node?.repo ?? "",
-      source_file: node?.source_file ?? "",
-      community: node?.community ?? "",
-      text: emb.text,
-      vector: Array.from(emb.vector),
+      id: node.id,
+      label: node.label,
+      type: node.type,
+      repo: node.repo ?? "",
+      source_file: node.source_file ?? "",
+      community: node.community ?? "",
+      text: currentTexts.get(node.id) ?? "",
+      vector,
     };
   });
 
   await vectorStore.upsert(records);
   await vectorStore.dispose();
+  saveNodeTextCache(outputDir, currentTexts);
 
   log.info(`  ✓ ${embeddings.length} embeddings generated and indexed`);
   return embeddings.length;
@@ -412,4 +432,41 @@ function resolveCacheDir(configPath: string): string {
     return resolve(homedir(), configPath.slice(2));
   }
   return resolve(configPath);
+}
+
+export function loadNodeTextCache(outputDir: string): Map<string, string> {
+  const path = join(outputDir, ".cache", "node-texts.json");
+  if (!existsSync(path)) return new Map();
+
+  try {
+    return new Map(Object.entries(JSON.parse(readFileSync(path, "utf-8")) as Record<string, string>));
+  } catch {
+    return new Map();
+  }
+}
+
+export function saveNodeTextCache(outputDir: string, texts: Map<string, string>): void {
+  const cacheDir = join(outputDir, ".cache");
+  mkdirSync(cacheDir, { recursive: true });
+  writeFileSync(join(cacheDir, "node-texts.json"), JSON.stringify(Object.fromEntries(texts), null, 2));
+}
+
+function getChangedNodeIds(currentTexts: Map<string, string>, previousTexts: Map<string, string>): Set<string> {
+  const changed = new Set<string>();
+  for (const [id, text] of currentTexts) {
+    if (previousTexts.get(id) !== text) {
+      changed.add(id);
+    }
+  }
+  return changed;
+}
+
+function getRemovedNodeIds(currentTexts: Map<string, string>, previousTexts: Map<string, string>): Set<string> {
+  const removed = new Set<string>();
+  for (const id of previousTexts.keys()) {
+    if (!currentTexts.has(id)) {
+      removed.add(id);
+    }
+  }
+  return removed;
 }
