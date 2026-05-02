@@ -9,10 +9,12 @@ import { resolve, join, relative, dirname } from "node:path";
 import { generateOutline, formatOutlineJson } from "../outline/index.js";
 import { log } from "../shared/utils.js";
 import type { Config } from "../shared/types.js";
+import { createMatcher } from "../shared/glob.js";
 import { hashFile } from "./incremental.js";
 
 export interface OutlineOptions {
   force: boolean;
+  skipDirs?: Set<string>;
 }
 
 /**
@@ -31,6 +33,7 @@ export async function runOutlineGeneration(
   const nextHashes = new Map<string, string>();
 
   let count = 0;
+  const skipDirs = options.skipDirs ?? new Set<string>();
 
   for (const repo of config.repos) {
     const repoPath = resolve(configDir, repo.path);
@@ -39,29 +42,27 @@ export async function runOutlineGeneration(
       continue;
     }
 
-    for (const pattern of config.outlines.paths) {
-      const files = findFiles(repoPath, pattern, config.outlines.exclude);
+    const files = findFiles(repoPath, config.outlines.paths, config.outlines.exclude, skipDirs);
 
-      for (const file of files) {
-        const relPath = `${repo.name}/${relative(repoPath, file)}`.split("\\").join("/");
-        const outPath = join(outlinesDir, relPath + ".outline.json");
-        const fileHash = hashFile(file);
-        nextHashes.set(relPath, fileHash);
+    for (const file of files) {
+      const relPath = `${repo.name}/${relative(repoPath, file)}`.split("\\").join("/");
+      const outPath = join(outlinesDir, relPath + ".outline.json");
+      const fileHash = hashFile(file);
+      nextHashes.set(relPath, fileHash);
 
-        if (!options.force && existsSync(outPath) && previousHashes.get(relPath) === fileHash) continue;
+      if (!options.force && existsSync(outPath) && previousHashes.get(relPath) === fileHash) continue;
 
-        try {
-          const source = readFileSync(file, "utf-8");
-          const outline = await generateOutline(relPath, source);
-          if (!outline) continue;
+      try {
+        const source = readFileSync(file, "utf-8");
+        const outline = await generateOutline(relPath, source);
+        if (!outline) continue;
 
-          const outDir = dirname(outPath);
-          if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
-          writeFileSync(outPath, formatOutlineJson(outline));
-          count++;
-        } catch (error) {
-          log.warn(`Failed to process ${file}: ${error}`);
-        }
+        const outDir = dirname(outPath);
+        if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
+        writeFileSync(outPath, formatOutlineJson(outline));
+        count++;
+      } catch (error) {
+        log.warn(`Failed to process ${file}: ${error}`);
       }
     }
   }
@@ -97,14 +98,15 @@ export function saveOutlineHashes(outputDir: string, hashes: Map<string, string>
 
 // ─── File discovery (shared) ────────────────────────────────────────────────────
 
-function findFiles(baseDir: string, pattern: string, exclude: string[]): string[] {
+function findFiles(
+  baseDir: string,
+  patterns: string[],
+  exclude: string[],
+  skipDirs: Set<string>,
+): string[] {
+  const isIncluded = createMatcher(patterns);
+  const isExcluded = createMatcher(exclude);
   const results: string[] = [];
-  const ext = extractExtension(pattern);
-
-  const prefixMatch = pattern.match(/^([^*]*?)(?:\/?\*\*)/);
-  const prefixDir = prefixMatch?.[1] || "";
-  const startDir = prefixDir ? join(baseDir, prefixDir) : baseDir;
-  if (!existsSync(startDir)) return results;
 
   function walk(dir: string): void {
     let entries;
@@ -112,38 +114,23 @@ function findFiles(baseDir: string, pattern: string, exclude: string[]): string[
 
     for (const entry of entries) {
       const fullPath = join(dir, entry.name);
-      const relPath = relative(baseDir, fullPath).split("\\").join("/");
-
-      if (exclude.some((ex) => matchExclude(relPath, ex))) continue;
 
       if (entry.isDirectory()) {
+        if (skipDirs.has(entry.name)) continue;
         walk(fullPath);
-      } else if (entry.isFile() && fullPath.endsWith(ext) && matchInclude(relPath, pattern)) {
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+
+      const relPath = relative(baseDir, fullPath).split("\\").join("/");
+      if (isExcluded(relPath)) continue;
+      if (isIncluded(relPath)) {
         results.push(fullPath);
       }
     }
   }
 
-  walk(startDir);
+  walk(baseDir);
   return results;
-}
-
-function extractExtension(pattern: string): string {
-  const match = pattern.match(/\*(\.\w+)$/);
-  return match?.[1] ?? "";
-}
-
-function matchInclude(relPath: string, pattern: string): boolean {
-  const prefixMatch = pattern.match(/^([^*]*?)(?:\/?\*\*)/);
-  const prefix = prefixMatch?.[1] || "";
-  const ext = extractExtension(pattern);
-  if (prefix && !relPath.startsWith(prefix)) return false;
-  if (ext && !relPath.endsWith(ext)) return false;
-  return true;
-}
-
-function matchExclude(path: string, pattern: string): boolean {
-  if (pattern.startsWith("**/")) return path.includes(pattern.slice(3));
-  if (pattern.endsWith("/**")) return path.startsWith(pattern.slice(0, -3));
-  return path.includes(pattern.replace(/\*\*/g, "").replace(/\*/g, ""));
 }
