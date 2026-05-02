@@ -33,6 +33,9 @@ interface JsonNode {
   norm_label: string;
   start_line?: number;
   end_line?: number;
+  docstring?: string;
+  signature?: string;
+  bases?: string[];
 }
 
 interface JsonEdge {
@@ -69,6 +72,11 @@ export function exportJson(options: ExportJsonOptions): void {
     if (attrs.repo) node.repo = attrs.repo as string;
     if (attrs.start_line != null) node.start_line = attrs.start_line as number;
     if (attrs.end_line != null) node.end_line = attrs.end_line as number;
+    if (attrs.docstring) node.docstring = attrs.docstring as string;
+    if (attrs.signature) node.signature = attrs.signature as string;
+    if (attrs.bases && Array.isArray(attrs.bases) && (attrs.bases as string[]).length > 0) {
+      node.bases = attrs.bases as string[];
+    }
 
     nodes.push(node);
   });

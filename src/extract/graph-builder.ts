@@ -108,6 +108,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
           norm_label: symbol.name.toLowerCase(),
           docstring: symbol.docstring,
           signature: symbol.signature,
+          bases: symbol.bases,
         });
       }
 
