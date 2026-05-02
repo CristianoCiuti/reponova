@@ -388,13 +388,20 @@ build:
   # Type: string[]
   # Default: []
   # Example: ["**/generated/**", "**/*.test.ts", "**/vendor/**"]
-  #
-  # Note: the following directories are ALWAYS skipped (regardless of patterns/exclude):
+  exclude: []
+
+  # Exclude common non-source directories from all file detection
+  # (source code, documentation, diagrams, and outlines).
+  # When true, the following directories are skipped at any depth:
   #   node_modules, __pycache__, .git, .svn, .hg, venv, .venv, env, .env, .tox,
   #   site-packages, dist, build, .eggs, .mypy_cache, .pytest_cache, .ruff_cache,
   #   target, bin, obj
-  # This applies to source code, documentation, and diagram detection.
-  exclude: []
+  # Set to false if you need to index files inside these directories
+  # (e.g. vendored code in node_modules). You can still exclude specific
+  # directories via the `exclude` patterns above.
+  # Type: boolean
+  # Default: true
+  exclude_common: true
 
   # Incremental builds: only re-process files whose SHA256 hash changed
   # Type: boolean
@@ -663,8 +670,8 @@ build:
 ```
 
 > When `patterns` is empty (default), RepoNova auto-detects source files by extension using all registered extractors.
-> The following directories are **always skipped** regardless of configuration: `node_modules`, `__pycache__`, `.git`, `.svn`, `.hg`, `venv`, `.venv`, `env`, `.env`, `.tox`, `site-packages`, `dist`, `build`, `.eggs`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `target`, `bin`, `obj`.
-> This filter applies at every depth — any directory matching these names is excluded along with all its contents.
+> When `exclude_common: true` (default), the following directories are skipped at any depth: `node_modules`, `__pycache__`, `.git`, `.svn`, `.hg`, `venv`, `.venv`, `env`, `.env`, `.tox`, `site-packages`, `dist`, `build`, `.eggs`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `target`, `bin`, `obj`.
+> Set `exclude_common: false` to disable this behavior and use explicit `exclude` patterns instead.
 
 ---
 
