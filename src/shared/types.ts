@@ -47,6 +47,33 @@ export interface GraphMetadata {
   repos?: string[];
   node_count?: number;
   edge_count?: number;
+  /** Build configuration fingerprint — tracks what config was used */
+  build_config: BuildConfigFingerprint;
+}
+
+/** Snapshot of the build config used, for config-change detection on incremental builds */
+export interface BuildConfigFingerprint {
+  embeddings: {
+    enabled: boolean;
+    method: "tfidf" | "onnx";
+    model: string;
+    dimensions: number;
+  };
+  outlines: {
+    enabled: boolean;
+    paths: string[];
+    exclude: string[];
+  };
+  community_summaries: {
+    enabled: boolean;
+    max_number: number;
+    model: string | null;
+  };
+  node_descriptions: {
+    enabled: boolean;
+    threshold: number;
+    model: string | null;
+  };
 }
 
 /** Adjacency map for BFS/Dijkstra */

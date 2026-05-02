@@ -240,6 +240,7 @@ async function buildMonorepo(
     incremental,
     docsConfig: config.build.docs,
     imagesConfig: config.build.images,
+    config,
   });
 }
 

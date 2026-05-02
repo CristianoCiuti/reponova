@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { GraphData, GraphNode, GraphEdge, GraphMetadata, AdjacencyMap, AdjacencyEntry } from "../shared/types.js";
+import type { GraphData, GraphNode, GraphEdge, GraphMetadata, AdjacencyMap, AdjacencyEntry, BuildConfigFingerprint } from "../shared/types.js";
 import { DEFAULT_EDGE_WEIGHTS } from "../shared/types.js";
 import { log } from "../shared/utils.js";
 
@@ -68,6 +68,7 @@ export function loadGraphData(graphJsonPath: string): GraphData {
         repos: rawMeta.repos as string[] | undefined,
         node_count: rawMeta.node_count as number | undefined,
         edge_count: rawMeta.edge_count as number | undefined,
+        build_config: rawMeta.build_config as BuildConfigFingerprint,
       }
     : undefined;
 

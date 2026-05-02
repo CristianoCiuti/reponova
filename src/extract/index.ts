@@ -10,7 +10,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { resolve, join, relative } from "node:path";
 import type { FileExtraction } from "./types.js";
-import type { DocsConfig, ImagesConfig } from "../shared/types.js";
+import type { Config, DocsConfig, ImagesConfig } from "../shared/types.js";
 import { parse } from "./parser.js";
 import { getExtractorForFile, getSupportedExtensions } from "./languages/registry.js";
 import { buildGraph, type BuiltGraph } from "./graph-builder.js";
@@ -331,6 +331,8 @@ export interface PipelineOptions {
   docsConfig?: DocsConfig;
   /** Images/diagrams configuration */
   imagesConfig?: ImagesConfig;
+  /** Full config (for build_config fingerprint in graph.json metadata) */
+  config?: Config;
 }
 
 export interface PipelineResult {
@@ -363,6 +365,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     incremental,
     docsConfig,
     imagesConfig,
+    config,
   } = options;
 
   // 1. Detect files
@@ -381,7 +384,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     // Write empty graph
     const emptyGraph = buildGraph({ extractions: [] });
     const emptyCommunities = detectCommunities(emptyGraph.graph);
-    exportJson({ graph: emptyGraph.graph, communities: emptyCommunities, outputPath: graphJsonPath });
+    exportJson({ graph: emptyGraph.graph, communities: emptyCommunities, outputPath: graphJsonPath, config });
     return {
       builtGraph: emptyGraph,
       communities: emptyCommunities,
@@ -444,7 +447,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
   // 5. Export JSON
   log.info("Exporting graph.json...");
-  exportJson({ graph: builtGraph.graph, communities, outputPath: graphJsonPath });
+  exportJson({ graph: builtGraph.graph, communities, outputPath: graphJsonPath, config });
 
   // Note: HTML generation is done in the orchestrator AFTER the intelligence
   // layer, so that community summaries can be injected as community names.

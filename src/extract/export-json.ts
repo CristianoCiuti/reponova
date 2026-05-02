@@ -7,6 +7,7 @@
 import { writeFileSync } from "node:fs";
 import type Graph from "graphology";
 import type { CommunityResult } from "./community.js";
+import type { Config } from "../shared/types.js";
 import { getVersion } from "../shared/utils.js";
 
 export interface ExportJsonOptions {
@@ -16,6 +17,8 @@ export interface ExportJsonOptions {
   communities: CommunityResult;
   /** Output file path */
   outputPath: string;
+  /** Build config (required for build_config fingerprint in metadata) */
+  config?: Config;
 }
 
 interface JsonNode {
@@ -45,7 +48,7 @@ interface JsonEdge {
  * Export graph to JSON format compatible with existing MCP tools.
  */
 export function exportJson(options: ExportJsonOptions): void {
-  const { graph, outputPath } = options;
+  const { graph, outputPath, config } = options;
 
   const nodes: JsonNode[] = [];
   const edges: JsonEdge[] = [];
@@ -82,12 +85,38 @@ export function exportJson(options: ExportJsonOptions): void {
     });
   });
 
+  // Build config fingerprint from config
+  const buildConfig = config ? {
+    embeddings: {
+      enabled: config.build.embeddings.enabled,
+      method: config.build.embeddings.method,
+      model: config.build.embeddings.model,
+      dimensions: config.build.embeddings.dimensions,
+    },
+    outlines: {
+      enabled: config.outlines.enabled,
+      paths: config.outlines.paths,
+      exclude: config.outlines.exclude,
+    },
+    community_summaries: {
+      enabled: config.build.community_summaries.enabled,
+      max_number: config.build.community_summaries.max_number,
+      model: config.build.community_summaries.model ?? null,
+    },
+    node_descriptions: {
+      enabled: config.build.node_descriptions.enabled,
+      threshold: config.build.node_descriptions.threshold,
+      model: config.build.node_descriptions.model ?? null,
+    },
+  } : undefined;
+
   const data = {
     nodes,
     edges,
     metadata: {
       reponova_version: getVersion(),
       built_at: new Date().toISOString(),
+      build_config: buildConfig,
     },
   };
   writeFileSync(outputPath, JSON.stringify(data, null, 2));
