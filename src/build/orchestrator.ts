@@ -92,6 +92,18 @@ export async function runBuild(config: Config, configDir: string, options: Build
       log.info(`  Incremental: ${result.incrementalStats.cachedFiles} cached, ${result.incrementalStats.reextractedFiles} re-extracted`);
     }
 
+    if (result.incrementalStats?.reextractedFiles === 0 && !configDiff.hasChanges && !options.force) {
+      log.info("No changes detected — graph is up to date");
+      const existingCounts = readExistingGraphCounts(mergedPath);
+      return {
+        outputDir,
+        fileCount: result.fileCount,
+        nodeCount: existingCounts.nodeCount,
+        edgeCount: existingCounts.edgeCount,
+        communityCount: existingCounts.communityCount,
+      };
+    }
+
     // Generate search index
     await runIndexer(mergedPath, outputDir);
 
@@ -171,6 +183,15 @@ export async function runBuild(config: Config, configDir: string, options: Build
       // Ignore cleanup errors
     }
   }
+}
+
+function readExistingGraphCounts(graphJsonPath: string): { nodeCount: number; edgeCount: number; communityCount: number } {
+  const raw = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
+  return {
+    nodeCount: raw.metadata?.node_count ?? raw.nodes.length,
+    edgeCount: raw.metadata?.edge_count ?? raw.edges.length,
+    communityCount: raw.communities?.length ?? 0,
+  };
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
