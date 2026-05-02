@@ -6,6 +6,8 @@ import {
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { openDatabase } from "../core/db.js";
 import { resolveGraphPath, resolveSearchDb, resolveGraphJson } from "../core/graph-resolver.js";
 import { handleSearch } from "./tools/search.js";
@@ -42,14 +44,18 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   const graphJsonPath = resolveGraphJson(graphDir);
   const db = await openDatabase(dbPath, { readonly: true });
 
-  // Initialize similarity search (best-effort, non-blocking)
-  const defaultEmbeddingsConfig = { enabled: true, method: "tfidf" as const, model: "all-MiniLM-L6-v2", dimensions: 384, batch_size: 128 };
+  // Auto-detect embeddings method from build artifacts
+  const tfidfIdfPath = join(graphDir, "tfidf_idf.json");
+  const embeddingsMethod = existsSync(tfidfIdfPath) ? "tfidf" as const : "onnx" as const;
+  const defaultEmbeddingsConfig = { enabled: true, method: embeddingsMethod, model: "all-MiniLM-L6-v2", dimensions: 384, batch_size: 128 };
   const defaultCacheDir = "~/.cache/reponova/models";
+
+  // Initialize similarity search (non-blocking — tools await readiness via promise)
   initSimilaritySearch(graphDir, defaultEmbeddingsConfig, defaultCacheDir).catch(() => {
     // Silently degrade — graph_similar will return appropriate error
   });
 
-  // Initialize context builder (best-effort, non-blocking)
+  // Initialize context builder (non-blocking — has lazy init fallback)
   initContextBuilder(db, graphDir, defaultEmbeddingsConfig, defaultCacheDir).catch(() => {
     // Silently degrade — graph_context will lazy-init without embeddings
   });

@@ -9,12 +9,19 @@ import type { EmbeddingsConfig } from "../../shared/types.js";
 let vectorStore: VectorStore | null = null;
 let embeddingEngine: EmbeddingEngine | null = null;
 let tfidfEngine: TfidfEmbeddingEngine | null = null;
+let _initPromise: Promise<boolean> | null = null;
 
 /**
  * Initialize the similarity search backend.
- * Called once when the MCP server starts.
+ * Called once when the MCP server starts. Stores the promise so that
+ * handleSimilar can await readiness before checking state.
  */
-export async function initSimilaritySearch(graphDir: string, embeddingsConfig: EmbeddingsConfig, cacheDir: string): Promise<boolean> {
+export function initSimilaritySearch(graphDir: string, embeddingsConfig: EmbeddingsConfig, cacheDir: string): Promise<boolean> {
+  _initPromise = _doInitSimilaritySearch(graphDir, embeddingsConfig, cacheDir);
+  return _initPromise;
+}
+
+async function _doInitSimilaritySearch(graphDir: string, embeddingsConfig: EmbeddingsConfig, cacheDir: string): Promise<boolean> {
   vectorStore = new VectorStore(graphDir);
   await vectorStore.initialize();
   const hasData = await vectorStore.loadExisting();
@@ -54,6 +61,11 @@ export async function initSimilaritySearch(graphDir: string, embeddingsConfig: E
  * Handle the graph_similar tool call.
  */
 export async function handleSimilar(_db: unknown, args: Record<string, unknown>) {
+  // Wait for initialization to complete before checking state
+  if (_initPromise) {
+    await _initPromise;
+  }
+
   const query = args.query as string;
   if (!query) {
     return { content: [{ type: "text" as const, text: "Error: 'query' is required" }], isError: true };
