@@ -10,6 +10,7 @@ import { generateGraphReport } from "./report.js";
 import { exportHtml, exportCommunityHtml, type CommunitySummaryInfo } from "../extract/export-html.js";
 import { log } from "../shared/utils.js";
 import { runPipeline, type PipelineResult } from "../extract/index.js";
+import { buildSkipDirs } from "../shared/glob.js";
 import { loadPreviousBuildConfig } from "./config-diff.js";
 import { cleanStaleArtifacts } from "./artifact-cleanup.js";
 import { computeSemanticGraphHash, loadPreviousGraphHash, saveGraphHash } from "./graph-hash.js";
@@ -67,6 +68,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
   try {
     const mergedPath = join(outputDir, "graph.json");
     const incremental = config.build.incremental && !options.force;
+    const skipDirs = buildSkipDirs(config.build.exclude_common);
     log.info(`Build${incremental ? " (incremental)" : ""}...`);
 
     // ── Config change detection ──────────────────────────────────────────
@@ -82,7 +84,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
 
     cleanStaleArtifacts(outputDir, configDiff, config);
 
-    const result = await buildMonorepo(config, configDir, options, tmpDir, mergedPath, outputDir, incremental);
+    const result = await buildMonorepo(config, configDir, options, tmpDir, mergedPath, outputDir, incremental, skipDirs);
 
     // Tag nodes with repo name (from first path component)
     const repoNames = config.repos.map((r) => r.name);
@@ -114,7 +116,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
 
       if (config.outlines.enabled && configDiff.outlinesChanged) {
         log.info("Generating outlines...");
-        const outlineCount = await runOutlineGeneration(config, configDir, outputDir, { force: true });
+        const outlineCount = await runOutlineGeneration(config, configDir, outputDir, { force: true, skipDirs });
         log.info(`  ✓ ${outlineCount} outlines generated`);
       }
 
@@ -189,7 +191,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
     if (config.outlines.enabled) {
       const outlineForce = options.force || configDiff.outlinesChanged;
       log.info("Generating outlines...");
-      const outlineCount = await runOutlineGeneration(config, configDir, outputDir, { force: outlineForce });
+      const outlineCount = await runOutlineGeneration(config, configDir, outputDir, { force: outlineForce, skipDirs });
       log.info(`  ✓ ${outlineCount} outlines generated`);
     }
 
@@ -324,6 +326,7 @@ async function buildMonorepo(
   mergedPath: string,
   outputDir: string,
   incremental: boolean,
+  skipDirs: Set<string>,
 ): Promise<PipelineResult> {
   const workspace = join(tmpDir, "workspace");
   mkdirSync(workspace, { recursive: true });
@@ -345,7 +348,7 @@ async function buildMonorepo(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn(`  Symlink failed for ${repo.name}: ${msg}, falling back to copy...`);
-      copyDirRecursive(repoPath, linkPath);
+      copyDirRecursive(repoPath, linkPath, skipDirs);
       repoNames.push(repo.name);
     }
   }
@@ -360,6 +363,7 @@ async function buildMonorepo(
     workspace,
     patterns: config.build.patterns,
     excludeGlobs: config.build.exclude,
+    skipDirs,
     graphJsonPath: mergedPath,
     htmlMinDegree: config.build.html_min_degree,
     outputDir,
@@ -396,23 +400,16 @@ function tagNodesWithRepo(graphJsonPath: string, repoNames: string[]): void {
  * Recursive directory copy. Always-skip directories (node_modules, .git, etc.)
  * are excluded automatically. Glob-based exclusion happens at file detection time.
  */
-function copyDirRecursive(src: string, dest: string): void {
-  const COPY_SKIP = new Set([
-    "node_modules", "__pycache__", ".git", ".svn", ".hg",
-    "venv", ".venv", "env", ".env", ".tox",
-    "site-packages", "dist", "build", ".eggs",
-    ".mypy_cache", ".pytest_cache", ".ruff_cache",
-    "target", "bin", "obj",
-  ]);
+function copyDirRecursive(src: string, dest: string, skipDirs: Set<string>): void {
   mkdirSync(dest, { recursive: true });
 
   for (const entry of readdirSync(src)) {
-    if (COPY_SKIP.has(entry)) continue;
+    if (skipDirs.has(entry)) continue;
     const srcPath = join(src, entry);
     const destPath = join(dest, entry);
     const stat = statSync(srcPath);
     if (stat.isDirectory()) {
-      copyDirRecursive(srcPath, destPath);
+      copyDirRecursive(srcPath, destPath, skipDirs);
     } else {
       copyFileSync(srcPath, destPath);
     }
