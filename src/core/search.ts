@@ -84,7 +84,7 @@ export function fuzzyMatchNode(db: Database, name: string, top_k = 3): SearchRes
   // Split on underscores too for snake_case identifiers
   const allTerms = terms.flatMap((t) => t.split("_")).filter((t) => t.length > 0);
 
-  // OR logic: match nodes where label contains ANY of the terms
+  // AND logic: ALL terms must match somewhere in the label
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -98,7 +98,7 @@ export function fuzzyMatchNode(db: Database, name: string, top_k = 3): SearchRes
   const sql = `
     SELECT id, label, type, source_file, repo, community, properties
     FROM nodes
-    WHERE ${conditions.join(" OR ")}
+    WHERE ${conditions.join(" AND ")}
     ORDER BY in_degree DESC
     LIMIT ?
   `;

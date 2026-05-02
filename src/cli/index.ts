@@ -30,6 +30,7 @@ yargs(hideBin(process.argv))
   })
   .demandCommand(1, "Please specify a command")
   .strict()
+  .strictCommands()
   .help()
   .version()
   .parse();

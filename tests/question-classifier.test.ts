@@ -95,6 +95,19 @@ describe("Question Classifier", () => {
       expect(r.entities[0]).toBe("authentication handlers");
     });
 
+    it("classifies 'Find validation functions' (FIX-003)", () => {
+      const r = classifyQuestion("Find validation functions");
+      expect(r.strategy).toBe("search");
+      expect(r.entities[0]).toBe("validation functions");
+      expect(r.language).toBe("en");
+    });
+
+    it("classifies 'search X'", () => {
+      const r = classifyQuestion("search authentication modules");
+      expect(r.strategy).toBe("search");
+      expect(r.entities[0]).toBe("authentication modules");
+    });
+
     it("classifies 'where is X'", () => {
       const r = classifyQuestion("where is the config parser");
       expect(r.strategy).toBe("search");

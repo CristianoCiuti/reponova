@@ -421,9 +421,11 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       reextractedFiles: diff.changedFiles.length,
     };
 
-    // Always save cache for future builds
-    saveBuildCache(outputDir, currentHashes, extractions);
-    cleanStaleCacheEntries(outputDir, currentHashes);
+    // Save cache only when incremental builds are enabled
+    if (incremental) {
+      saveBuildCache(outputDir, currentHashes, extractions);
+      cleanStaleCacheEntries(outputDir, currentHashes);
+    }
   } else {
     log.info("Extracting symbols and relationships...");
     extractions = await extractAll(workspace, files);

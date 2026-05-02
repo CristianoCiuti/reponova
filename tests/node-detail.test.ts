@@ -51,8 +51,14 @@ describe("getNodeDetail", () => {
 });
 
 describe("getNodeSuggestions", () => {
-  it("suggests similar", () => {
-    expect(getNodeSuggestions(db, "get_usr").length).toBeGreaterThan(0);
+  it("suggests similar nodes for valid partial name", () => {
+    // "get_user" splits to ["get", "user"] — both appear in "get_user_by_id"
+    expect(getNodeSuggestions(db, "get_user").length).toBeGreaterThan(0);
+  });
+
+  it("returns empty for typos with AND logic (FIX-005)", () => {
+    // "get_usr" splits to ["get", "usr"] — "usr" is not a substring of any label
+    expect(getNodeSuggestions(db, "get_usr")).toHaveLength(0);
   });
 });
 

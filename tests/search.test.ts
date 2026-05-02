@@ -54,6 +54,20 @@ describe("fuzzyMatchNode", () => {
     const results = fuzzyMatchNode(db, "get_user");
     expect(results.length).toBeGreaterThan(0);
   });
+
+  it("requires ALL terms to match (AND logic, FIX-005)", () => {
+    // "nonexistent_user" splits to ["nonexistent", "user"]
+    // AND logic: both must appear in label → no node has "nonexistent" → 0 results
+    const results = fuzzyMatchNode(db, "nonexistent_user");
+    expect(results).toHaveLength(0);
+  });
+
+  it("matches when all terms are present in label", () => {
+    // "get_user" splits to ["get", "user"] — "get_user_by_id" contains both
+    const results = fuzzyMatchNode(db, "get_user");
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0]!.label).toContain("get_user");
+  });
 });
 
 describe("metadata", () => {

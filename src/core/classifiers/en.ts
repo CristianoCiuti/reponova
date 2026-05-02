@@ -70,7 +70,8 @@ const rules: PatternRule[] = [
   {
     strategy: "search",
     patterns: [
-      /(?:find|search|look\s*(?:for|up)|locate|where\s+is)\s+(.+)/i,
+      /^find\s+(.+)/i,
+      /(?:search|look\s*(?:for|up)|locate|where\s+is)\s+(.+)/i,
     ],
     entityExtractor: (match) => [cleanEntity(match[1] ?? "")],
   },

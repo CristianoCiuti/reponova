@@ -4,6 +4,7 @@ import { z } from "zod";
 import yaml from "js-yaml";
 import type { Config } from "../shared/types.js";
 import { DEFAULT_CONFIG } from "../shared/types.js";
+import { log } from "../shared/utils.js";
 
 const RepoConfigSchema = z.object({
   name: z.string(),
@@ -81,6 +82,7 @@ export function loadConfig(configPath?: string): { config: Config; configDir: st
   const resolvedPath = resolveConfigPath(configPath);
 
   if (!resolvedPath) {
+    log.warn("No config file found (checked: reponova.yml, .opencode/, .cursor/, .claude/, .vscode/). Using defaults: single repo at current directory.");
     return { config: DEFAULT_CONFIG, configDir: process.cwd() };
   }
 

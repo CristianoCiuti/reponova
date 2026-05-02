@@ -97,6 +97,12 @@ export async function parse(source: string, wasmFile: string): Promise<SyntaxTre
   const parser = await getParser(wasmFile);
   if (!parser) return null;
 
+  // Skip files with null bytes (likely binary files misdetected by extension)
+  if (source.includes('\0')) {
+    log.debug(`Skipping binary content for ${wasmFile}`);
+    return null;
+  }
+
   try {
     return parser.parse(source) as SyntaxTree;
   } catch (err) {

@@ -16,6 +16,7 @@ let tfidfEngine: TfidfEmbeddingEngine | null = null;
  */
 export async function initSimilaritySearch(graphDir: string, embeddingsConfig: EmbeddingsConfig, cacheDir: string): Promise<boolean> {
   vectorStore = new VectorStore(graphDir);
+  await vectorStore.initialize();
   const hasData = await vectorStore.loadExisting();
 
   if (!hasData) {
