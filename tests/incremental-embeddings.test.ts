@@ -96,9 +96,9 @@ function writeGraph(graphJsonPath: string, nodes: GraphData["nodes"]): void {
     metadata: {
       build_config: {
         embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 32 },
-        outlines: { enabled: true, paths: [], exclude: [] },
-        community_summaries: { enabled: false, max_number: 0, model: null },
-        node_descriptions: { enabled: false, threshold: 0.8, model: null },
+        outlines: { enabled: true, paths: [], exclude: [], exclude_common: true },
+        community_summaries: { enabled: false, max_number: 0, model: null, context_size: 512 },
+        node_descriptions: { enabled: false, threshold: 0.8, model: null, context_size: 512 },
       },
     },
   };

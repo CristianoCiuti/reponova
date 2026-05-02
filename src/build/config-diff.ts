@@ -52,17 +52,20 @@ export function loadPreviousBuildConfig(graphJsonPath: string, currentConfig: Co
     const outlinesChanged =
       prev.outlines.enabled !== currentConfig.outlines.enabled ||
       JSON.stringify(prev.outlines.paths) !== JSON.stringify(currentConfig.outlines.paths) ||
-      JSON.stringify(prev.outlines.exclude) !== JSON.stringify(currentConfig.outlines.exclude);
+      JSON.stringify(prev.outlines.exclude) !== JSON.stringify(currentConfig.outlines.exclude) ||
+      prev.outlines.exclude_common !== currentConfig.build.exclude_common;
 
     const communitySummariesChanged =
       prev.community_summaries.enabled !== currentConfig.build.community_summaries.enabled ||
       prev.community_summaries.max_number !== currentConfig.build.community_summaries.max_number ||
-      (prev.community_summaries.model ?? null) !== (currentConfig.build.community_summaries.model ?? null);
+      (prev.community_summaries.model ?? null) !== (currentConfig.build.community_summaries.model ?? null) ||
+      prev.community_summaries.context_size !== currentConfig.build.community_summaries.context_size;
 
     const nodeDescriptionsChanged =
       prev.node_descriptions.enabled !== currentConfig.build.node_descriptions.enabled ||
       prev.node_descriptions.threshold !== currentConfig.build.node_descriptions.threshold ||
-      (prev.node_descriptions.model ?? null) !== (currentConfig.build.node_descriptions.model ?? null);
+      (prev.node_descriptions.model ?? null) !== (currentConfig.build.node_descriptions.model ?? null) ||
+      prev.node_descriptions.context_size !== currentConfig.build.node_descriptions.context_size;
 
     return {
       hasChanges: embeddingsChanged || outlinesChanged || communitySummariesChanged || nodeDescriptionsChanged,

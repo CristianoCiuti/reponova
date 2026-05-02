@@ -181,7 +181,7 @@ describe("FIX-013: BuildConfigFingerprint", () => {
     expect(raw.metadata.build_config).toBeUndefined();
   });
 
-  it("should not include runtime-only params (batch_size, context_size, gpu, threads)", () => {
+  it("should not include runtime-only params (batch_size, gpu, threads)", () => {
     const tmpPath = makeTmpPath();
     tmpPaths.push(tmpPath);
 
@@ -198,10 +198,11 @@ describe("FIX-013: BuildConfigFingerprint", () => {
 
     // embeddings should NOT have batch_size
     expect(bc.embeddings.batch_size).toBeUndefined();
-    // community_summaries should NOT have context_size
-    expect(bc.community_summaries.context_size).toBeUndefined();
-    // node_descriptions should NOT have context_size
-    expect(bc.node_descriptions.context_size).toBeUndefined();
+    // context_size IS now tracked (FIX-017 — needed for change detection)
+    expect(bc.community_summaries.context_size).toBe(512);
+    expect(bc.node_descriptions.context_size).toBe(512);
+    // exclude_common IS now tracked in outlines fingerprint
+    expect(bc.outlines.exclude_common).toBe(true);
   });
 
   it("graph-loader should parse build_config from graph.json", () => {

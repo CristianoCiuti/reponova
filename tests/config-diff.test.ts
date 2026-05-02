@@ -55,9 +55,9 @@ describe("FIX-014: Config change detection", () => {
     const config = makeConfig();
     const path = writeGraphJson(dir, {
       embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-      outlines: { enabled: true, paths: ["src/**/*.ts", "src/**/*.py", "src/**/*.js"], exclude: ["**/node_modules/**", "**/.git/**", "**/dist/**"] },
-      community_summaries: { enabled: true, max_number: 0, model: null },
-      node_descriptions: { enabled: true, threshold: 0.8, model: null },
+      outlines: { enabled: true, paths: ["src/**/*.ts", "src/**/*.py", "src/**/*.js"], exclude: ["**/node_modules/**", "**/.git/**", "**/dist/**"], exclude_common: true },
+      community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
+      node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
     });
 
     const diff = loadPreviousBuildConfig(path, config);
@@ -76,9 +76,9 @@ describe("FIX-014: Config change detection", () => {
 
     const path = writeGraphJson(dir, {
       embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-      outlines: { enabled: true, paths: config.outlines.paths, exclude: config.outlines.exclude },
-      community_summaries: { enabled: true, max_number: 0, model: null },
-      node_descriptions: { enabled: true, threshold: 0.8, model: null },
+      outlines: { enabled: true, paths: config.outlines.paths, exclude: config.outlines.exclude, exclude_common: true },
+      community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
+      node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
     });
 
     const diff = loadPreviousBuildConfig(path, config);
@@ -94,9 +94,9 @@ describe("FIX-014: Config change detection", () => {
 
     const path = writeGraphJson(dir, {
       embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-      outlines: { enabled: true, paths: config.outlines.paths, exclude: config.outlines.exclude },
-      community_summaries: { enabled: true, max_number: 0, model: null },
-      node_descriptions: { enabled: true, threshold: 0.8, model: null },
+      outlines: { enabled: true, paths: config.outlines.paths, exclude: config.outlines.exclude, exclude_common: true },
+      community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
+      node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
     });
 
     const diff = loadPreviousBuildConfig(path, config);
@@ -110,9 +110,9 @@ describe("FIX-014: Config change detection", () => {
 
     const path = writeGraphJson(dir, {
       embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-      outlines: { enabled: true, paths: config.outlines.paths, exclude: config.outlines.exclude },
-      community_summaries: { enabled: true, max_number: 0, model: null },
-      node_descriptions: { enabled: true, threshold: 0.8, model: null },
+      outlines: { enabled: true, paths: config.outlines.paths, exclude: config.outlines.exclude, exclude_common: true },
+      community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
+      node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
     });
 
     const diff = loadPreviousBuildConfig(path, config);
@@ -126,9 +126,9 @@ describe("FIX-014: Config change detection", () => {
 
     const path = writeGraphJson(dir, {
       embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-      outlines: { enabled: true, paths: ["src/**/*.ts", "src/**/*.py", "src/**/*.js"], exclude: config.outlines.exclude },
-      community_summaries: { enabled: true, max_number: 0, model: null },
-      node_descriptions: { enabled: true, threshold: 0.8, model: null },
+      outlines: { enabled: true, paths: ["src/**/*.ts", "src/**/*.py", "src/**/*.js"], exclude: config.outlines.exclude, exclude_common: true },
+      community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
+      node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
     });
 
     const diff = loadPreviousBuildConfig(path, config);
@@ -142,9 +142,9 @@ describe("FIX-014: Config change detection", () => {
 
     const path = writeGraphJson(dir, {
       embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-      outlines: { enabled: true, paths: config.outlines.paths, exclude: config.outlines.exclude },
-      community_summaries: { enabled: true, max_number: 0, model: null },
-      node_descriptions: { enabled: true, threshold: 0.8, model: null },
+      outlines: { enabled: true, paths: config.outlines.paths, exclude: config.outlines.exclude, exclude_common: true },
+      community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
+      node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
     });
 
     const diff = loadPreviousBuildConfig(path, config);
@@ -159,9 +159,9 @@ describe("FIX-014: Config change detection", () => {
 
     const path = writeGraphJson(dir, {
       embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-      outlines: { enabled: true, paths: config.outlines.paths, exclude: config.outlines.exclude },
-      community_summaries: { enabled: true, max_number: 0, model: null },
-      node_descriptions: { enabled: true, threshold: 0.8, model: null },
+      outlines: { enabled: true, paths: config.outlines.paths, exclude: config.outlines.exclude, exclude_common: true },
+      community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
+      node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
     });
 
     const diff = loadPreviousBuildConfig(path, config);
@@ -183,9 +183,9 @@ describe("FIX-014: Config change detection", () => {
     const config = makeConfig();
     const path = writeGraphJson(dir, {
       embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-      outlines: { enabled: true, paths: config.outlines.paths, exclude: config.outlines.exclude },
-      community_summaries: { enabled: true, max_number: 0, model: null },
-      node_descriptions: { enabled: true, threshold: 0.8, model: null },
+      outlines: { enabled: true, paths: config.outlines.paths, exclude: config.outlines.exclude, exclude_common: true },
+      community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
+      node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
     });
 
     const diff = loadPreviousBuildConfig(path, config);

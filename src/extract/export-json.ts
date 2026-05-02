@@ -105,16 +105,19 @@ export function exportJson(options: ExportJsonOptions): void {
       enabled: config.outlines.enabled,
       paths: config.outlines.paths,
       exclude: config.outlines.exclude,
+      exclude_common: config.build.exclude_common,
     },
     community_summaries: {
       enabled: config.build.community_summaries.enabled,
       max_number: config.build.community_summaries.max_number,
       model: config.build.community_summaries.model ?? null,
+      context_size: config.build.community_summaries.context_size,
     },
     node_descriptions: {
       enabled: config.build.node_descriptions.enabled,
       threshold: config.build.node_descriptions.threshold,
       model: config.build.node_descriptions.model ?? null,
+      context_size: config.build.node_descriptions.context_size,
     },
   } : undefined;
 
