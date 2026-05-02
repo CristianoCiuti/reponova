@@ -1,8 +1,28 @@
 import type { Database } from "../../core/db.js";
-import { existsSync, statSync, readdirSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { getMeta } from "../../core/db.js";
 import { formatNumber } from "../../shared/utils.js";
+import { loadBuildConfigFingerprint } from "../../core/build-config-metadata.js";
+
+export function readBuildConfigStatusLines(graphJsonPath: string | null): string[] {
+  if (!graphJsonPath || !existsSync(graphJsonPath)) {
+    return ["Build config: unavailable"];
+  }
+
+  const buildConfig = loadBuildConfigFingerprint(graphJsonPath);
+  if (!buildConfig) {
+    return ["Build config: missing from graph.json"];
+  }
+
+  return [
+    "Build config:",
+    `  Embeddings: ${buildConfig.embeddings.enabled ? `${buildConfig.embeddings.method} (${buildConfig.embeddings.model}, ${buildConfig.embeddings.dimensions}d)` : "disabled"}`,
+    `  Outlines: ${buildConfig.outlines.enabled ? "enabled" : "disabled"}`,
+    `  Community summaries: ${buildConfig.community_summaries.enabled ? "enabled" : "disabled"}`,
+    `  Node descriptions: ${buildConfig.node_descriptions.enabled ? "enabled" : "disabled"}`,
+  ];
+}
 
 export function handleStatus(db: Database, graphDir: string, graphJsonPath: string | null) {
   const lines: string[] = ["## Graph Status", ""];
@@ -33,6 +53,8 @@ export function handleStatus(db: Database, graphDir: string, graphJsonPath: stri
   if (existsSync(outlinesDir)) {
     lines.push(`Outlines: pre-computed directory exists`);
   }
+  lines.push("");
+  lines.push(...readBuildConfigStatusLines(graphJsonPath));
   lines.push("", "Staleness: UNKNOWN (run 'reponova check' for git-based staleness)");
   return { content: [{ type: "text" as const, text: lines.join("\n") }] };
 }

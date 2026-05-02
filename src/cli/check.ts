@@ -2,6 +2,36 @@ import type { CommandModule } from "yargs";
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { resolveGraphPath, resolveSearchDb, resolveGraphJson } from "../core/graph-resolver.js";
+import { loadBuildConfigFingerprint, getMissingBuildConfigErrorMessage } from "../core/build-config-metadata.js";
+
+export interface CheckItem {
+  label: string;
+  status: string;
+  ok: boolean;
+}
+
+export function verifyGraphArtifacts(graphDir: string, graphJsonPath: string): CheckItem[] {
+  const checks: CheckItem[] = [];
+  const buildConfig = loadBuildConfigFingerprint(graphJsonPath);
+
+  if (!buildConfig) {
+    checks.push({ label: "Build metadata", status: `${getMissingBuildConfigErrorMessage()} ✗`, ok: false });
+    return checks;
+  }
+
+  checks.push({ label: "Build metadata", status: "build_config present ✓", ok: true });
+
+  const tfidfIdfPath = join(graphDir, "tfidf_idf.json");
+  if (buildConfig.embeddings.enabled && buildConfig.embeddings.method === "tfidf" && !existsSync(tfidfIdfPath)) {
+    checks.push({ label: "Embeddings artifacts", status: "ERROR: TF-IDF build missing tfidf_idf.json ✗", ok: false });
+  }
+
+  if (buildConfig.embeddings.enabled && buildConfig.embeddings.method === "onnx" && existsSync(tfidfIdfPath)) {
+    checks.push({ label: "Embeddings artifacts", status: "WARNING: tfidf_idf.json exists but build_config.embeddings.method is onnx", ok: true });
+  }
+
+  return checks;
+}
 
 export const checkCommand: CommandModule = {
   command: "check",
@@ -12,7 +42,7 @@ export const checkCommand: CommandModule = {
       describe: "Path to reponova-out/ directory",
     }),
   handler: async (argv) => {
-    const checks: Array<{ label: string; status: string; ok: boolean }> = [];
+    const checks: CheckItem[] = [];
 
     // Check Graph
     const graphDir = resolveGraphPath(argv.graph as string | undefined);
@@ -27,6 +57,7 @@ export const checkCommand: CommandModule = {
           status: `${graphJsonPath} (${sizeMb}MB, ${date}) ✓`,
           ok: true,
         });
+        checks.push(...verifyGraphArtifacts(graphDir, graphJsonPath));
       } else {
         checks.push({ label: "Graph", status: "graph.json not found ✗", ok: false });
       }

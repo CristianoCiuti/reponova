@@ -6,10 +6,9 @@ import {
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { openDatabase } from "../core/db.js";
 import { resolveGraphPath, resolveSearchDb, resolveGraphJson } from "../core/graph-resolver.js";
+import { embeddingsConfigFromFingerprint, requireBuildConfigFingerprint } from "../core/build-config-metadata.js";
 import { handleSearch } from "./tools/search.js";
 import { handleImpact } from "./tools/impact.js";
 import { handleOutline } from "./tools/outline.js";
@@ -23,9 +22,19 @@ import { handleContext, initContextBuilder, disposeContextBuilder } from "./tool
 import { handleAsk } from "./tools/ask.js";
 import { handleDocs } from "./tools/docs.js";
 import { log } from "../shared/utils.js";
+import type { EmbeddingsConfig } from "../shared/types.js";
 
 export interface McpServerOptions {
   graphPath?: string;
+}
+
+export function resolveEmbeddingsConfig(graphJsonPath: string | null): EmbeddingsConfig {
+  if (!graphJsonPath) {
+    throw new Error("graph.json not found");
+  }
+
+  const buildConfig = requireBuildConfigFingerprint(graphJsonPath);
+  return embeddingsConfigFromFingerprint(buildConfig);
 }
 
 export async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
@@ -44,10 +53,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   const graphJsonPath = resolveGraphJson(graphDir);
   const db = await openDatabase(dbPath, { readonly: true });
 
-  // Auto-detect embeddings method from build artifacts
-  const tfidfIdfPath = join(graphDir, "tfidf_idf.json");
-  const embeddingsMethod = existsSync(tfidfIdfPath) ? "tfidf" as const : "onnx" as const;
-  const defaultEmbeddingsConfig = { enabled: true, method: embeddingsMethod, model: "all-MiniLM-L6-v2", dimensions: 384, batch_size: 128 };
+  const defaultEmbeddingsConfig = resolveEmbeddingsConfig(graphJsonPath);
   const defaultCacheDir = "~/.cache/reponova/models";
 
   // Initialize similarity search (non-blocking — tools await readiness via promise)
