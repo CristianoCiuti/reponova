@@ -18,16 +18,6 @@ yargs(hideBin(process.argv))
   .command(checkCommand)
   .command(installCommand)
   .command(modelsCommand)
-  .option("graph", {
-    type: "string",
-    describe: "Path to reponova-out/ directory",
-    global: true,
-  })
-  .option("config", {
-    type: "string",
-    describe: "Path to reponova.yml",
-    global: true,
-  })
   .demandCommand(1, "Please specify a command")
   .strict()
   .strictCommands()

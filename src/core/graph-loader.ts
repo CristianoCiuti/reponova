@@ -65,7 +65,9 @@ export function loadGraphData(graphJsonPath: string): GraphData {
     ? {
         reponova_version: rawMeta.reponova_version as string | undefined,
         built_at: rawMeta.built_at as string | undefined,
-        repos: rawMeta.repos as string[] | undefined,
+        config_dir: rawMeta.config_dir as string | undefined,
+        repos: rawMeta.repos as Array<{ name: string; path: string }> | undefined,
+        mode: rawMeta.mode as "single" | "multi" | undefined,
         node_count: rawMeta.node_count as number | undefined,
         edge_count: rawMeta.edge_count as number | undefined,
         build_config: rawMeta.build_config as BuildConfigFingerprint,

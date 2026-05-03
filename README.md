@@ -255,6 +255,32 @@ reponova build [--config <path>] [--force]
 13. Generate SQLite search index (`graph_search.db`)
 14. Generate code outlines (SHA256 per-file hashing — skip unchanged) and `report.md`
 
+### `reponova index`
+
+Regenerate the SQLite search index (`graph_search.db`) from an existing `graph.json`. Useful when the index is corrupted or deleted without needing a full rebuild.
+
+```bash
+reponova index [--graph <path>]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--graph` | No | Path to `reponova-out/` directory. Default: auto-detected |
+
+### `reponova outline`
+
+Pre-compute tree-sitter code outlines for files matching `outlines.patterns`. Runs the same outline logic as `reponova build`, but standalone — useful to regenerate outlines without re-running extraction or graph construction.
+
+```bash
+reponova outline [--config <path>] [--graph <path>] [--force]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--config` | No | Path to `reponova.yml`. Default: auto-detected |
+| `--graph` | No | Path to `reponova-out/` directory. Default: resolved from config `output` field |
+| `--force` | No | Regenerate all outlines, ignoring SHA256 file hashes. Default: `false` |
+
 ### `reponova mcp`
 
 Start the MCP server over stdio. Normally launched automatically by the editor.
@@ -290,6 +316,10 @@ Verify graph installation, build integrity, and report stats.
 ```bash
 reponova check [--graph <path>]
 ```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--graph` | No | Path to `reponova-out/` directory. Default: auto-detected |
 
 Checks performed:
 - Graph file exists and is loadable
@@ -350,6 +380,72 @@ The config file is auto-detected from these locations (first match wins):
 6. `.vscode/reponova.yml`
 
 All paths inside the config are **relative to the config file's location**. When placed inside an editor directory (e.g. `.opencode/`), use `../` to reference the project root.
+
+### Pattern Resolution
+
+All glob patterns (`build.patterns`, `build.exclude`, `docs.patterns`, `outlines.patterns`, etc.) are matched against **workspace-relative paths**. How those paths look depends on the number of repos.
+
+#### Single-repo
+
+With one repo, file paths are relative to the repo root — no prefix:
+
+```
+src/core.py
+src/utils/helpers.py
+tests/test_core.py
+```
+
+Patterns work as you'd expect:
+
+```yaml
+repos:
+  - name: my-project
+    path: .
+build:
+  patterns: ["src/**/*.py"]          # matches src/core.py ✓
+  exclude: ["tests/**"]              # excludes tests/test_core.py ✓
+```
+
+#### Multi-repo
+
+With multiple repos, each file path is **prefixed with the repo name** from the config:
+
+```
+api/src/routes.py          # ← "api" comes from repos[].name
+api/src/handlers.py
+core/src/models.py         # ← "core" comes from repos[].name
+core/src/db.py
+```
+
+Patterns are tested against **both forms** — the full prefixed path and the repo-relative path — so the same pattern works in single and multi-repo:
+
+```yaml
+repos:
+  - name: api
+    path: ../services/api
+  - name: core
+    path: ../services/core
+build:
+  patterns: ["src/**/*.py"]          # matches api/src/routes.py, api/src/handlers.py, core/src/models.py, core/src/db.py ✓ (via repo-relative)
+  exclude: ["**/test_*.py"]          # works across all repos
+```
+
+#### Filtering a specific repo
+
+Use the repo name as a path prefix to target one repo only:
+
+```yaml
+build:
+  exclude:
+    - "api/src/generated/**"         # excludes only in the api repo
+    - "**/migrations/**"             # excludes in all repos
+
+outlines:
+  patterns:
+    - "core/src/**/*.py"             # outlines only for the core repo
+```
+
+This works because the full workspace path is always `<repo-name>/<path>`. The repo name is the `name` field from your `repos` config — not the directory name on disk.
 
 ### Full Config Reference
 
@@ -466,9 +562,12 @@ build:
     # Glob patterns to exclude from documentation extraction
     # Type: string[]
     # Default: ["**/CHANGELOG.md", "**/node_modules/**"]
+    # Note: if your output dir is inside the workspace (e.g. output: ./reponova-out),
+    # add it here to prevent generated files from being re-ingested on rebuild.
     exclude:
       - "**/CHANGELOG.md"
       - "**/node_modules/**"
+      - "reponova-out/**"
 
     # Maximum file size in KB — files larger than this are skipped
     # Type: number
@@ -609,7 +708,7 @@ outlines:
   # Glob patterns for files to outline (relative to repo root)
   # Type: string[]
   # Default: ["src/**/*.ts", "src/**/*.py", "src/**/*.js"]
-  paths:
+  patterns:
     - "src/**/*.py"
     - "src/**/*.ts"
     - "src/**/*.js"

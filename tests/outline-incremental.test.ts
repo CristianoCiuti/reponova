@@ -29,7 +29,7 @@ describe("FIX-011v2: outline incremental hashing", () => {
     expect(firstCount).toBe(1);
     expect(secondCount).toBe(0);
     expect(secondMtime).toBe(firstMtime);
-    expect(loadOutlineHashes(outputDir).get("repo/src/example.py")).toBeDefined();
+    expect(loadOutlineHashes(outputDir).get("src/example.py")).toBeDefined();
     expect(existsSync(join(outputDir, ".cache", "outline-hashes.json"))).toBe(true);
     expect(readFileSync(sourceFile, "utf-8")).toContain("hello");
   });
@@ -39,14 +39,14 @@ describe("FIX-011v2: outline incremental hashing", () => {
 
     await runOutlineGeneration(config, configDir, outputDir, { force: false });
     const firstMtime = statSync(outlinePath).mtimeMs;
-    const firstHash = loadOutlineHashes(outputDir).get("repo/src/example.py");
+    const firstHash = loadOutlineHashes(outputDir).get("src/example.py");
 
     await delay(20);
     writeFileSync(sourceFile, 'def hello(name: str) -> str:\n    """Return greeting"""\n    return f"hi {name}"\n');
 
     const regeneratedCount = await runOutlineGeneration(config, configDir, outputDir, { force: false });
     const secondMtime = statSync(outlinePath).mtimeMs;
-    const secondHash = loadOutlineHashes(outputDir).get("repo/src/example.py");
+    const secondHash = loadOutlineHashes(outputDir).get("src/example.py");
     const outlineJson = JSON.parse(readFileSync(outlinePath, "utf-8")) as {
       functions: Array<{ signature: string }>;
     };
@@ -82,7 +82,7 @@ function setupProject(): {
   const config = JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as Config;
   config.repos = [{ name: "repo", path: "../repo" }];
   config.outlines.enabled = true;
-  config.outlines.paths = ["src/**/*.py"];
+  config.outlines.patterns = ["src/**/*.py"];
   config.outlines.exclude = [];
 
   return {
@@ -90,7 +90,7 @@ function setupProject(): {
     configDir,
     outputDir,
     sourceFile,
-    outlinePath: join(outputDir, "outlines", "repo", "src", "example.py.outline.json"),
+    outlinePath: join(outputDir, "outlines", "src", "example.py.outline.json"),
   };
 }
 

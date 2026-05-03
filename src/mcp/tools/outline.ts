@@ -9,14 +9,20 @@
  */
 import type { Database } from "../../core/db.js";
 import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
 import { OutlineCache } from "../../outline/cache.js";
 import { generateOutline, formatOutlineMarkdown, formatOutlineJson } from "../../outline/index.js";
+import { resolveOutlinePath, resolveAbsolutePath, type RepoMapping } from "../../core/path-resolver.js";
 import type { FileOutline } from "../../shared/types.js";
 
 const outlineCache = new OutlineCache();
 
-export function handleOutline(_db: Database, graphDir: string, args: Record<string, unknown>) {
+export function handleOutline(
+  _db: Database,
+  graphDir: string,
+  args: Record<string, unknown>,
+  repos?: RepoMapping[] | null,
+  mode?: "single" | "multi",
+) {
   const filePath = args.file_path as string;
   const format = (args.format as string) ?? "markdown";
   if (!filePath) return { content: [{ type: "text" as const, text: "Error: 'file_path' is required" }], isError: true };
@@ -29,7 +35,7 @@ export function handleOutline(_db: Database, graphDir: string, args: Record<stri
   }
 
   // 2. Pre-computed outline
-  const preComputed = join(graphDir, "outlines", filePath + ".outline.json");
+  const preComputed = resolveOutlinePath(graphDir, filePath);
   if (existsSync(preComputed)) {
     try {
       const outline = JSON.parse(readFileSync(preComputed, "utf-8")) as FileOutline;
@@ -39,17 +45,19 @@ export function handleOutline(_db: Database, graphDir: string, args: Record<stri
     } catch { /* fall through to on-the-fly */ }
   }
 
-  // 3. On-the-fly generation
-  const workspaceRoot = resolve(graphDir, "..");
-  const absolutePath = resolve(workspaceRoot, filePath);
-  if (!existsSync(absolutePath)) {
+  // 3. On-the-fly generation — resolve absolute path from metadata
+  let absolutePath: string | null = null;
+  if (repos && mode) {
+    absolutePath = resolveAbsolutePath(repos, filePath, mode);
+  }
+
+  if (!absolutePath || !existsSync(absolutePath)) {
     return { content: [{ type: "text" as const, text: `File not found: ${filePath}` }] };
   }
 
-  // generateOutline is async — wrap in a sync-compatible pattern for MCP handler
-  // Since MCP tool handlers can return promises, we use an async IIFE
+  // generateOutline is async — MCP tool handlers can return promises
   return (async () => {
-    const source = readFileSync(absolutePath, "utf-8");
+    const source = readFileSync(absolutePath!, "utf-8");
     const outline = await generateOutline(filePath, source);
     if (!outline) {
       return { content: [{ type: "text" as const, text: `Unsupported language for outline: ${filePath}` }] };

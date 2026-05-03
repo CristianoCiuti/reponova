@@ -61,7 +61,7 @@ const BuildConfigSchema = z.object({
 
 const OutlineConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  paths: z.array(z.string()).default(["src/**/*.ts", "src/**/*.py", "src/**/*.js"]),
+  patterns: z.array(z.string()).default(["src/**/*.ts", "src/**/*.py", "src/**/*.js"]),
   exclude: z.array(z.string()).default(["**/node_modules/**", "**/.git/**", "**/dist/**"]),
 });
 
@@ -86,6 +86,8 @@ export function loadConfig(configPath?: string): { config: Config; configDir: st
     log.warn("No config file found (checked: reponova.yml, .opencode/, .cursor/, .claude/, .vscode/). Using defaults: single repo at current directory.");
     return { config: DEFAULT_CONFIG, configDir: process.cwd() };
   }
+
+  log.info(`Using config: ${resolvedPath}`);
 
   const raw = readFileSync(resolvedPath, "utf-8");
   const parsed = yaml.load(raw) as Record<string, unknown>;

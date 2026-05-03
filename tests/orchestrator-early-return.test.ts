@@ -49,7 +49,7 @@ describe("PROP-I1: orchestrator early return when no files changed", () => {
         edge_count: 7,
         build_config: {
           embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-          outlines: { enabled: true, paths: ["src/**/*.ts"], exclude: [], exclude_common: true },
+          outlines: { enabled: true, patterns: ["src/**/*.ts"], exclude: [], exclude_common: true },
           community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
           node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
         },

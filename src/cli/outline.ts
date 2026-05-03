@@ -5,7 +5,7 @@
  * Delegates to the shared runOutlineGeneration (same logic used by `build`).
  */
 import type { CommandModule } from "yargs";
-import { join } from "node:path";
+import { resolve } from "node:path";
 import { loadConfig } from "../core/config.js";
 import { resolveGraphPath } from "../core/graph-resolver.js";
 import { runOutlineGeneration } from "../build/outlines.js";
@@ -17,6 +17,7 @@ export const outlineCommand: CommandModule = {
   builder: (yargs) =>
     yargs
       .option("config", { type: "string", describe: "Path to reponova.yml" })
+      .option("graph", { type: "string", describe: "Path to reponova-out/ directory" })
       .option("force", { type: "boolean", describe: "Regenerate all outlines", default: false }),
   handler: async (argv) => {
     const { config, configDir } = loadConfig(argv.config as string | undefined);
@@ -26,7 +27,9 @@ export const outlineCommand: CommandModule = {
       return;
     }
 
-    const outputDir = resolveGraphPath(argv.graph as string | undefined) ?? join(configDir, config.output);
+    const outputDir = argv.graph
+      ? resolveGraphPath(argv.graph as string) ?? resolve(configDir, config.output)
+      : resolve(configDir, config.output);
 
     log.info(`Generating outlines in ${outputDir}/outlines...`);
     const count = await runOutlineGeneration(config, configDir, outputDir, { force: argv.force as boolean });

@@ -103,9 +103,9 @@ async function runEmbeddings(config: Config, outputDir: string, graphData: Graph
       id: node.id,
       label: node.label,
       type: node.type,
-      signature: node.properties?.signature as string | undefined,
-      docstring: node.properties?.docstring as string | undefined,
-      bases: node.properties?.bases as string[] | undefined,
+      signature: node.signature,
+      docstring: node.docstring,
+      bases: node.bases,
       source_file: node.source_file,
     }),
   }));

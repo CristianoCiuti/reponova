@@ -16,7 +16,8 @@ import { getExtractorForFile, getSupportedExtensions } from "./languages/registr
 import { buildGraph, type BuiltGraph } from "./graph-builder.js";
 import { detectCommunities, type CommunityResult } from "./community.js";
 import { exportJson } from "./export-json.js";
-import { createMatcher, buildSkipDirs } from "../shared/glob.js";
+import { buildSkipDirs } from "../shared/glob.js";
+import { createDualMatcher } from "../core/path-resolver.js";
 import { log } from "../shared/utils.js";
 
 export { buildGraph, type BuiltGraph } from "./graph-builder.js";
@@ -58,10 +59,11 @@ export function detectFiles(
   patterns: string[] = [],
   excludeGlobs: string[] = [],
   skipDirs: Set<string> = buildSkipDirs(true),
+  repoNames?: Set<string>,
 ): string[] {
   const extensions = patterns.length > 0 ? null : getCodeExtensions();
-  const isIncluded = patterns.length > 0 ? createMatcher(patterns) : null;
-  const isExcluded = createMatcher(excludeGlobs);
+  const isIncluded = patterns.length > 0 ? createDualMatcher(patterns, repoNames) : null;
+  const isExcluded = createDualMatcher(excludeGlobs, repoNames);
   const files: string[] = [];
 
   function walk(dir: string): void {
@@ -85,8 +87,16 @@ export function detectFiles(
         if (isExcluded(relPath)) continue;
 
         const ext = "." + (entry.name.split(".").pop()?.toLowerCase() ?? "");
-        if (isIncluded ? isIncluded(relPath) : extensions!.has(ext)) {
-          files.push(relPath);
+
+        if (isIncluded) {
+          if (isIncluded(relPath)) {
+            files.push(relPath);
+          }
+        } else {
+          // Extension-based (no patterns): works fine as-is
+          if (extensions!.has(ext)) {
+            files.push(relPath);
+          }
         }
       }
     }
@@ -100,12 +110,12 @@ export function detectFiles(
  * Detect documentation files under a workspace directory.
  * Respects docs config (patterns, excludes, max file size).
  */
-export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipDirs: Set<string> = buildSkipDirs(true)): string[] {
+export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipDirs: Set<string> = buildSkipDirs(true), repoNames?: Set<string>): string[] {
   if (!docsConfig?.enabled) return [];
 
   const maxSizeBytes = (docsConfig.max_file_size_kb ?? 500) * 1024;
-  const isIncluded = createMatcher(docsConfig.patterns);
-  const isExcluded = createMatcher(docsConfig.exclude);
+  const isIncluded = createDualMatcher(docsConfig.patterns, repoNames);
+  const isExcluded = createDualMatcher(docsConfig.exclude, repoNames);
 
   const files: string[] = [];
 
@@ -130,8 +140,8 @@ export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipD
 
         const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
 
-        if (!isIncluded(relPath)) continue;
         if (isExcluded(relPath)) continue;
+        if (!isIncluded(relPath)) continue;
 
         // Check file size
         try {
@@ -154,12 +164,12 @@ export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipD
  * Detect diagram/image files under a workspace directory.
  * Respects images config (patterns, excludes).
  */
-export function detectDiagramFiles(workspace: string, imagesConfig?: ImagesConfig, skipDirs: Set<string> = buildSkipDirs(true)): string[] {
+export function detectDiagramFiles(workspace: string, imagesConfig?: ImagesConfig, skipDirs: Set<string> = buildSkipDirs(true), repoNames?: Set<string>): string[] {
   if (!imagesConfig?.enabled) return [];
 
   const diagramExts = new Set([".puml", ".plantuml", ".svg", ".png", ".jpg", ".jpeg", ".gif"]);
-  const isIncluded = createMatcher(imagesConfig.patterns);
-  const isExcluded = createMatcher(imagesConfig.exclude);
+  const isIncluded = createDualMatcher(imagesConfig.patterns, repoNames);
+  const isExcluded = createDualMatcher(imagesConfig.exclude, repoNames);
 
   const files: string[] = [];
 
@@ -184,8 +194,8 @@ export function detectDiagramFiles(workspace: string, imagesConfig?: ImagesConfi
 
         const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
 
-        if (!isIncluded(relPath)) continue;
         if (isExcluded(relPath)) continue;
+        if (!isIncluded(relPath)) continue;
 
         // Skip binary images unless puml/svg config says to parse them
         if ((ext === ".png" || ext === ".jpg" || ext === ".jpeg" || ext === ".gif")) {
@@ -275,7 +285,7 @@ export interface PipelineOptions {
   skipDirs?: Set<string>;
   /** Output path for graph.json */
   graphJsonPath: string;
-  /** Repo name for tagging nodes */
+  /** Repo name for tagging nodes (single-repo mode) */
   repoName?: string;
   /** Min degree for HTML filtering (passed through for orchestrator use) */
   htmlMinDegree?: number;
@@ -289,6 +299,10 @@ export interface PipelineOptions {
   imagesConfig?: ImagesConfig;
   /** Full config (for build_config fingerprint in graph.json metadata) */
   config?: Config;
+  /** Config directory (for metadata in graph.json) */
+  configDir?: string;
+  /** Repo names for multi-repo pattern matching (match repo-relative + workspace-relative) */
+  repoNames?: Set<string>;
 }
 
 export interface PipelineResult {
@@ -324,14 +338,16 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     docsConfig,
     imagesConfig,
     config,
+    configDir,
+    repoNames,
   } = options;
 
   // 1. Detect files
   log.info("Detecting files...");
   const resolvedSkipDirs = skipDirs ?? new Set<string>();
-  const codeFiles = detectFiles(workspace, patterns, excludeGlobs, resolvedSkipDirs);
-  const docFiles = detectDocFiles(workspace, docsConfig, resolvedSkipDirs);
-  const diagramFiles = detectDiagramFiles(workspace, imagesConfig, resolvedSkipDirs);
+  const codeFiles = detectFiles(workspace, patterns, excludeGlobs, resolvedSkipDirs, repoNames);
+  const docFiles = detectDocFiles(workspace, docsConfig, resolvedSkipDirs, repoNames);
+  const diagramFiles = detectDiagramFiles(workspace, imagesConfig, resolvedSkipDirs, repoNames);
   const files = [...codeFiles, ...docFiles, ...diagramFiles];
 
   const extras: string[] = [];
@@ -343,7 +359,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     // Write empty graph
     const emptyGraph = buildGraph({ extractions: [] });
     const emptyCommunities = detectCommunities(emptyGraph.graph);
-    exportJson({ graph: emptyGraph.graph, communities: emptyCommunities, outputPath: graphJsonPath, config });
+    exportJson({ graph: emptyGraph.graph, communities: emptyCommunities, outputPath: graphJsonPath, config, configDir, outputDir });
     return {
       builtGraph: emptyGraph,
       communities: emptyCommunities,
@@ -396,7 +412,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
   // 3. Build graph
   log.info("Building graph...");
-  const builtGraph = buildGraph({ extractions, repoName });
+  const builtGraph = buildGraph({ extractions, repoName, repoNames: repoNames ? [...repoNames] : undefined });
   log.info(`  ${builtGraph.stats.nodeCount} nodes, ${builtGraph.stats.edgeCount} edges`);
   log.info(`  ${builtGraph.stats.crossFileEdges} cross-file edges, ${builtGraph.stats.unresolvedImports} external imports`);
 
@@ -407,7 +423,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
   // 5. Export JSON
   log.info("Exporting graph.json...");
-  exportJson({ graph: builtGraph.graph, communities, outputPath: graphJsonPath, config });
+  exportJson({ graph: builtGraph.graph, communities, outputPath: graphJsonPath, config, configDir, outputDir });
 
   // Note: HTML generation is done in the orchestrator AFTER the intelligence
   // layer, so that community summaries can be injected as community names.
