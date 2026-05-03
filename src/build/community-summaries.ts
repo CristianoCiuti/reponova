@@ -271,9 +271,9 @@ export class SummaryGenerator {
       `Type: ${node.type}`,
     ];
     if (node.source_file) lines.push(`File: ${node.source_file}`);
-    if (node.properties?.signature) lines.push(`Signature: ${node.properties.signature}`);
-    if (node.properties?.docstring) lines.push(`Docstring: ${String(node.properties.docstring).slice(0, 200)}`);
-    if (node.properties?.bases) lines.push(`Bases: ${node.properties.bases}`);
+    if (node.signature) lines.push(`Signature: ${node.signature}`);
+    if (node.docstring) lines.push(`Docstring: ${String(node.docstring).slice(0, 200)}`);
+    if (node.bases) lines.push(`Bases: ${node.bases}`);
 
     return lines.join("\n");
   }

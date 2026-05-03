@@ -12,6 +12,12 @@ export interface GraphNode {
   community?: string;
   start_line?: number;
   end_line?: number;
+  /** Function/method signature extracted from AST */
+  signature?: string;
+  /** Docstring extracted from AST */
+  docstring?: string;
+  /** Base classes (for class nodes) */
+  bases?: string[];
   properties?: Record<string, unknown>;
 }
 
