@@ -9,6 +9,8 @@ import {
 import { openDatabase } from "../core/db.js";
 import { resolveGraphPath, resolveSearchDb, resolveGraphJson } from "../core/graph-resolver.js";
 import { embeddingsConfigFromFingerprint, requireBuildConfigFingerprint } from "../core/build-config-metadata.js";
+import { loadGraphData } from "../core/graph-loader.js";
+import { reconstructRepos, type RepoMapping } from "../core/path-resolver.js";
 import { handleSearch } from "./tools/search.js";
 import { handleImpact } from "./tools/impact.js";
 import { handleOutline } from "./tools/outline.js";
@@ -53,6 +55,21 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   const graphJsonPath = resolveGraphJson(graphDir);
   const db = await openDatabase(dbPath, { readonly: true });
 
+  // Reconstruct repo mappings from graph.json metadata (for query-time path resolution)
+  let repos: RepoMapping[] | null = null;
+  let mode: "single" | "multi" = "single";
+  if (graphJsonPath) {
+    try {
+      const graphData = loadGraphData(graphJsonPath);
+      if (graphData.metadata) {
+        repos = reconstructRepos(graphDir, graphData.metadata.config_dir, graphData.metadata.repos);
+        mode = graphData.metadata.mode ?? "single";
+      }
+    } catch {
+      log.warn("Could not load graph metadata for path resolution — on-the-fly outlines may fail");
+    }
+  }
+
   const defaultEmbeddingsConfig = resolveEmbeddingsConfig(graphJsonPath);
   const defaultCacheDir = "~/.cache/reponova/models";
 
@@ -94,9 +111,9 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
       switch (name) {
         case "graph_search": return handleSearch(db, args as Record<string, unknown>);
         case "graph_impact": return handleImpact(db, args as Record<string, unknown>);
-        case "graph_outline": return handleOutline(db, graphDir, args as Record<string, unknown>);
+        case "graph_outline": return handleOutline(db, graphDir, args as Record<string, unknown>, repos, mode);
         case "graph_path": return handlePath(db, args as Record<string, unknown>);
-        case "graph_explain": return handleExplain(db, graphDir, args as Record<string, unknown>);
+        case "graph_explain": return handleExplain(db, graphDir, args as Record<string, unknown>, repos, mode);
         case "graph_community": return handleCommunity(db, args as Record<string, unknown>);
         case "graph_hotspots": return handleHotspots(db, args as Record<string, unknown>);
         case "graph_similar": return await handleSimilar(db, args as Record<string, unknown>);

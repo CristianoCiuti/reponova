@@ -1,8 +1,15 @@
 import type { Database } from "../../core/db.js";
 import { getNodeDetail, getNodeSuggestions, formatNodeDetailMarkdown } from "../../core/node-detail.js";
 import { handleOutline } from "./outline.js";
+import type { RepoMapping } from "../../core/path-resolver.js";
 
-export function handleExplain(db: Database, graphDir: string, args: Record<string, unknown>) {
+export async function handleExplain(
+  db: Database,
+  graphDir: string,
+  args: Record<string, unknown>,
+  repos?: RepoMapping[] | null,
+  mode?: "single" | "multi",
+) {
   const symbol = args.symbol as string;
   if (!symbol) return { content: [{ type: "text" as const, text: "Error: 'symbol' is required" }], isError: true };
 
@@ -15,8 +22,8 @@ export function handleExplain(db: Database, graphDir: string, args: Record<strin
 
   let text = formatNodeDetailMarkdown(detail);
   if ((args.include_code as boolean) && detail.source_file) {
-    const outlineResult = handleOutline(db, graphDir, { file_path: detail.source_file, format: "markdown" });
-    if (outlineResult.content[0] && !outlineResult.isError) {
+    const outlineResult = await handleOutline(db, graphDir, { file_path: detail.source_file, format: "markdown" }, repos, mode);
+    if (outlineResult.content[0] && !("isError" in outlineResult && outlineResult.isError)) {
       text += "\n\n---\n\n### Source File Outline\n\n" + outlineResult.content[0].text;
     }
   }

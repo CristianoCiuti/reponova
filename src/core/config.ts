@@ -61,7 +61,7 @@ const BuildConfigSchema = z.object({
 
 const OutlineConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  paths: z.array(z.string()).default(["src/**/*.ts", "src/**/*.py", "src/**/*.js"]),
+  patterns: z.array(z.string()).default(["src/**/*.ts", "src/**/*.py", "src/**/*.js"]),
   exclude: z.array(z.string()).default(["**/node_modules/**", "**/.git/**", "**/dist/**"]),
 });
 

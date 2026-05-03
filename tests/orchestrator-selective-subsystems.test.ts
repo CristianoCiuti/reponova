@@ -51,7 +51,7 @@ describe("PROP-I2: selective subsystem execution", () => {
       metadata: {
         build_config: {
           embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-          outlines: { enabled: true, paths: ["src/**/*.ts"], exclude: [], exclude_common: true },
+          outlines: { enabled: true, patterns: ["src/**/*.ts"], exclude: [], exclude_common: true },
           community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
           node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
         },
@@ -67,7 +67,7 @@ describe("PROP-I2: selective subsystem execution", () => {
       nodeDescriptionsChanged: false,
       previous: {
         embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-        outlines: { enabled: true, paths: ["src/**/*.ts"], exclude: [], exclude_common: true },
+        outlines: { enabled: true, patterns: ["src/**/*.ts"], exclude: [], exclude_common: true },
         community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
         node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
       },

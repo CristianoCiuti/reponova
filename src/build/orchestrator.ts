@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, symlinkSync, copyFileSync, readdirSync, statSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Config, GraphData } from "../shared/types.js";
@@ -9,11 +9,12 @@ import { runIntelligenceLayer, type IntelligenceResult } from "./intelligence.js
 import { generateGraphReport } from "./report.js";
 import { exportHtml, exportCommunityHtml, type CommunitySummaryInfo } from "../extract/export-html.js";
 import { log } from "../shared/utils.js";
-import { runPipeline, type PipelineResult } from "../extract/index.js";
+import { runPipeline } from "../extract/index.js";
 import { buildSkipDirs } from "../shared/glob.js";
 import { loadPreviousBuildConfig } from "./config-diff.js";
 import { cleanStaleArtifacts } from "./artifact-cleanup.js";
 import { computeSemanticGraphHash, loadPreviousGraphHash, saveGraphHash } from "./graph-hash.js";
+import { createPathContext, prepareWorkspace } from "../core/path-resolver.js";
 
 export interface BuildOptions {
   force: boolean;
@@ -69,7 +70,8 @@ export async function runBuild(config: Config, configDir: string, options: Build
     const mergedPath = join(outputDir, "graph.json");
     const incremental = config.build.incremental && !options.force;
     const skipDirs = buildSkipDirs(config.build.exclude_common);
-    log.info(`Build${incremental ? " (incremental)" : ""}...`);
+    const ctx = createPathContext(config, configDir, outputDir);
+    log.info(`Build${incremental ? " (incremental)" : ""} [${ctx.mode}-repo mode]...`);
 
     // ── Config change detection ──────────────────────────────────────────
     const configDiff = loadPreviousBuildConfig(mergedPath, config);
@@ -84,11 +86,36 @@ export async function runBuild(config: Config, configDir: string, options: Build
 
     cleanStaleArtifacts(outputDir, configDiff, config);
 
-    const result = await buildMonorepo(config, configDir, options, tmpDir, mergedPath, outputDir, incremental, skipDirs);
+    const workspace = prepareWorkspace(ctx, tmpDir, skipDirs);
+    const repoNames = ctx.repos.map((r) => r.name);
 
-    // Tag nodes with repo name (from first path component)
-    const repoNames = config.repos.map((r) => r.name);
-    tagNodesWithRepo(mergedPath, repoNames);
+    if (repoNames.length === 0) {
+      throw new Error("No repos linked. Check repo paths in reponova.yml");
+    }
+
+    log.info(`Building unified graph (${repoNames.length} repo${repoNames.length > 1 ? "s" : ""})...`);
+
+    const result = await runPipeline({
+      workspace,
+      patterns: config.build.patterns,
+      excludeGlobs: config.build.exclude,
+      skipDirs,
+      graphJsonPath: mergedPath,
+      htmlMinDegree: config.build.html_min_degree,
+      outputDir,
+      incremental,
+      docsConfig: config.build.docs,
+      imagesConfig: config.build.images,
+      config,
+      configDir,
+      // Single-repo: pass repo name so nodes are tagged directly
+      repoName: ctx.mode === "single" ? repoNames[0] : undefined,
+      // Multi-repo: pass repo names for pattern matching fix
+      repoNames: ctx.mode === "multi" ? new Set(repoNames) : undefined,
+    });
+
+    // Tag nodes with repo name
+    tagNodesWithRepo(mergedPath, repoNames, ctx.mode);
 
     log.info(`Graph: ${result.builtGraph.stats.nodeCount} nodes, ${result.builtGraph.stats.edgeCount} edges, ${result.communities.count} communities`);
     if (result.incrementalStats) {
@@ -316,102 +343,37 @@ export async function build(
   return runBuild(config, configDir, { force: options?.force ?? false });
 }
 
-// ─── Monorepo mode ───────────────────────────────────────────────────────────
-
-async function buildMonorepo(
-  config: Config,
-  configDir: string,
-  _options: BuildOptions,
-  tmpDir: string,
-  mergedPath: string,
-  outputDir: string,
-  incremental: boolean,
-  skipDirs: Set<string>,
-): Promise<PipelineResult> {
-  const workspace = join(tmpDir, "workspace");
-  mkdirSync(workspace, { recursive: true });
-
-  // Symlink each repo into workspace/<repo_name>
-  const repoNames: string[] = [];
-  for (const repo of config.repos) {
-    const repoPath = resolve(configDir, repo.path);
-    if (!existsSync(repoPath)) {
-      log.warn(`Repo not found, skipping: ${repoPath}`);
-      continue;
-    }
-
-    const linkPath = join(workspace, repo.name);
-    try {
-      symlinkSync(repoPath, linkPath, "junction");
-      log.info(`  Linked: ${repo.name} \u2192 ${repoPath}`);
-      repoNames.push(repo.name);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      log.warn(`  Symlink failed for ${repo.name}: ${msg}, falling back to copy...`);
-      copyDirRecursive(repoPath, linkPath, skipDirs);
-      repoNames.push(repo.name);
-    }
-  }
-
-  if (repoNames.length === 0) {
-    throw new Error("No repos linked. Check repo paths in reponova.yml");
-  }
-
-  log.info(`Building unified graph (${repoNames.length} repos)...`);
-
-  return runPipeline({
-    workspace,
-    patterns: config.build.patterns,
-    excludeGlobs: config.build.exclude,
-    skipDirs,
-    graphJsonPath: mergedPath,
-    htmlMinDegree: config.build.html_min_degree,
-    outputDir,
-    incremental,
-    docsConfig: config.build.docs,
-    imagesConfig: config.build.images,
-    config,
-  });
-}
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Tag each node's `repo` field based on the first path component of source_file.
+ * Tag each node's `repo` field.
+ * Single-repo: all nodes get the single repo name.
+ * Multi-repo: tag based on the first path component of source_file.
  */
-function tagNodesWithRepo(graphJsonPath: string, repoNames: string[]): void {
+function tagNodesWithRepo(graphJsonPath: string, repoNames: string[], mode: "single" | "multi"): void {
   const raw = readFileSync(graphJsonPath, "utf-8");
   const data = JSON.parse(raw) as GraphData;
-  const repoSet = new Set(repoNames);
 
-  for (const node of data.nodes) {
-    if (!node.source_file) continue;
-    const normalized = node.source_file.replace(/\\/g, "/");
-    const firstComponent = normalized.split("/")[0];
-    if (firstComponent && repoSet.has(firstComponent)) {
-      node.repo = firstComponent;
+  if (mode === "single") {
+    const repoName = repoNames[0];
+    for (const node of data.nodes) {
+      if (node.source_file) {
+        node.repo = repoName;
+      }
+    }
+  } else {
+    const repoSet = new Set(repoNames);
+    for (const node of data.nodes) {
+      if (!node.source_file) continue;
+      const normalized = node.source_file.replace(/\\/g, "/");
+      const firstComponent = normalized.split("/")[0];
+      if (firstComponent && repoSet.has(firstComponent)) {
+        node.repo = firstComponent;
+      }
     }
   }
 
   writeFileSync(graphJsonPath, JSON.stringify(data, null, 2));
 }
 
-/**
- * Recursive directory copy. Always-skip directories (node_modules, .git, etc.)
- * are excluded automatically. Glob-based exclusion happens at file detection time.
- */
-function copyDirRecursive(src: string, dest: string, skipDirs: Set<string>): void {
-  mkdirSync(dest, { recursive: true });
 
-  for (const entry of readdirSync(src)) {
-    if (skipDirs.has(entry)) continue;
-    const srcPath = join(src, entry);
-    const destPath = join(dest, entry);
-    const stat = statSync(srcPath);
-    if (stat.isDirectory()) {
-      copyDirRecursive(srcPath, destPath, skipDirs);
-    } else {
-      copyFileSync(srcPath, destPath);
-    }
-  }
-}

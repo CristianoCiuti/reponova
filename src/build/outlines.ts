@@ -42,10 +42,14 @@ export async function runOutlineGeneration(
       continue;
     }
 
-    const files = findFiles(repoPath, config.outlines.paths, config.outlines.exclude, skipDirs);
+    const files = findFiles(repoPath, config.outlines.patterns, config.outlines.exclude, skipDirs);
 
     for (const file of files) {
-      const relPath = `${repo.name}/${relative(repoPath, file)}`.split("\\").join("/");
+      // Single-repo: no repo prefix. Multi-repo: prefix with repo name.
+      const mode = config.repos.length === 1 ? "single" : "multi";
+      const relPath = mode === "single"
+        ? relative(repoPath, file).split("\\").join("/")
+        : `${repo.name}/${relative(repoPath, file)}`.split("\\").join("/");
       const outPath = join(outlinesDir, relPath + ".outline.json");
       const fileHash = hashFile(file);
       nextHashes.set(relPath, fileHash);

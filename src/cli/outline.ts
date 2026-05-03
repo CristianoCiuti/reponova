@@ -5,7 +5,7 @@
  * Delegates to the shared runOutlineGeneration (same logic used by `build`).
  */
 import type { CommandModule } from "yargs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { loadConfig } from "../core/config.js";
 import { resolveGraphPath } from "../core/graph-resolver.js";
 import { runOutlineGeneration } from "../build/outlines.js";

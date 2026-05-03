@@ -5,6 +5,7 @@
  * Edge fields: source, target, type/relation, confidence
  */
 import { writeFileSync } from "node:fs";
+import { relative } from "node:path";
 import type Graph from "graphology";
 import type { CommunityResult } from "./community.js";
 import type { Config } from "../shared/types.js";
@@ -19,6 +20,10 @@ export interface ExportJsonOptions {
   outputPath: string;
   /** Build config (required for build_config fingerprint in metadata) */
   config?: Config;
+  /** Config directory (for config_dir relative path in metadata) */
+  configDir?: string;
+  /** Output directory (for computing relative config_dir) */
+  outputDir?: string;
 }
 
 interface JsonNode {
@@ -51,7 +56,7 @@ interface JsonEdge {
  * Export graph to JSON format compatible with existing MCP tools.
  */
 export function exportJson(options: ExportJsonOptions): void {
-  const { graph, outputPath, config } = options;
+  const { graph, outputPath, config, configDir, outputDir } = options;
 
   const nodes: JsonNode[] = [];
   const edges: JsonEdge[] = [];
@@ -103,7 +108,7 @@ export function exportJson(options: ExportJsonOptions): void {
     },
     outlines: {
       enabled: config.outlines.enabled,
-      paths: config.outlines.paths,
+      patterns: config.outlines.patterns,
       exclude: config.outlines.exclude,
       exclude_common: config.build.exclude_common,
     },
@@ -128,6 +133,12 @@ export function exportJson(options: ExportJsonOptions): void {
       reponova_version: getVersion(),
       built_at: new Date().toISOString(),
       build_config: buildConfig,
+      // Path resolution metadata (relative paths for portability)
+      ...(config && configDir && outputDir ? {
+        config_dir: relative(outputDir, configDir).replace(/\\/g, "/"),
+        repos: config.repos.map((r) => ({ name: r.name, path: r.path })),
+        mode: config.repos.length === 1 ? "single" as const : "multi" as const,
+      } : {}),
     },
   };
   writeFileSync(outputPath, JSON.stringify(data, null, 2));

@@ -43,7 +43,7 @@ describe("FIX-010v2: MCP build_config metadata", () => {
   it("formats build_config status lines from graph.json metadata", () => {
     const graphJsonPath = writeGraphJson(makeTempDir(), {
       embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-      outlines: { enabled: false, paths: [], exclude: [], exclude_common: true },
+      outlines: { enabled: false, patterns: [], exclude: [], exclude_common: true },
       community_summaries: { enabled: true, max_number: 3, model: null, context_size: 512 },
       node_descriptions: { enabled: false, threshold: 0.8, model: null, context_size: 512 },
     });
@@ -122,7 +122,7 @@ function writeGraphJson(dir: string, overrides: Partial<BuildConfigFingerprint> 
   const graphJsonPath = join(dir, "graph.json");
   const buildConfig: BuildConfigFingerprint = {
     embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-    outlines: { enabled: true, paths: ["src/**/*.ts"], exclude: ["**/dist/**"], exclude_common: true },
+    outlines: { enabled: true, patterns: ["src/**/*.ts"], exclude: ["**/dist/**"], exclude_common: true },
     community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
     node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
     ...overrides,

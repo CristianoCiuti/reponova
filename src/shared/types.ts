@@ -50,7 +50,12 @@ export interface GraphData {
 export interface GraphMetadata {
   reponova_version?: string;
   built_at?: string;
-  repos?: string[];
+  /** Relative path from graphDir to configDir (for reconstructing repo absolute paths) */
+  config_dir?: string;
+  /** Repo mappings — name + path relative to configDir (as in the YAML config) */
+  repos?: Array<{ name: string; path: string }>;
+  /** single = 1 repo (no prefix on source_file), multi = N repos (repo prefix on source_file) */
+  mode?: "single" | "multi";
   node_count?: number;
   edge_count?: number;
   /** Build configuration fingerprint — tracks what config was used */
@@ -67,7 +72,7 @@ export interface BuildConfigFingerprint {
   };
   outlines: {
     enabled: boolean;
-    paths: string[];
+    patterns: string[];
     exclude: string[];
     exclude_common: boolean;
   };
@@ -183,7 +188,7 @@ export interface NodeDescriptionsConfig {
 
 export interface OutlineConfig {
   enabled: boolean;
-  paths: string[];
+  patterns: string[];
   exclude: string[];
 }
 
@@ -371,7 +376,7 @@ export const DEFAULT_CONFIG: Config = {
   },
   outlines: {
     enabled: true,
-    paths: ["src/**/*.ts", "src/**/*.py", "src/**/*.js"],
+    patterns: ["src/**/*.ts", "src/**/*.py", "src/**/*.js"],
     exclude: ["**/node_modules/**", "**/.git/**", "**/dist/**"],
   },
   server: {},

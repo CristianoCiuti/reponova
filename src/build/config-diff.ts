@@ -51,7 +51,7 @@ export function loadPreviousBuildConfig(graphJsonPath: string, currentConfig: Co
 
     const outlinesChanged =
       prev.outlines.enabled !== currentConfig.outlines.enabled ||
-      JSON.stringify(prev.outlines.paths) !== JSON.stringify(currentConfig.outlines.paths) ||
+      JSON.stringify(prev.outlines.patterns) !== JSON.stringify(currentConfig.outlines.patterns) ||
       JSON.stringify(prev.outlines.exclude) !== JSON.stringify(currentConfig.outlines.exclude) ||
       prev.outlines.exclude_common !== currentConfig.build.exclude_common;
 

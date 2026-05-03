@@ -70,7 +70,7 @@ build:
 # Outline generation (auto-detects language from file extension)
 outlines:
   enabled: true
-  paths:                          # glob patterns for files to outline (relative to repo root)
+  patterns:                         # glob patterns for files to outline (relative to repo root)
     - "src/**/*.ts"
     - "src/**/*.py"
     - "src/**/*.js"
