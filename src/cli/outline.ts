@@ -17,6 +17,7 @@ export const outlineCommand: CommandModule = {
   builder: (yargs) =>
     yargs
       .option("config", { type: "string", describe: "Path to reponova.yml" })
+      .option("graph", { type: "string", describe: "Path to reponova-out/ directory" })
       .option("force", { type: "boolean", describe: "Regenerate all outlines", default: false }),
   handler: async (argv) => {
     const { config, configDir } = loadConfig(argv.config as string | undefined);
