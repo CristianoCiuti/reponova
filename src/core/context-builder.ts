@@ -520,7 +520,7 @@ export class ContextBuilder {
 
     // Try to read the file (outline dir has pre-computed outlines)
     const outlineDir = join(this.graphDir, "outlines");
-    const outlinePath = join(outlineDir, candidate.source_file + ".json");
+    const outlinePath = join(outlineDir, candidate.source_file + ".outline.json");
 
     if (existsSync(outlinePath)) {
       try {

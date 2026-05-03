@@ -5,7 +5,7 @@
  * Delegates to the shared runOutlineGeneration (same logic used by `build`).
  */
 import type { CommandModule } from "yargs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { loadConfig } from "../core/config.js";
 import { resolveGraphPath } from "../core/graph-resolver.js";
 import { runOutlineGeneration } from "../build/outlines.js";
@@ -26,7 +26,9 @@ export const outlineCommand: CommandModule = {
       return;
     }
 
-    const outputDir = resolveGraphPath(argv.graph as string | undefined) ?? join(configDir, config.output);
+    const outputDir = argv.graph
+      ? resolveGraphPath(argv.graph as string) ?? resolve(configDir, config.output)
+      : resolve(configDir, config.output);
 
     log.info(`Generating outlines in ${outputDir}/outlines...`);
     const count = await runOutlineGeneration(config, configDir, outputDir, { force: argv.force as boolean });
