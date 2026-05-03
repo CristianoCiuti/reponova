@@ -1,6 +1,6 @@
 {
   "name": "reponova",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "description": "Knowledge graph builder & MCP server for AI code assistants: search, impact analysis, semantic similarity, and architecture visualization",
   "type": "module",
   "main": "dist/index.js",
