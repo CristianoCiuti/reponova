@@ -87,6 +87,8 @@ export function loadConfig(configPath?: string): { config: Config; configDir: st
     return { config: DEFAULT_CONFIG, configDir: process.cwd() };
   }
 
+  log.info(`Using config: ${resolvedPath}`);
+
   const raw = readFileSync(resolvedPath, "utf-8");
   const parsed = yaml.load(raw) as Record<string, unknown>;
   const validated = ConfigSchema.parse(parsed ?? {});
