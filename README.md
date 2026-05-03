@@ -466,9 +466,12 @@ build:
     # Glob patterns to exclude from documentation extraction
     # Type: string[]
     # Default: ["**/CHANGELOG.md", "**/node_modules/**"]
+    # Note: if your output dir is inside the workspace (e.g. output: ./reponova-out),
+    # add it here to prevent generated files from being re-ingested on rebuild.
     exclude:
       - "**/CHANGELOG.md"
       - "**/node_modules/**"
+      - "reponova-out/**"
 
     # Maximum file size in KB — files larger than this are skipped
     # Type: number

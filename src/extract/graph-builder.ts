@@ -14,8 +14,10 @@ import { resolveImports } from "./import-resolver.js";
 export interface BuildGraphOptions {
   /** All file extractions (can be from mixed languages) */
   extractions: FileExtraction[];
-  /** Repo name for tagging (optional) */
+  /** Repo name for tagging (optional, single-repo mode) */
   repoName?: string;
+  /** Known repo names for validation (optional, multi-repo mode) */
+  repoNames?: string[];
 }
 
 export interface BuiltGraph {
@@ -43,7 +45,7 @@ function makeNodeId(filePath: string, symbolName: string): string {
  * Build a directed graph from file extractions.
  */
 export function buildGraph(options: BuildGraphOptions): BuiltGraph {
-  const { extractions, repoName } = options;
+  const { extractions, repoName, repoNames } = options;
   const graph = new Graph({ type: "directed", multi: false, allowSelfLoops: false });
 
   let crossFileEdges = 0;
@@ -63,7 +65,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
         type: isDoc ? "document" : "module",
         file_type: isDoc ? "doc" : "code",
         source_file: filePath,
-        repo: repoName ?? inferRepoName(filePath),
+        repo: repoName ?? inferRepoName(filePath, repoNames),
         start_line: 1,
         end_line: undefined,
         norm_label: label.toLowerCase(),
@@ -102,7 +104,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
           file_type: isDoc ? "doc" : "code",
           source_file: filePath,
           source_location: `L${symbol.startLine}${symbol.endLine ? `-L${symbol.endLine}` : ""}`,
-          repo: repoName ?? inferRepoName(filePath),
+          repo: repoName ?? inferRepoName(filePath, repoNames),
           start_line: symbol.startLine,
           end_line: symbol.endLine,
           norm_label: symbol.name.toLowerCase(),
@@ -380,8 +382,13 @@ function addEdgeSafe(graph: Graph, source: string, target: string, edgeType: str
 
 /**
  * Infer repo name from the first path component.
+ * When repoNames is provided, validates against known repo names.
  */
-function inferRepoName(filePath: string): string | undefined {
+function inferRepoName(filePath: string, repoNames?: string[]): string | undefined {
   const first = filePath.split("/")[0];
-  return first && first !== "." ? first : undefined;
+  if (!first || first === ".") return undefined;
+  if (repoNames && repoNames.length > 0) {
+    return repoNames.includes(first) ? first : undefined;
+  }
+  return first;
 }

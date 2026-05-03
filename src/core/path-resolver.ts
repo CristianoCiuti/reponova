@@ -258,6 +258,46 @@ export function reconstructRepos(
   }));
 }
 
+// ── Workspace-relative matching (used by file detection) ─────────────────────
+
+/**
+ * Strip repo prefix from a workspace-relative path.
+ * "api/src/core.py" → "src/core.py" (if "api" is a known repo name).
+ * Returns null if no repo prefix matches.
+ */
+export function stripRepoPrefix(relPath: string, repoNames: Set<string>): string | null {
+  const slashIdx = relPath.indexOf("/");
+  if (slashIdx === -1) return null;
+  const first = relPath.slice(0, slashIdx);
+  if (repoNames.has(first)) {
+    return relPath.slice(slashIdx + 1);
+  }
+  return null;
+}
+
+/**
+ * Create a dual-match function for workspace-relative paths.
+ * Tests both workspace-relative and repo-relative forms (via stripRepoPrefix).
+ * Compiles the matcher once — reuse the returned function across many paths.
+ *
+ * @param patterns - Glob patterns
+ * @param repoNames - Known repo names (enables dual matching in multi-repo)
+ * @returns A function that tests a workspace-relative path
+ */
+export function createDualMatcher(
+  patterns: string[],
+  repoNames?: Set<string>,
+): (relPath: string) => boolean {
+  if (patterns.length === 0) return () => false;
+  const matcher = createMatcher(patterns);
+  if (!repoNames || repoNames.size === 0) return matcher;
+  return (relPath: string) => {
+    if (matcher(relPath)) return true;
+    const repoRel = stripRepoPrefix(relPath, repoNames);
+    return repoRel !== null && matcher(repoRel);
+  };
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function copyDirRecursive(src: string, dest: string, skipDirs: Set<string>): void {

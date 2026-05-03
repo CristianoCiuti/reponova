@@ -32,6 +32,8 @@ import {
   resolveAbsolutePath,
   resolveOutlinePath,
   reconstructRepos,
+  stripRepoPrefix,
+  createDualMatcher,
 } from "../src/core/path-resolver.js";
 import type { PathContext, RepoMapping } from "../src/core/path-resolver.js";
 
@@ -732,5 +734,76 @@ describe("integration: full path flow", () => {
     const absCore = resolveAbsolutePath(ctx.repos, sfCore, "multi");
     expect(absCore).not.toBeNull();
     expect(absCore!.replace(/\\/g, "/")).toBe(coreFile);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// stripRepoPrefix
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("stripRepoPrefix", () => {
+  const repoNames = new Set(["api", "core"]);
+
+  it("strips known repo prefix", () => {
+    expect(stripRepoPrefix("api/src/main.py", repoNames)).toBe("src/main.py");
+    expect(stripRepoPrefix("core/lib/utils.py", repoNames)).toBe("lib/utils.py");
+  });
+
+  it("returns null for unknown repo prefix", () => {
+    expect(stripRepoPrefix("unknown/src/main.py", repoNames)).toBeNull();
+  });
+
+  it("returns null when no slash present", () => {
+    expect(stripRepoPrefix("main.py", repoNames)).toBeNull();
+  });
+
+  it("handles deeply nested paths", () => {
+    expect(stripRepoPrefix("api/a/b/c/d.py", repoNames)).toBe("a/b/c/d.py");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// createDualMatcher
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("createDualMatcher", () => {
+  it("returns false-returning function for empty patterns", () => {
+    const matcher = createDualMatcher([], undefined);
+    expect(matcher("anything.py")).toBe(false);
+  });
+
+  it("matches workspace-relative path (no repoNames)", () => {
+    const matcher = createDualMatcher(["src/**/*.py"]);
+    expect(matcher("src/main.py")).toBe(true);
+    expect(matcher("tests/test.py")).toBe(false);
+  });
+
+  it("matches repo-relative pattern in multi-repo", () => {
+    const repoNames = new Set(["api", "core"]);
+    const matcher = createDualMatcher(["src/**/*.py"], repoNames);
+    // workspace-relative: "api/src/main.py" doesn't match "src/**/*.py" directly
+    // but repo-relative "src/main.py" does match
+    expect(matcher("api/src/main.py")).toBe(true);
+    expect(matcher("core/src/lib.py")).toBe(true);
+  });
+
+  it("matches workspace-relative (repo-prefixed) pattern", () => {
+    const repoNames = new Set(["api", "core"]);
+    const matcher = createDualMatcher(["api/src/**/*.py"], repoNames);
+    expect(matcher("api/src/main.py")).toBe(true);
+    expect(matcher("core/src/lib.py")).toBe(false);
+  });
+
+  it("repo-prefixed exclude only affects target repo", () => {
+    const repoNames = new Set(["api", "core"]);
+    const matcher = createDualMatcher(["api/venv/**"], repoNames);
+    expect(matcher("api/venv/lib.py")).toBe(true);
+    expect(matcher("core/venv/lib.py")).toBe(false);
+  });
+
+  it("falls back when repoNames is empty set", () => {
+    const matcher = createDualMatcher(["src/**/*.py"], new Set());
+    expect(matcher("src/main.py")).toBe(true);
+    expect(matcher("api/src/main.py")).toBe(false); // no dual-match
   });
 });

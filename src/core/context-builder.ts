@@ -17,6 +17,7 @@ import { TfidfEmbeddingEngine } from "../build/tfidf-embeddings.js";
 import type { EmbeddingsConfig } from "../shared/types.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { resolveOutlinePath } from "./path-resolver.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -519,8 +520,7 @@ export class ContextBuilder {
     if (!nodeRow || !nodeRow.start_line || !nodeRow.end_line) return null;
 
     // Try to read the file (outline dir has pre-computed outlines)
-    const outlineDir = join(this.graphDir, "outlines");
-    const outlinePath = join(outlineDir, candidate.source_file + ".outline.json");
+    const outlinePath = resolveOutlinePath(this.graphDir, candidate.source_file);
 
     if (existsSync(outlinePath)) {
       try {

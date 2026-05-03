@@ -16,7 +16,8 @@ import { getExtractorForFile, getSupportedExtensions } from "./languages/registr
 import { buildGraph, type BuiltGraph } from "./graph-builder.js";
 import { detectCommunities, type CommunityResult } from "./community.js";
 import { exportJson } from "./export-json.js";
-import { createMatcher, buildSkipDirs } from "../shared/glob.js";
+import { buildSkipDirs } from "../shared/glob.js";
+import { createDualMatcher } from "../core/path-resolver.js";
 import { log } from "../shared/utils.js";
 
 export { buildGraph, type BuiltGraph } from "./graph-builder.js";
@@ -61,8 +62,8 @@ export function detectFiles(
   repoNames?: Set<string>,
 ): string[] {
   const extensions = patterns.length > 0 ? null : getCodeExtensions();
-  const isIncluded = patterns.length > 0 ? createMatcher(patterns) : null;
-  const isExcluded = createMatcher(excludeGlobs);
+  const isIncluded = patterns.length > 0 ? createDualMatcher(patterns, repoNames) : null;
+  const isExcluded = createDualMatcher(excludeGlobs, repoNames);
   const files: string[] = [];
 
   function walk(dir: string): void {
@@ -83,24 +84,13 @@ export function detectFiles(
       } else if (entry.isFile()) {
         const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
 
-        // Check exclude (workspace-relative + repo-relative in multi-repo)
         if (isExcluded(relPath)) continue;
-        if (repoNames) {
-          const repoRel = stripRepoPrefix(relPath, repoNames);
-          if (repoRel !== null && isExcluded(repoRel)) continue;
-        }
 
         const ext = "." + (entry.name.split(".").pop()?.toLowerCase() ?? "");
 
         if (isIncluded) {
-          // Pattern-based: try workspace-relative, then repo-relative
           if (isIncluded(relPath)) {
             files.push(relPath);
-          } else if (repoNames) {
-            const repoRel = stripRepoPrefix(relPath, repoNames);
-            if (repoRel !== null && isIncluded(repoRel)) {
-              files.push(relPath);
-            }
           }
         } else {
           // Extension-based (no patterns): works fine as-is
@@ -124,8 +114,8 @@ export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipD
   if (!docsConfig?.enabled) return [];
 
   const maxSizeBytes = (docsConfig.max_file_size_kb ?? 500) * 1024;
-  const isIncluded = createMatcher(docsConfig.patterns);
-  const isExcluded = createMatcher(docsConfig.exclude);
+  const isIncluded = createDualMatcher(docsConfig.patterns, repoNames);
+  const isExcluded = createDualMatcher(docsConfig.exclude, repoNames);
 
   const files: string[] = [];
 
@@ -150,22 +140,8 @@ export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipD
 
         const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
 
-        // Check exclude (workspace-relative + repo-relative in multi-repo)
         if (isExcluded(relPath)) continue;
-        if (repoNames) {
-          const repoRel = stripRepoPrefix(relPath, repoNames);
-          if (repoRel !== null && isExcluded(repoRel)) continue;
-        }
-
-        // Check include (workspace-relative + repo-relative in multi-repo)
-        if (!isIncluded(relPath)) {
-          if (repoNames) {
-            const repoRel = stripRepoPrefix(relPath, repoNames);
-            if (repoRel === null || !isIncluded(repoRel)) continue;
-          } else {
-            continue;
-          }
-        }
+        if (!isIncluded(relPath)) continue;
 
         // Check file size
         try {
@@ -192,8 +168,8 @@ export function detectDiagramFiles(workspace: string, imagesConfig?: ImagesConfi
   if (!imagesConfig?.enabled) return [];
 
   const diagramExts = new Set([".puml", ".plantuml", ".svg", ".png", ".jpg", ".jpeg", ".gif"]);
-  const isIncluded = createMatcher(imagesConfig.patterns);
-  const isExcluded = createMatcher(imagesConfig.exclude);
+  const isIncluded = createDualMatcher(imagesConfig.patterns, repoNames);
+  const isExcluded = createDualMatcher(imagesConfig.exclude, repoNames);
 
   const files: string[] = [];
 
@@ -218,22 +194,8 @@ export function detectDiagramFiles(workspace: string, imagesConfig?: ImagesConfi
 
         const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
 
-        // Check exclude (workspace-relative + repo-relative in multi-repo)
         if (isExcluded(relPath)) continue;
-        if (repoNames) {
-          const repoRel = stripRepoPrefix(relPath, repoNames);
-          if (repoRel !== null && isExcluded(repoRel)) continue;
-        }
-
-        // Check include (workspace-relative + repo-relative in multi-repo)
-        if (!isIncluded(relPath)) {
-          if (repoNames) {
-            const repoRel = stripRepoPrefix(relPath, repoNames);
-            if (repoRel === null || !isIncluded(repoRel)) continue;
-          } else {
-            continue;
-          }
-        }
+        if (!isIncluded(relPath)) continue;
 
         // Skip binary images unless puml/svg config says to parse them
         if ((ext === ".png" || ext === ".jpg" || ext === ".jpeg" || ext === ".gif")) {
@@ -247,21 +209,6 @@ export function detectDiagramFiles(workspace: string, imagesConfig?: ImagesConfi
 
   walk(workspace);
   return files;
-}
-
-/**
- * Strip repo prefix from a workspace-relative path.
- * "api/src/core.py" → "src/core.py" (if "api" is a known repo name).
- * Returns null if no repo prefix matches.
- */
-function stripRepoPrefix(relPath: string, repoNames: Set<string>): string | null {
-  const slashIdx = relPath.indexOf("/");
-  if (slashIdx === -1) return null;
-  const first = relPath.slice(0, slashIdx);
-  if (repoNames.has(first)) {
-    return relPath.slice(slashIdx + 1);
-  }
-  return null;
 }
 
 /**
@@ -465,7 +412,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
   // 3. Build graph
   log.info("Building graph...");
-  const builtGraph = buildGraph({ extractions, repoName });
+  const builtGraph = buildGraph({ extractions, repoName, repoNames: repoNames ? [...repoNames] : undefined });
   log.info(`  ${builtGraph.stats.nodeCount} nodes, ${builtGraph.stats.edgeCount} edges`);
   log.info(`  ${builtGraph.stats.crossFileEdges} cross-file edges, ${builtGraph.stats.unresolvedImports} external imports`);
 
