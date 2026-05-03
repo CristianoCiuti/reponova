@@ -609,7 +609,7 @@ outlines:
   # Glob patterns for files to outline (relative to repo root)
   # Type: string[]
   # Default: ["src/**/*.ts", "src/**/*.py", "src/**/*.js"]
-  paths:
+  patterns:
     - "src/**/*.py"
     - "src/**/*.ts"
     - "src/**/*.js"
