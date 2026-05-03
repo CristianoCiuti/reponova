@@ -1,8 +1,59 @@
 import type { CommandModule } from "yargs";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, join } from "node:path";
+import {
+  parse as parseJsonc,
+  modify as modifyJsonc,
+  applyEdits,
+  type FormattingOptions,
+} from "jsonc-parser";
 
 type Target = "opencode" | "cursor" | "claude" | "vscode";
+
+// ─── JSON / JSONC helpers ────────────────────────────────────────────────────
+
+const JSONC_FMT: FormattingOptions = {
+  insertSpaces: true,
+  tabSize: 2,
+  eol: "\n",
+};
+
+/**
+ * Resolve a JSON config file path, preferring .jsonc over .json.
+ * If a .jsonc variant exists it is returned; otherwise the .json path is
+ * returned (whether it exists or not — callers create it when missing).
+ */
+function resolveJsonConfigPath(dir: string, baseName: string): string {
+  const jsoncPath = join(dir, `${baseName}.jsonc`);
+  if (existsSync(jsoncPath)) return jsoncPath;
+  return join(dir, `${baseName}.json`);
+}
+
+/** Read raw text from a JSON/JSONC file.  Returns `"{}"` when missing. */
+function readJsoncText(filePath: string): string {
+  if (!existsSync(filePath)) return "{}";
+  return readFileSync(filePath, "utf-8");
+}
+
+/**
+ * Set a single property inside a JSON/JSONC text via `jsonc-parser`.
+ * Comments and formatting in the rest of the document are preserved.
+ */
+function setJsoncProperty(
+  text: string,
+  path: (string | number)[],
+  value: unknown,
+): string {
+  const edits = modifyJsonc(text, path, value, {
+    formattingOptions: JSONC_FMT,
+  });
+  return applyEdits(text, edits);
+}
+
+/** Ensure text ends with exactly one newline. */
+function withTrailingNewline(text: string): string {
+  return text.endsWith("\n") ? text : text + "\n";
+}
 
 // ─── Default config YAML (written into editor directory) ─────────────────────
 
@@ -322,31 +373,26 @@ export const installCommand: CommandModule = {
 function installOpenCode(graphDir: string): void {
   const projectDir = process.cwd();
   const configDir = resolve(projectDir, ".opencode");
-  const configPath = join(configDir, "opencode.json");
+  const configPath = resolveJsonConfigPath(configDir, "opencode");
 
   // 1. Register MCP server
-  let config: Record<string, unknown> = {};
-  if (existsSync(configPath)) {
-    config = JSON.parse(readFileSync(configPath, "utf-8"));
-  }
-
-  if (!config.mcp) config.mcp = {};
-  const mcp = config.mcp as Record<string, unknown>;
-  mcp["reponova"] = {
+  let text = readJsoncText(configPath);
+  text = setJsoncProperty(text, ["mcp", "reponova"], {
     type: "local",
     command: ["npx", "-y", "reponova", "mcp", "--graph", graphDir],
-  };
+  });
 
   // 2. Register plugin
   const pluginRelPath = ".opencode/plugins/reponova.js";
-  const plugins = (config.plugin as string[] | undefined) ?? [];
+  const data = (parseJsonc(text) ?? {}) as Record<string, unknown>;
+  const plugins = (data.plugin as string[] | undefined) ?? [];
   if (!plugins.includes(pluginRelPath)) {
     plugins.push(pluginRelPath);
   }
-  config.plugin = plugins;
+  text = setJsoncProperty(text, ["plugin"], plugins);
 
   if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
+  writeFileSync(configPath, withTrailingNewline(text));
 
   // 3. Write plugin file
   const pluginDir = resolve(projectDir, ".opencode", "plugins");
@@ -380,22 +426,16 @@ function installCursor(graphDir: string): void {
 
   // 1. Register MCP server
   const mcpDir = resolve(projectDir, ".cursor");
-  const mcpPath = join(mcpDir, "mcp.json");
+  const mcpPath = resolveJsonConfigPath(mcpDir, "mcp");
 
-  let mcpConfig: Record<string, unknown> = {};
-  if (existsSync(mcpPath)) {
-    mcpConfig = JSON.parse(readFileSync(mcpPath, "utf-8"));
-  }
-
-  if (!mcpConfig.mcpServers) mcpConfig.mcpServers = {};
-  const servers = mcpConfig.mcpServers as Record<string, unknown>;
-  servers["reponova"] = {
+  let text = readJsoncText(mcpPath);
+  text = setJsoncProperty(text, ["mcpServers", "reponova"], {
     command: "npx",
     args: ["-y", "reponova", "mcp", "--graph", graphDir],
-  };
+  });
 
   if (!existsSync(mcpDir)) mkdirSync(mcpDir, { recursive: true });
-  writeFileSync(mcpPath, JSON.stringify(mcpConfig, null, 2) + "\n");
+  writeFileSync(mcpPath, withTrailingNewline(text));
 
   // 2. Write cursor rule
   const rulesDir = resolve(projectDir, ".cursor", "rules");
@@ -421,12 +461,10 @@ function installClaude(graphDir: string): void {
 
   // 1. Write PreToolUse hook in .claude/settings.json
   const claudeDir = resolve(projectDir, ".claude");
-  const settingsPath = join(claudeDir, "settings.json");
+  const settingsPath = resolveJsonConfigPath(claudeDir, "settings");
 
-  let settings: Record<string, unknown> = {};
-  if (existsSync(settingsPath)) {
-    settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
-  }
+  let text = readJsoncText(settingsPath);
+  const settings = (parseJsonc(text) ?? {}) as Record<string, unknown>;
 
   const hooks = (settings.hooks as Record<string, unknown[]> | undefined) ?? {};
   const preToolUse = (hooks.PreToolUse as Array<Record<string, unknown>> | undefined) ?? [];
@@ -450,11 +488,10 @@ function installClaude(graphDir: string): void {
     ],
   });
 
-  hooks.PreToolUse = filtered;
-  settings.hooks = hooks;
+  text = setJsoncProperty(text, ["hooks", "PreToolUse"], filtered);
 
   if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
-  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  writeFileSync(settingsPath, withTrailingNewline(text));
 
   // 2. Write skill file
   const skillDir = resolve(projectDir, ".claude", "skills", "reponova");
@@ -481,23 +518,17 @@ function installVSCode(graphDir: string): void {
 
   // 1. Register MCP server
   const vscodeDir = resolve(projectDir, ".vscode");
-  const mcpPath = join(vscodeDir, "mcp.json");
+  const mcpPath = resolveJsonConfigPath(vscodeDir, "mcp");
 
-  let mcpConfig: Record<string, unknown> = {};
-  if (existsSync(mcpPath)) {
-    mcpConfig = JSON.parse(readFileSync(mcpPath, "utf-8"));
-  }
-
-  if (!mcpConfig.servers) mcpConfig.servers = {};
-  const servers = mcpConfig.servers as Record<string, unknown>;
-  servers["reponova"] = {
+  let text = readJsoncText(mcpPath);
+  text = setJsoncProperty(text, ["servers", "reponova"], {
     type: "stdio",
     command: "npx",
     args: ["-y", "reponova", "mcp", "--graph", graphDir],
-  };
+  });
 
   if (!existsSync(vscodeDir)) mkdirSync(vscodeDir, { recursive: true });
-  writeFileSync(mcpPath, JSON.stringify(mcpConfig, null, 2) + "\n");
+  writeFileSync(mcpPath, withTrailingNewline(text));
 
   // 2. Write copilot instructions
   const githubDir = resolve(projectDir, ".github");
@@ -528,3 +559,12 @@ function installVSCode(graphDir: string): void {
   console.log("");
   console.log("  Ensure the GitHub Copilot extension is installed for MCP support.");
 }
+
+// ─── Test helpers (internal) ─────────────────────────────────────────────────
+
+export const _testing = {
+  resolveJsonConfigPath,
+  readJsoncText,
+  setJsoncProperty,
+  withTrailingNewline,
+};
