@@ -24,7 +24,7 @@ export { VectorStore } from "./core/vector-store.js";
 export { LlmEngine } from "./build/llm-engine.js";
 export { SummaryGenerator } from "./build/community-summaries.js";
 export { ContextBuilder } from "./core/context-builder.js";
-export { classifyQuestion, registerLanguage, getRegisteredLanguages } from "./core/question-classifier.js";
+
 
 // Extraction layer exports
 export { registerExtractor } from "./extract/languages/registry.js";
@@ -59,10 +59,3 @@ export type {
   ContextParams,
   ContextResult,
 } from "./core/context-builder.js";
-
-export type {
-  QueryStrategy,
-  ClassificationResult,
-  LanguageRuleset,
-  PatternRule,
-} from "./core/question-classifier.js";

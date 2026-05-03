@@ -96,12 +96,12 @@ function writeConfigFile(editorDir: string): string | null {
 
 const SKILL_MD = `---
 name: reponova
-description: Knowledge graph MCP server with 12 tools for searching symbols, analyzing blast radius, tracing dependency paths, semantic similarity, smart context building, natural language queries, and understanding codebase architecture. Use INSTEAD of grep/find for any structural code question.
+description: Knowledge graph MCP server with 11 tools for searching symbols, analyzing blast radius, tracing dependency paths, semantic similarity, smart context building, and understanding codebase architecture. Use INSTEAD of grep/find for any structural code question.
 ---
 
 # reponova
 
-Knowledge graph MCP server — 12 specialized tools for querying your codebase's structure, dependencies, and semantics.
+Knowledge graph MCP server — 11 specialized tools for querying your codebase's structure, dependencies, and semantics.
 
 ## Available Tools
 
@@ -189,15 +189,6 @@ Parameters:
 
 Use when: building comprehensive context about a topic, gathering information for analysis, preparing context for code changes.
 
-### graph_ask
-Natural language question — classifies intent and routes to the best tool automatically. Supports English and Italian. Zero-LLM at query time.
-
-Parameters:
-- \`question\` (required): natural language question about the codebase (English or Italian)
-- \`max_tokens\`: max response tokens (default: 2048)
-
-Use when: asking questions in plain language without knowing which specific tool to use.
-
 ### graph_docs
 Search documentation nodes (markdown, text, rst) with linked code references.
 
@@ -232,24 +223,23 @@ Use when: checking if the graph is available and up to date.
 4. **Use graph_hotspots to find god nodes** — high-degree or high-betweenness nodes are architectural risks.
 5. **Use context_depth for broad exploration** — set context_depth=2 on graph_search to see the neighborhood around results.
 6. **Use graph_context for comprehensive analysis** — combines search, vectors, and graph expansion within a token budget. More thorough than graph_search alone.
-7. **Use graph_ask for quick questions** — it auto-routes to the right tool. Good for natural language queries when you're unsure which tool fits.
-8. **Read report.md** at \`reponova-out/report.md\` for architecture overview, god nodes, and community structure.
-9. **Keep the graph current** — after code changes, run \`reponova build\` to rebuild (incremental, only re-processes changed files).
+7. **Read report.md** at \`reponova-out/report.md\` for architecture overview, god nodes, and community structure.
+8. **Keep the graph current** — after code changes, run \`reponova build\` to rebuild (incremental, only re-processes changed files).
 `;
 
 // ─── Context message injected by hooks ───────────────────────────────────────
 
 const HOOK_CONTEXT =
-  "reponova: Knowledge graph MCP server with 12 tools is available. " +
+  "reponova: Knowledge graph MCP server with 11 tools is available. " +
   "Use graph_search (text search), graph_impact (blast radius), graph_path (shortest path), " +
-  "graph_explain (node detail), graph_similar (semantic search), graph_context (smart context builder), " +
-  "graph_ask (natural language) instead of manually grep/find-ing the codebase. " +
+  "graph_explain (node detail), graph_similar (semantic search), graph_context (smart context builder) " +
+  "instead of manually grep/find-ing the codebase. " +
   "Read reponova-out/report.md for architecture overview.";
 
 // ─── OpenCode plugin JS ──────────────────────────────────────────────────────
 
 const OPENCODE_PLUGIN_JS = `// reponova OpenCode plugin
-// Reminds the agent that 12 MCP graph tools are available before bash searches.
+// Reminds the agent that 11 MCP graph tools are available before bash searches.
 import { existsSync } from "fs";
 import { join } from "path";
 
@@ -263,7 +253,7 @@ export const ReponovaMcpPlugin = async ({ directory }) => {
 
       if (input.tool === "bash") {
         output.args.command =
-          'echo "[reponova] Knowledge graph MCP server available with 12 tools. Use graph_search (text search), graph_impact (blast radius), graph_similar (semantic search), graph_context (smart context), graph_ask (natural language) instead of manual grep/find. See reponova-out/report.md for architecture overview." && ' +
+          'echo "[reponova] Knowledge graph MCP server available with 11 tools. Use graph_search (text search), graph_impact (blast radius), graph_similar (semantic search), graph_context (smart context) instead of manual grep/find. See reponova-out/report.md for architecture overview." && ' +
           output.args.command;
         reminded = true;
       }
