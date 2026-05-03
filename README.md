@@ -19,7 +19,7 @@
 <p align="center" style="font-style: italic;">
   Knowledge graph builder &amp; <a href="https://modelcontextprotocol.io/">MCP</a> server for AI code assistants.<br/>
   Extracts symbols, relationships, and semantics from your code — then exposes the entire structure<br/>
-  as 12 graph tools that any MCP-compatible agent can use.
+  as 11 graph tools that any MCP-compatible agent can use.
 </p>
 
 ---
@@ -34,7 +34,7 @@
 
 AI agents read files one at a time. They don't understand how your codebase fits together — which functions call what, which modules depend on which, where the architectural bottlenecks are.
 
-**RepoNova fixes that.** It builds a persistent knowledge graph of your entire codebase (or multiple repos) and gives your AI agent 12 specialized tools to query it: search, impact analysis, shortest path, semantic similarity, community detection, and more.
+**RepoNova fixes that.** It builds a persistent knowledge graph of your entire codebase (or multiple repos) and gives your AI agent 11 specialized tools to query it: search, impact analysis, shortest path, semantic similarity, community detection, and more.
 
 > **One build. Persistent graph. Instant queries across sessions.**
 > No re-reading files. No burning tokens on context. The graph remembers everything.
@@ -45,7 +45,7 @@ AI agents read files one at a time. They don't understand how your codebase fits
 - **Multi-repo support** — build one graph spanning multiple repositories
 - **Smart incremental builds** — SHA256 file hashing, config change detection, semantic graph diffing, selective subsystem regeneration
 - **Local LLM-enhanced** — optional local LLM for richer community summaries and node descriptions (runs on CPU)
-- **12 MCP tools** — from text search to weighted Dijkstra, semantic similarity to natural language queries
+- **11 MCP tools** — from text search to weighted Dijkstra, semantic similarity to structural queries
 - **Works with any MCP client** — OpenCode, Cursor, Claude Code, VS Code Copilot
 
 ---
@@ -60,8 +60,8 @@ AI agents read files one at a time. They don't understand how your codebase fits
   Markdown / Docs    ──────────►     2. Symbol + edge extraction   ──► graph_impact
   Diagrams / SVG                     3. Louvain communities            graph_path
   Multi-repo                         4. TF-IDF / ONNX embeddings       graph_similar
-                                     5. Community summaries             graph_ask
-                                     6. HTML visualizations             ... (12 tools)
+                                     5. Community summaries
+                                     6. HTML visualizations            ... (11 tools)
 ```
 
 ---
@@ -102,7 +102,7 @@ reponova build
 
 ### 3. Use it
 
-The MCP server starts automatically with your editor. Your AI agent now has access to all 12 graph tools.
+The MCP server starts automatically with your editor. Your AI agent now has access to all 11 graph tools.
 
 ```
 You: "What would be the impact of refactoring the authenticate function?"
@@ -113,7 +113,7 @@ Agent: [calls graph_impact] → shows upstream/downstream blast radius across re
 
 ## MCP Tools
 
-12 specialized tools exposed over MCP (stdio). Each tool is designed for a specific query pattern.
+11 specialized tools exposed over MCP (stdio). Each tool is designed for a specific query pattern.
 
 | Tool | Description |
 |------|-------------|
@@ -123,7 +123,6 @@ Agent: [calls graph_impact] → shows upstream/downstream blast radius across re
 | `graph_explain` | 📋 Full detail on a node: edges, community, centrality metrics, signature, docstring. |
 | `graph_similar` | 🧲 Semantic similarity search using TF-IDF or ONNX vector embeddings. |
 | `graph_context` | 🧠 Smart context builder with token budget — combines search + vectors + graph expansion. |
-| `graph_ask` | 💬 Natural language query — auto-classifies intent and routes to the right tool. |
 | `graph_community` | 🏘️ List all nodes in a community, ranked by degree centrality. |
 | `graph_hotspots` | 🔥 God nodes / architectural bottlenecks — most connected symbols in the graph. |
 | `graph_outline` | 🗂️ Tree-sitter code outline: functions, classes, imports with signatures and line ranges. |
@@ -159,13 +158,6 @@ RepoNova is designed to be the **structural memory layer** for AI coding agents.
 1. graph_search "X" → find the node
 2. graph_impact "X" direction=downstream → who depends on it
 3. graph_similar "X" → find semantically related code
-```
-
-**Natural language queries:**
-```
-graph_ask "which modules handle payment processing?"
-graph_ask "show me the dependency chain from API to database"
-graph_ask "what are the most connected classes?"
 ```
 
 ### Integration with editor skills
@@ -348,7 +340,7 @@ Checks performed:
 
 > **Adding a new language:** Create `src/extract/languages/<lang>.ts` implementing `LanguageExtractor`, register it in `registry.ts`, add the `.wasm` grammar to `grammars/`. See [Contributing > Adding Language Support](#adding-language-support-extraction) for the full interface reference.
 >
-> **Note:** Extraction and outline are **separate systems** with different registries and interfaces. Registering an extractor gives you graph building (symbols, edges, imports). For code outlines (`graph_outline`), you also need a `LanguageSupport` implementation in `src/outline/languages/` — see [Adding Outline Support](#adding-outline-support).
+> **Note:** Extraction and outline are **separate systems** with different registries and interfaces. Registering an extractor gives you graph building (symbols, edges, imports). For code outlines (`graph_outline`), you also need a `LanguageSupport` implementation in `src/outline/languages/` — see [Contributing > Adding Outline Support](#adding-outline-support).
 
 ### Edge Types
 
@@ -931,14 +923,13 @@ If `configPath` is omitted, config is auto-detected from standard locations (see
 
 ### Runtime Registration + Build
 
-Register custom extractors, outline languages, or NL rulesets **before** calling `build()`:
+Register custom extractors or outline languages **before** calling `build()`:
 
 ```typescript
 import {
   build,
   registerExtractor,
   registerOutlineLanguage,
-  registerLanguage,
 } from "reponova";
 import type { LanguageExtractor, LanguageSupport } from "reponova";
 
@@ -950,11 +941,7 @@ registerExtractor(myExtractor);
 const myOutline: LanguageSupport = { /* ... */ };
 registerOutlineLanguage("rust", ["rs"], myOutline);
 
-// 3. Register a NL query language (graph_ask)
-const fr: LanguageRuleset = { /* ... */ };
-registerLanguage(fr);
-
-// 4. Build — all registrations are picked up automatically
+// 3. Build — all registrations are picked up automatically
 const result = await build("./reponova.yml");
 ```
 
@@ -997,15 +984,9 @@ const detail = getNodeDetail(db, graphData, "Function:process_payment");
 
 ```typescript
 import {
-  classifyQuestion,
-  registerLanguage,
   ContextBuilder,
   loadConfig,
 } from "reponova";
-
-// Natural language query classification
-const result = classifyQuestion("what depends on ConfigLoader?");
-// → { strategy: "impact_downstream", entities: ["ConfigLoader"], confidence: 0.85, language: "en" }
 
 // Smart context assembly (search + vectors + graph expansion)
 const { config } = loadConfig("./reponova.yml");
@@ -1015,41 +996,6 @@ const context = await builder.buildContext({
   query: "authentication flow",
   maxTokens: 4000,
 });
-```
-
----
-
-## Natural Language Query Layer
-
-`graph_ask` accepts natural language questions in any registered language and routes them to the appropriate graph tool. Zero-LLM at query time — purely regex + keyword heuristics.
-
-**Built-in languages**: English, Italian. Extensible via `registerLanguage()`.
-
-### Routing Strategies
-
-| Strategy | Tool | English Example | Italian Example |
-|----------|------|----------------|-----------------|
-| `impact_downstream` | graph_impact (downstream) | "what depends on ConfigLoader?" | "cosa dipende da ConfigLoader?" |
-| `impact_upstream` | graph_impact (upstream) | "what does DataProcessor use?" | "da cosa dipende DataProcessor?" |
-| `path` | graph_path | "path from AuthService to Database" | "percorso da AuthService a Database" |
-| `explain` | graph_explain | "explain authenticate_user" | "spiega authenticate_user" |
-| `search` | graph_search | "find authentication functions" | "cerca funzioni autenticazione" |
-| `similar` | graph_similar | "similar to ConfigLoader" | "simile a ConfigLoader" |
-| `architecture` | graph_context | "show project architecture" | "mostra architettura del progetto" |
-| `context` *(fallback)* | graph_context | "how does the auth flow work?" | "come funziona il flusso di auth?" |
-
-Language is auto-detected via `detectScore()` heuristics. You can also pass a language hint explicitly.
-
-### Programmatic Usage
-
-```typescript
-import { classifyQuestion, registerLanguage } from "reponova";
-
-const result = classifyQuestion("what depends on ConfigLoader?");
-// → { strategy: "impact_downstream", entities: ["ConfigLoader"], confidence: 0.85, language: "en" }
-
-const result2 = classifyQuestion("spiega authenticate_user");
-// → { strategy: "explain", entities: ["authenticate_user"], confidence: 0.85, language: "it" }
 ```
 
 ---
@@ -1223,112 +1169,6 @@ registerOutlineLanguage("rust", ["rs"], myOutline);
 Note: duplicate language `names` or `extensions` silently overwrite the previous registration.
 
 See `src/outline/languages/python.ts` for the reference implementation.
-
-### Adding Language Support (Natural Language Queries)
-
-Teach `graph_ask` to understand questions in a new language. The NL query layer is purely regex-based — no LLM at query time.
-
-#### How the Classifier Works
-
-1. **Language detection**: `detectLanguage(query)` calls `detectScore(query)` on every registered ruleset and picks the highest score. If all scores are 0, defaults to `"en"`. There is no configurable threshold — it's a simple argmax with `"en"` as the initial default.
-2. **Pattern matching**: `classifyQuestion(query)` tries the detected language's ruleset first. Rules are checked in order; within each rule, patterns are tested sequentially. **First match wins.**
-3. **Fallback cascade**: If no pattern matches in the detected language, all other registered rulesets are tried. If still no match, returns `{ strategy: "context", confidence: 0.3 }` as the final fallback.
-4. **Confidence values** are hard-coded: `0.85` for any pattern match, `0.3` for fallback, `0` for empty queries.
-5. **`registerLanguage()` silently overwrites** any existing ruleset for the same language code.
-
-#### Steps
-
-1. **Create a ruleset** — `src/core/classifiers/<lang>.ts`:
-
-```typescript
-import type { LanguageRuleset, PatternRule } from "./types.js";
-
-const rules: PatternRule[] = [
-  {
-    strategy: "impact_downstream",
-    patterns: [/qu'est-ce qui dépend de (.+)/i, /dépendances de (.+)/i],
-    entityExtractor: (match) => [cleanEntity(match[1]!)],
-  },
-  {
-    strategy: "impact_upstream",
-    patterns: [/de quoi dépend (.+)/i, /qu'est-ce que (.+) utilise/i],
-    entityExtractor: (match) => [cleanEntity(match[1]!)],
-  },
-  {
-    strategy: "path",
-    patterns: [/chemin (?:de|entre) (.+?) (?:à|vers|et) (.+)/i],
-    entityExtractor: (match) => [cleanEntity(match[1]!), cleanEntity(match[2]!)],
-  },
-  {
-    strategy: "explain",
-    patterns: [/explique (.+)/i, /décris (.+)/i],
-    entityExtractor: (match) => [cleanEntity(match[1]!)],
-  },
-  {
-    strategy: "search",
-    patterns: [/cherche (.+)/i, /trouve (.+)/i],
-    entityExtractor: (match) => [cleanEntity(match[1]!)],
-  },
-  {
-    strategy: "similar",
-    patterns: [/similaire à (.+)/i, /comme (.+)/i],
-    entityExtractor: (match) => [cleanEntity(match[1]!)],
-  },
-  {
-    strategy: "architecture",
-    patterns: [/architecture/i, /structure du projet/i],
-    entityExtractor: (_match, query) => [query],
-  },
-  // Missing strategies simply won't match — the fallback cascade handles them
-];
-
-function cleanEntity(s: string): string {
-  return s.replace(/^(le|la|les|un|une|des)\s+/i, "").replace(/[?.!]+$/, "").trim();
-}
-
-export const fr: LanguageRuleset = {
-  language: "fr",
-  rules,
-  normalizeEntity: cleanEntity,
-  detectScore(query: string): number {
-    // Count French marker words, compute ratio, cap at 1
-    const words = query.toLowerCase().split(/\s+/);
-    const markers = /\b(qu'est|dépend|explique|cherche|montre|similaire|chemin|de quoi)\b/i;
-    const matches = words.filter(w => markers.test(w)).length;
-    // Optional: boost for French-specific characters
-    const accentBoost = /[àâçéèêëîïôûùüÿ]/i.test(query) ? 0.15 : 0;
-    return Math.min(1, matches / Math.max(1, words.length) * 2 + accentBoost);
-  },
-};
-```
-
-2. **Register it** — in `src/core/classifiers/index.ts`:
-
-```typescript
-import { fr } from "./fr.js";
-registry.set("fr", fr);
-```
-
-   Or at runtime via the public API:
-
-```typescript
-import { registerLanguage } from "reponova";
-import { fr } from "./my-french-ruleset.js";
-registerLanguage(fr);
-```
-
-3. **Interface reference**:
-   - `PatternRule` — `{ strategy: QueryStrategy, patterns: RegExp[], entityExtractor: (match: RegExpMatchArray, query: string) => string[] }`
-   - `LanguageRuleset` — `{ language: string, rules: PatternRule[], normalizeEntity(s: string): string, detectScore(query: string): number }`
-   - `QueryStrategy` — `"impact_downstream" | "impact_upstream" | "path" | "explain" | "search" | "similar" | "architecture" | "context"`
-
-#### Best Practices
-
-- **Order rules by specificity** — more specific patterns first. `path` (which extracts two entities) should come before `search` (which is more generic).
-- **`detectScore`** should return a score proportional to how many language-specific marker words appear, not a flat value. See `en.ts` and `it.ts` for the recommended ratio-based approach.
-- **`entityExtractor` for `path`** must return exactly 2 entities (source and target). All other strategies typically return 1.
-- **You don't need all 8 strategies.** Missing strategies simply won't match for that language — the classifier falls back to other rulesets or the `"context"` strategy.
-- **Reference implementations**: `src/core/classifiers/en.ts` (English), `src/core/classifiers/it.ts` (Italian, includes accent boosting in `detectScore`).
 
 ---
 
