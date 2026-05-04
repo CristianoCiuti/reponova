@@ -553,8 +553,6 @@ build:
     # Type: string[]
     # Default: []
     # Example: ["**/CHANGELOG.md", "**/node_modules/**"]
-    # Note: if your output dir is inside the workspace (e.g. output: ./reponova-out),
-    # add it here to prevent generated files from being re-ingested on rebuild.
     exclude: []
 
     # Maximum file size in KB — files larger than this are skipped
@@ -789,6 +787,7 @@ build:
 ```
 
 > When `patterns` is empty (default) for any subsystem (`build`, `docs`, `images`, `outlines`), RepoNova auto-detects files by extension using the corresponding registry. No configuration needed for standard project layouts.
+> The configured output directory is **automatically excluded** from all file detection — no need to add it to `exclude` patterns manually.
 > Both `build` and `outlines` have their own independent `exclude_common` setting (default: `true`). When enabled, the following directories are skipped at any depth: `node_modules`, `__pycache__`, `.git`, `.svn`, `.hg`, `venv`, `.venv`, `env`, `.env`, `.tox`, `site-packages`, `dist`, `build`, `.eggs`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `target`, `bin`, `obj`.
 > Set `exclude_common: false` to disable this behavior and use explicit `exclude` patterns instead.
 

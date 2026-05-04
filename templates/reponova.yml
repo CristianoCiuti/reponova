@@ -35,7 +35,6 @@ build:
     exclude:
       - "**/CHANGELOG.md"
       - "**/node_modules/**"
-      - "reponova-out/**"         # exclude output dir if inside workspace
     max_file_size_kb: 500
   images:
     enabled: true                 # extract diagram files (.puml, .svg)

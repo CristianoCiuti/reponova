@@ -75,7 +75,7 @@ build:
   docs:
     enabled: true
     # patterns: []                # empty = auto-detect (.md, .txt, .rst)
-    # exclude: []                 # e.g. ["**/CHANGELOG.md", "reponova-out/**"]
+    # exclude: []                 # e.g. ["**/CHANGELOG.md"]
     # max_file_size_kb: 500
   images:
     enabled: true
