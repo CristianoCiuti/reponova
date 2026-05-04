@@ -9,6 +9,7 @@ import { resolve } from "node:path";
 import { loadConfig } from "../core/config.js";
 import { resolveGraphPath } from "../core/graph-resolver.js";
 import { runOutlineGeneration } from "../build/outlines.js";
+import { buildSkipDirs } from "../core/path-resolver.js";
 import { log } from "../shared/utils.js";
 
 export const outlineCommand: CommandModule = {
@@ -32,7 +33,8 @@ export const outlineCommand: CommandModule = {
       : resolve(configDir, config.output);
 
     log.info(`Generating outlines in ${outputDir}/outlines...`);
-    const count = await runOutlineGeneration(config, configDir, outputDir, { force: argv.force as boolean });
+    const skipDirs = buildSkipDirs(config.outlines.exclude_common);
+    const count = await runOutlineGeneration(config, configDir, outputDir, { force: argv.force as boolean, skipDirs });
     log.info(`Generated ${count} outlines`);
   },
 };

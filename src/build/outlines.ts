@@ -10,6 +10,8 @@ import { generateOutline, formatOutlineJson } from "../outline/index.js";
 import { log } from "../shared/utils.js";
 import type { Config } from "../shared/types.js";
 import { createPatternMatcher } from "../core/path-resolver.js";
+import { buildSkipDirs } from "../core/path-resolver.js";
+import { getOutlineSupportedExtensions } from "../outline/languages/registry.js";
 import { hashFile } from "./incremental.js";
 
 export interface OutlineOptions {
@@ -33,7 +35,7 @@ export async function runOutlineGeneration(
   const nextHashes = new Map<string, string>();
 
   let count = 0;
-  const skipDirs = options.skipDirs ?? new Set<string>();
+  const skipDirs = options.skipDirs ?? buildSkipDirs(config.outlines.exclude_common);
   const isMulti = config.repos.length > 1;
 
   for (const repo of config.repos) {
@@ -128,8 +130,8 @@ export function saveOutlineHashes(outputDir: string, hashes: Map<string, string>
 
 /**
  * Walk baseDir and return files matching patterns.
- * Uses createPatternMatcher for bidirectional dual matching:
- * repo-relative paths are tested both as-is and with repoName prefix.
+ * When patterns is empty, auto-detects by file extension using the outline language registry.
+ * When patterns is provided, uses createPatternMatcher for bidirectional dual matching.
  */
 function findFiles(
   baseDir: string,
@@ -139,7 +141,8 @@ function findFiles(
   repoName?: string,
 ): string[] {
   const repoNames = repoName ? new Set([repoName]) : undefined;
-  const isIncluded = createPatternMatcher(patterns, repoNames);
+  const outlineExts = patterns.length === 0 ? getOutlineSupportedExtensions() : null;
+  const isIncluded = patterns.length > 0 ? createPatternMatcher(patterns, repoNames) : null;
   const isExcluded = createPatternMatcher(exclude, repoNames);
   const results: string[] = [];
 
@@ -163,9 +166,17 @@ function findFiles(
       // Check exclusion — pass repoName so workspace-relative excludes work
       if (isExcluded(relPath, repoName)) continue;
 
-      // Check inclusion — pass repoName so workspace-relative patterns work
-      if (isIncluded(relPath, repoName)) {
-        results.push(fullPath);
+      if (isIncluded) {
+        // Pattern-based: pass repoName so workspace-relative patterns work
+        if (isIncluded(relPath, repoName)) {
+          results.push(fullPath);
+        }
+      } else {
+        // Extension-based auto-detect (no patterns)
+        const ext = "." + (entry.name.split(".").pop()?.toLowerCase() ?? "");
+        if (outlineExts!.has(ext)) {
+          results.push(fullPath);
+        }
       }
     }
   }

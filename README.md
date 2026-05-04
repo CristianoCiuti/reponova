@@ -508,7 +508,7 @@ build:
   exclude: []
 
   # Exclude common non-source directories from all file detection
-  # (source code, documentation, diagrams, and outlines).
+  # (source code, documentation and diagrams).
   # When true, the following directories are skipped at any depth:
   #   node_modules, __pycache__, .git, .svn, .hg, venv, .venv, env, .env, .tox,
   #   site-packages, dist, build, .eggs, .mypy_cache, .pytest_cache, .ruff_cache,
@@ -545,21 +545,17 @@ build:
 
     # Glob patterns for documentation files (relative to repo root)
     # Type: string[]
-    # Default: ["**/*.md", "**/*.txt", "**/*.rst"]
-    patterns:
-      - "**/*.md"
-      - "**/*.txt"
-      - "**/*.rst"
+    # Default: [] (empty = auto-detect by file extension: .md, .txt, .rst)
+    # Example: ["docs/**/*.md", "**/*.rst"]
+    patterns: []
 
     # Glob patterns to exclude from documentation extraction
     # Type: string[]
-    # Default: ["**/CHANGELOG.md", "**/node_modules/**"]
+    # Default: []
+    # Example: ["**/CHANGELOG.md", "**/node_modules/**"]
     # Note: if your output dir is inside the workspace (e.g. output: ./reponova-out),
     # add it here to prevent generated files from being re-ingested on rebuild.
-    exclude:
-      - "**/CHANGELOG.md"
-      - "**/node_modules/**"
-      - "reponova-out/**"
+    exclude: []
 
     # Maximum file size in KB — files larger than this are skipped
     # Type: number
@@ -575,17 +571,15 @@ build:
 
     # Glob patterns for diagram files (relative to repo root)
     # Type: string[]
-    # Default: ["**/*.puml", "**/*.plantuml", "**/*.svg"]
-    patterns:
-      - "**/*.puml"
-      - "**/*.plantuml"
-      - "**/*.svg"
+    # Default: [] (empty = auto-detect by file extension: .puml, .plantuml, .svg, .png, .jpg, .jpeg, .gif)
+    # Example: ["diagrams/**/*.puml", "**/*.svg"]
+    patterns: []
 
     # Glob patterns to exclude
     # Type: string[]
-    # Default: ["**/node_modules/**"]
-    exclude:
-      - "**/node_modules/**"
+    # Default: []
+    # Example: ["**/node_modules/**"]
+    exclude: []
 
     # Parse PlantUML files to extract components and relationships
     # Type: boolean
@@ -699,20 +693,25 @@ outlines:
 
   # Glob patterns for files to outline (relative to repo root)
   # Type: string[]
-  # Default: ["src/**/*.ts", "src/**/*.py", "src/**/*.js"]
-  patterns:
-    - "src/**/*.py"
-    - "src/**/*.ts"
-    - "src/**/*.js"
+  # Default: [] (empty = auto-detect by file extension using registered outline languages)
+  # Example: ["src/**/*.py", "lib/**/*.ts"]
+  patterns: []
 
   # Glob patterns to exclude from outline generation
   # Type: string[]
-  # Default: ["**/node_modules/**", "**/.git/**", "**/dist/**"]
-  exclude:
-    - "**/__pycache__/**"
-    - "**/node_modules/**"
-    - "**/.git/**"
-    - "**/dist/**"
+  # Default: []
+  # Example: ["**/generated/**", "**/migrations/**"]
+  exclude: []
+
+  # Exclude common non-source directories from outline file detection.
+  # Same behavior as build.exclude_common but independent — controls outline walking only.
+  # When true, the following directories are skipped at any depth:
+  #   node_modules, __pycache__, .git, .svn, .hg, venv, .venv, env, .env, .tox,
+  #   site-packages, dist, build, .eggs, .mypy_cache, .pytest_cache, .ruff_cache,
+  #   target, bin, obj
+  # Type: boolean
+  # Default: true
+  exclude_common: true
 
 # ── Server ────────────────────────────────────────────────────────────────────
 # MCP server options (reserved for future use)
@@ -789,8 +788,8 @@ build:
     - "**/*.generated.ts"
 ```
 
-> When `patterns` is empty (default), RepoNova auto-detects source files by extension using all registered extractors.
-> When `exclude_common: true` (default), the following directories are skipped at any depth: `node_modules`, `__pycache__`, `.git`, `.svn`, `.hg`, `venv`, `.venv`, `env`, `.env`, `.tox`, `site-packages`, `dist`, `build`, `.eggs`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `target`, `bin`, `obj`.
+> When `patterns` is empty (default) for any subsystem (`build`, `docs`, `images`, `outlines`), RepoNova auto-detects files by extension using the corresponding registry. No configuration needed for standard project layouts.
+> Both `build` and `outlines` have their own independent `exclude_common` setting (default: `true`). When enabled, the following directories are skipped at any depth: `node_modules`, `__pycache__`, `.git`, `.svn`, `.hg`, `venv`, `.venv`, `env`, `.env`, `.tox`, `site-packages`, `dist`, `build`, `.eggs`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `target`, `bin`, `obj`.
 > Set `exclude_common: false` to disable this behavior and use explicit `exclude` patterns instead.
 
 ---

@@ -113,7 +113,7 @@ export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipD
   if (!docsConfig?.enabled) return [];
 
   const maxSizeBytes = (docsConfig.max_file_size_kb ?? 500) * 1024;
-  const isIncluded = createPatternMatcher(docsConfig.patterns, repoNames);
+  const isIncluded = docsConfig.patterns.length > 0 ? createPatternMatcher(docsConfig.patterns, repoNames) : null;
   const isExcluded = createPatternMatcher(docsConfig.exclude, repoNames);
 
   const files: string[] = [];
@@ -140,7 +140,7 @@ export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipD
         const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
 
         if (isExcluded(relPath)) continue;
-        if (!isIncluded(relPath)) continue;
+        if (isIncluded && !isIncluded(relPath)) continue;
 
         // Check file size
         try {
@@ -167,7 +167,7 @@ export function detectDiagramFiles(workspace: string, imagesConfig?: ImagesConfi
   if (!imagesConfig?.enabled) return [];
 
   const diagramExts = new Set([".puml", ".plantuml", ".svg", ".png", ".jpg", ".jpeg", ".gif"]);
-  const isIncluded = createPatternMatcher(imagesConfig.patterns, repoNames);
+  const isIncluded = imagesConfig.patterns.length > 0 ? createPatternMatcher(imagesConfig.patterns, repoNames) : null;
   const isExcluded = createPatternMatcher(imagesConfig.exclude, repoNames);
 
   const files: string[] = [];
@@ -194,7 +194,7 @@ export function detectDiagramFiles(workspace: string, imagesConfig?: ImagesConfi
         const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
 
         if (isExcluded(relPath)) continue;
-        if (!isIncluded(relPath)) continue;
+        if (isIncluded && !isIncluded(relPath)) continue;
 
         // Skip binary images unless puml/svg config says to parse them
         if ((ext === ".png" || ext === ".jpg" || ext === ".jpeg" || ext === ".gif")) {

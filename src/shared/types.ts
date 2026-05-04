@@ -190,6 +190,8 @@ export interface OutlineConfig {
   enabled: boolean;
   patterns: string[];
   exclude: string[];
+  /** Exclude common non-source directories (node_modules, venv, .git, etc.) */
+  exclude_common: boolean;
 }
 
 export interface ServerConfig {
@@ -345,14 +347,14 @@ export const DEFAULT_CONFIG: Config = {
     incremental: true,
     docs: {
       enabled: true,
-      patterns: ["**/*.md", "**/*.txt", "**/*.rst"],
-      exclude: ["**/CHANGELOG.md", "**/node_modules/**"],
+      patterns: [],
+      exclude: [],
       max_file_size_kb: 500,
     },
     images: {
       enabled: true,
-      patterns: ["**/*.puml", "**/*.plantuml", "**/*.svg"],
-      exclude: ["**/node_modules/**"],
+      patterns: [],
+      exclude: [],
       parse_puml: true,
       parse_svg_text: true,
     },
@@ -376,8 +378,9 @@ export const DEFAULT_CONFIG: Config = {
   },
   outlines: {
     enabled: true,
-    patterns: ["src/**/*.ts", "src/**/*.py", "src/**/*.js"],
-    exclude: ["**/node_modules/**", "**/.git/**", "**/dist/**"],
+    patterns: [],
+    exclude: [],
+    exclude_common: true,
   },
   server: {},
 };

@@ -27,14 +27,14 @@ const BuildConfigSchema = z.object({
   incremental: z.boolean().default(true),
   docs: z.object({
     enabled: z.boolean().default(true),
-    patterns: z.array(z.string()).default(["**/*.md", "**/*.txt", "**/*.rst"]),
-    exclude: z.array(z.string()).default(["**/CHANGELOG.md", "**/node_modules/**"]),
+    patterns: z.array(z.string()).default([]),
+    exclude: z.array(z.string()).default([]),
     max_file_size_kb: z.number().default(500),
   }).default({}),
   images: z.object({
     enabled: z.boolean().default(true),
-    patterns: z.array(z.string()).default(["**/*.puml", "**/*.plantuml", "**/*.svg"]),
-    exclude: z.array(z.string()).default(["**/node_modules/**"]),
+    patterns: z.array(z.string()).default([]),
+    exclude: z.array(z.string()).default([]),
     parse_puml: z.boolean().default(true),
     parse_svg_text: z.boolean().default(true),
   }).default({}),
@@ -61,8 +61,9 @@ const BuildConfigSchema = z.object({
 
 const OutlineConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  patterns: z.array(z.string()).default(["src/**/*.ts", "src/**/*.py", "src/**/*.js"]),
-  exclude: z.array(z.string()).default(["**/node_modules/**", "**/.git/**", "**/dist/**"]),
+  patterns: z.array(z.string()).default([]),
+  exclude: z.array(z.string()).default([]),
+  exclude_common: z.boolean().default(true),
 });
 
 const ServerConfigSchema = z.record(z.unknown()).default({});

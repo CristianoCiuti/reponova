@@ -110,7 +110,7 @@ export function exportJson(options: ExportJsonOptions): void {
       enabled: config.outlines.enabled,
       patterns: config.outlines.patterns,
       exclude: config.outlines.exclude,
-      exclude_common: config.build.exclude_common,
+      exclude_common: config.outlines.exclude_common,
     },
     community_summaries: {
       enabled: config.build.community_summaries.enabled,

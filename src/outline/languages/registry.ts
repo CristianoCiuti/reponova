@@ -68,3 +68,15 @@ export function getLanguage(language: string): LanguageSupport | null {
 export function supportedLanguages(): string[] {
   return [...byLanguage.keys()];
 }
+
+/**
+ * Get all registered file extensions (with leading dot, lowercase).
+ * Used for auto-detect when outline patterns are empty.
+ */
+export function getOutlineSupportedExtensions(): Set<string> {
+  const exts = new Set<string>();
+  for (const ext of extToLanguage.keys()) {
+    exts.add(`.${ext}`);
+  }
+  return exts;
+}

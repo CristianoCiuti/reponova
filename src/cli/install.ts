@@ -86,23 +86,13 @@ build:
   # html_min_degree: 3            # if set, only include nodes with degree >= this value in HTML
   docs:
     enabled: true                 # extract documentation files (.md, .txt, .rst)
-    patterns:
-      - "**/*.md"
-      - "**/*.txt"
-      - "**/*.rst"
-    exclude:
-      - "**/CHANGELOG.md"
-      - "**/node_modules/**"
-      - "reponova-out/**"         # exclude output dir if inside workspace
+    # patterns: []                # empty = auto-detect by extension (.md, .txt, .rst)
+    # exclude: []                 # e.g. ["**/CHANGELOG.md", "reponova-out/**"]
     max_file_size_kb: 500
   images:
     enabled: true                 # extract diagram files (.puml, .svg)
-    patterns:
-      - "**/*.puml"
-      - "**/*.plantuml"
-      - "**/*.svg"
-    exclude:
-      - "**/node_modules/**"
+    # patterns: []                # empty = auto-detect by extension (.puml, .plantuml, .svg, ...)
+    # exclude: []                 # e.g. ["**/node_modules/**"]
     parse_puml: true
     parse_svg_text: true
   embeddings:
@@ -122,14 +112,9 @@ build:
 # Outline generation (auto-detects language from file extension)
 outlines:
   enabled: true
-  patterns:                         # glob patterns for files to outline (relative to repo root)
-    - "src/**/*.ts"
-    - "src/**/*.py"
-    - "src/**/*.js"
-  exclude:
-    - "**/node_modules/**"
-    - "**/.git/**"
-    - "**/dist/**"
+  # patterns: []                     # empty = auto-detect by extension from outline language registry
+  # exclude: []                      # e.g. ["**/generated/**", "**/migrations/**"]
+  # exclude_common: true             # skip node_modules, __pycache__, .git, venv, etc.
 `;
 
 /**

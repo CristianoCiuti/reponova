@@ -94,7 +94,7 @@ describe("FIX-013: BuildConfigFingerprint", () => {
     expect(bc.embeddings.dimensions).toBe(384);
 
     expect(bc.outlines.enabled).toBe(true);
-    expect(bc.outlines.patterns).toEqual(["src/**/*.ts", "src/**/*.py", "src/**/*.js"]);
+    expect(bc.outlines.patterns).toEqual([]);
 
     expect(bc.community_summaries.enabled).toBe(true);
     expect(bc.community_summaries.max_number).toBe(0);

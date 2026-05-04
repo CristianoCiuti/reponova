@@ -217,8 +217,9 @@ export async function runBuild(config: Config, configDir: string, options: Build
     // Generate outlines (if enabled)
     if (config.outlines.enabled) {
       const outlineForce = options.force || configDiff.outlinesChanged;
+      const outlineSkipDirs = buildSkipDirs(config.outlines.exclude_common);
       log.info("Generating outlines...");
-      const outlineCount = await runOutlineGeneration(config, configDir, outputDir, { force: outlineForce, skipDirs });
+      const outlineCount = await runOutlineGeneration(config, configDir, outputDir, { force: outlineForce, skipDirs: outlineSkipDirs });
       log.info(`  ✓ ${outlineCount} outlines generated`);
     }
 

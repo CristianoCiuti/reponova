@@ -53,7 +53,7 @@ export function loadPreviousBuildConfig(graphJsonPath: string, currentConfig: Co
       prev.outlines.enabled !== currentConfig.outlines.enabled ||
       JSON.stringify(prev.outlines.patterns) !== JSON.stringify(currentConfig.outlines.patterns) ||
       JSON.stringify(prev.outlines.exclude) !== JSON.stringify(currentConfig.outlines.exclude) ||
-      prev.outlines.exclude_common !== currentConfig.build.exclude_common;
+      prev.outlines.exclude_common !== currentConfig.outlines.exclude_common;
 
     const communitySummariesChanged =
       prev.community_summaries.enabled !== currentConfig.build.community_summaries.enabled ||
