@@ -9,7 +9,7 @@ import { resolve, join, relative, dirname } from "node:path";
 import { generateOutline, formatOutlineJson } from "../outline/index.js";
 import { log } from "../shared/utils.js";
 import type { Config } from "../shared/types.js";
-import { createMatcher } from "../shared/glob.js";
+import { createPatternMatcher } from "../core/path-resolver.js";
 import { hashFile } from "./incremental.js";
 
 export interface OutlineOptions {
@@ -128,10 +128,8 @@ export function saveOutlineHashes(outputDir: string, hashes: Map<string, string>
 
 /**
  * Walk baseDir and return files matching patterns.
- * When repoName is provided (multi-repo), tests BOTH forms:
- *   - repo-relative:      "commonlib/foo.py"
- *   - workspace-relative: "motore_common/commonlib/foo.py"
- * This mirrors the dual-match semantics in path-resolver.ts.
+ * Uses createPatternMatcher for bidirectional dual matching:
+ * repo-relative paths are tested both as-is and with repoName prefix.
  */
 function findFiles(
   baseDir: string,
@@ -140,8 +138,9 @@ function findFiles(
   skipDirs: Set<string>,
   repoName?: string,
 ): string[] {
-  const isIncluded = createMatcher(patterns);
-  const isExcluded = createMatcher(exclude);
+  const repoNames = repoName ? new Set([repoName]) : undefined;
+  const isIncluded = createPatternMatcher(patterns, repoNames);
+  const isExcluded = createPatternMatcher(exclude, repoNames);
   const results: string[] = [];
 
   function walk(dir: string): void {
@@ -160,14 +159,12 @@ function findFiles(
       if (!entry.isFile()) continue;
 
       const relPath = relative(baseDir, fullPath).split("\\").join("/");
-      const wsPath = repoName ? `${repoName}/${relPath}` : null;
 
-      // Check exclusion — either form triggers exclude
-      if (isExcluded(relPath)) continue;
-      if (wsPath && isExcluded(wsPath)) continue;
+      // Check exclusion — pass repoName so workspace-relative excludes work
+      if (isExcluded(relPath, repoName)) continue;
 
-      // Check inclusion — either form triggers include
-      if (isIncluded(relPath) || (wsPath && isIncluded(wsPath))) {
+      // Check inclusion — pass repoName so workspace-relative patterns work
+      if (isIncluded(relPath, repoName)) {
         results.push(fullPath);
       }
     }

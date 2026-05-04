@@ -16,8 +16,7 @@ import { getExtractorForFile, getSupportedExtensions } from "./languages/registr
 import { buildGraph, type BuiltGraph } from "./graph-builder.js";
 import { detectCommunities, type CommunityResult } from "./community.js";
 import { exportJson } from "./export-json.js";
-import { buildSkipDirs } from "../shared/glob.js";
-import { createDualMatcher } from "../core/path-resolver.js";
+import { buildSkipDirs, createPatternMatcher } from "../core/path-resolver.js";
 import { log } from "../shared/utils.js";
 
 export { buildGraph, type BuiltGraph } from "./graph-builder.js";
@@ -62,8 +61,8 @@ export function detectFiles(
   repoNames?: Set<string>,
 ): string[] {
   const extensions = patterns.length > 0 ? null : getCodeExtensions();
-  const isIncluded = patterns.length > 0 ? createDualMatcher(patterns, repoNames) : null;
-  const isExcluded = createDualMatcher(excludeGlobs, repoNames);
+  const isIncluded = patterns.length > 0 ? createPatternMatcher(patterns, repoNames) : null;
+  const isExcluded = createPatternMatcher(excludeGlobs, repoNames);
   const files: string[] = [];
 
   function walk(dir: string): void {
@@ -114,8 +113,8 @@ export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipD
   if (!docsConfig?.enabled) return [];
 
   const maxSizeBytes = (docsConfig.max_file_size_kb ?? 500) * 1024;
-  const isIncluded = createDualMatcher(docsConfig.patterns, repoNames);
-  const isExcluded = createDualMatcher(docsConfig.exclude, repoNames);
+  const isIncluded = createPatternMatcher(docsConfig.patterns, repoNames);
+  const isExcluded = createPatternMatcher(docsConfig.exclude, repoNames);
 
   const files: string[] = [];
 
@@ -168,8 +167,8 @@ export function detectDiagramFiles(workspace: string, imagesConfig?: ImagesConfi
   if (!imagesConfig?.enabled) return [];
 
   const diagramExts = new Set([".puml", ".plantuml", ".svg", ".png", ".jpg", ".jpeg", ".gif"]);
-  const isIncluded = createDualMatcher(imagesConfig.patterns, repoNames);
-  const isExcluded = createDualMatcher(imagesConfig.exclude, repoNames);
+  const isIncluded = createPatternMatcher(imagesConfig.patterns, repoNames);
+  const isExcluded = createPatternMatcher(imagesConfig.exclude, repoNames);
 
   const files: string[] = [];
 

@@ -10,11 +10,11 @@ import { generateGraphReport } from "./report.js";
 import { exportHtml, exportCommunityHtml, type CommunitySummaryInfo } from "../extract/export-html.js";
 import { log } from "../shared/utils.js";
 import { runPipeline } from "../extract/index.js";
-import { buildSkipDirs } from "../shared/glob.js";
+import { buildSkipDirs } from "../core/path-resolver.js";
 import { loadPreviousBuildConfig } from "./config-diff.js";
 import { cleanStaleArtifacts } from "./artifact-cleanup.js";
 import { computeSemanticGraphHash, loadPreviousGraphHash, saveGraphHash } from "./graph-hash.js";
-import { createPathContext, prepareWorkspace } from "../core/path-resolver.js";
+import { createPathContext, prepareWorkspace, extractRepoName } from "../core/path-resolver.js";
 
 export interface BuildOptions {
   force: boolean;
@@ -346,31 +346,24 @@ export async function build(
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Tag each node's `repo` field.
- * Single-repo: all nodes get the single repo name.
- * Multi-repo: tag based on the first path component of source_file.
+ * Tag each node's `repo` field using extractRepoName from path-resolver.
  */
 function tagNodesWithRepo(graphJsonPath: string, repoNames: string[], mode: "single" | "multi"): void {
   const raw = readFileSync(graphJsonPath, "utf-8");
   const data = JSON.parse(raw) as GraphData;
 
-  if (mode === "single") {
-    const repoName = repoNames[0];
-    for (const node of data.nodes) {
-      if (node.source_file) {
-        node.repo = repoName;
-      }
-    }
-  } else {
-    const repoSet = new Set(repoNames);
-    for (const node of data.nodes) {
-      if (!node.source_file) continue;
-      const normalized = node.source_file.replace(/\\/g, "/");
-      const firstComponent = normalized.split("/")[0];
-      if (firstComponent && repoSet.has(firstComponent)) {
-        node.repo = firstComponent;
-      }
-    }
+  // Build a minimal PathContext for extractRepoName
+  const ctx = {
+    mode,
+    repos: repoNames.map((name) => ({ name, absPath: "" })),
+    workspace: "",
+    outputDir: "",
+  };
+
+  for (const node of data.nodes) {
+    if (!node.source_file) continue;
+    const repo = extractRepoName(ctx, node.source_file);
+    if (repo) node.repo = repo;
   }
 
   writeFileSync(graphJsonPath, JSON.stringify(data, null, 2));

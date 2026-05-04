@@ -15,7 +15,7 @@ export { analyzeImpact, formatImpactMarkdown } from "./core/impact.js";
 export { findShortestPath, formatPathMarkdown } from "./core/shortest-path.js";
 export { getNodeDetail, getNodeSuggestions, formatNodeDetailMarkdown } from "./core/node-detail.js";
 export { resolveGraphPath, resolveGraphJson, resolveSearchDb } from "./core/graph-resolver.js";
-export { resolveAbsolutePath, reconstructRepos, resolveOutlinePath, createDualMatcher, stripRepoPrefix } from "./core/path-resolver.js";
+export { resolveAbsolutePath, reconstructRepos, resolveOutlinePath, createPatternMatcher, buildSkipDirs } from "./core/path-resolver.js";
 export type { RepoMapping, PathContext } from "./core/path-resolver.js";
 
 // Intelligence layer exports
