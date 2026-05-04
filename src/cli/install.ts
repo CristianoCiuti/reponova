@@ -57,64 +57,49 @@ function withTrailingNewline(text: string): string {
 
 // ─── Default config YAML (written into editor directory) ─────────────────────
 
-const DEFAULT_CONFIG_YAML = `# reponova.yml
-# Configuration for reponova
-# All paths are relative to this file's location.
-# Since this file is inside the editor directory, use ../ to reference project root.
+const DEFAULT_CONFIG_YAML = `# reponova.yml — All paths relative to this file's location.
 
-# Where to write build output
 output: ../reponova-out
 
-# Repositories to include in the build
 repos:
   - name: my-project
     path: ..
 
-# ── Centralized model management ─────────────────────────────────────────────
-models:
-  cache_dir: ~/.cache/reponova/models
-  gpu: auto                       # "auto", "cpu", "cuda", "metal", or "vulkan"
-  threads: 0                      # 0 = auto-detect
-  download_on_first_use: true
-
-# Build options
 build:
-  patterns: []                    # glob patterns for source files (empty = auto-detect by extension)
-  exclude: []                     # glob patterns to exclude (e.g. ["**/generated/**", "**/*.test.ts"])
-  incremental: true               # incremental builds using file hash cache
-  html: true                      # generate graph.html and graph_communities.html visualizations
-  # html_min_degree: 3            # if set, only include nodes with degree >= this value in HTML
+  # patterns: []                  # source files (empty = auto-detect by extension)
+  # exclude: []                   # e.g. ["**/generated/**", "**/*.test.ts"]
+  # exclude_common: true          # skip node_modules, __pycache__, .git, venv, dist, build, ...
+  # incremental: true
+  # html: true
+  # html_min_degree: 3            # min degree for HTML visualization (unset = all nodes)
   docs:
-    enabled: true                 # extract documentation files (.md, .txt, .rst)
-    # patterns: []                # empty = auto-detect by extension (.md, .txt, .rst)
+    enabled: true
+    # patterns: []                # empty = auto-detect (.md, .txt, .rst)
     # exclude: []                 # e.g. ["**/CHANGELOG.md", "reponova-out/**"]
-    max_file_size_kb: 500
+    # max_file_size_kb: 500
   images:
-    enabled: true                 # extract diagram files (.puml, .svg)
-    # patterns: []                # empty = auto-detect by extension (.puml, .plantuml, .svg, ...)
-    # exclude: []                 # e.g. ["**/node_modules/**"]
-    parse_puml: true
-    parse_svg_text: true
+    enabled: true
+    # patterns: []                # empty = auto-detect (.puml, .plantuml, .svg, ...)
+    # exclude: []
+    # parse_puml: true
+    # parse_svg_text: true
   embeddings:
     enabled: true
-    method: tfidf                 # "tfidf" (fast, default) or "onnx" (MiniLM, more accurate)
+    # method: tfidf               # "tfidf" (fast, no download) or "onnx" (MiniLM, ~86MB)
+    # model: all-MiniLM-L6-v2     # set method to "onnx" and uncomment for MiniLM embeddings
   community_summaries:
     enabled: true
-    max_number: 0                 # 0 = no limit
-    # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM-enhanced summaries
-    context_size: 512
+    # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM summaries
   node_descriptions:
     enabled: true
-    threshold: 0.8                # top 20% of nodes by degree
-    # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM-enhanced descriptions
-    context_size: 512
+    # threshold: 0.8              # top 20% of nodes by degree
+    # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM descriptions
 
-# Outline generation (auto-detects language from file extension)
 outlines:
   enabled: true
-  # patterns: []                     # empty = auto-detect by extension from outline language registry
-  # exclude: []                      # e.g. ["**/generated/**", "**/migrations/**"]
-  # exclude_common: true             # skip node_modules, __pycache__, .git, venv, etc.
+  # patterns: []                  # empty = auto-detect by outline language registry
+  # exclude: []                   # e.g. ["**/generated/**", "**/migrations/**"]
+  # exclude_common: true          # skip node_modules, __pycache__, .git, venv, dist, build, ...
 `;
 
 /**

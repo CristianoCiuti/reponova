@@ -4,7 +4,7 @@
  * Walks configured repos, applies path filters, and generates
  * pre-computed .outline.json files using the outline module.
  */
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, rmdirSync } from "node:fs";
 import { resolve, join, relative, dirname } from "node:path";
 import { generateOutline, formatOutlineJson } from "../outline/index.js";
 import { log } from "../shared/utils.js";
@@ -97,6 +97,9 @@ export async function runOutlineGeneration(
   }
   if (staleCount > 0) log.info(`  Removed ${staleCount} stale outline(s)`);
 
+  // Clean up empty directories left behind by stale removal
+  removeEmptyDirs(outlinesDir);
+
   saveOutlineHashes(outputDir, nextHashes);
 
   return count;
@@ -183,4 +186,24 @@ function findFiles(
 
   walk(baseDir);
   return results;
+}
+
+/**
+ * Recursively remove empty directories under root (bottom-up).
+ * Leaves root itself intact even if empty.
+ */
+function removeEmptyDirs(root: string): void {
+  let entries;
+  try { entries = readdirSync(root, { withFileTypes: true }); } catch { return; }
+
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      const child = join(root, entry.name);
+      removeEmptyDirs(child);
+      // After recursing, try to remove if now empty
+      try {
+        if (readdirSync(child).length === 0) rmdirSync(child);
+      } catch { /* ignore */ }
+    }
+  }
 }

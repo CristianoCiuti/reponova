@@ -148,6 +148,26 @@ describe("stale outline cleanup", () => {
     expect(existsSync(join(outputDir, "outlines", "src", "example.py.outline.json"))).toBe(false);
     expect(loadOutlineHashes(outputDir).size).toBe(0);
   });
+
+  it("removes empty directories left behind by stale cleanup", async () => {
+    const { config, configDir, outputDir } = setupMultiRepo();
+
+    // First run: generate outlines in both repos (backend/lib/ and frontend/src/)
+    config.outlines.patterns = ["**/*.py"];
+    await runOutlineGeneration(config, configDir, outputDir, { force: false });
+    expect(existsSync(join(outputDir, "outlines", "backend", "lib", "core.py.outline.json"))).toBe(true);
+    expect(existsSync(join(outputDir, "outlines", "backend"))).toBe(true);
+
+    // Second run: narrow to frontend only — backend dir tree should be cleaned up entirely
+    config.outlines.patterns = ["frontend/**"];
+    await runOutlineGeneration(config, configDir, outputDir, { force: false });
+
+    expect(existsSync(join(outputDir, "outlines", "backend", "lib", "core.py.outline.json"))).toBe(false);
+    expect(existsSync(join(outputDir, "outlines", "backend", "lib"))).toBe(false);
+    expect(existsSync(join(outputDir, "outlines", "backend"))).toBe(false);
+    // frontend dir should still exist
+    expect(existsSync(join(outputDir, "outlines", "frontend", "src", "app.py.outline.json"))).toBe(true);
+  });
 });
 
 function setupProject(): {
