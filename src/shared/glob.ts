@@ -36,26 +36,6 @@ export function buildSkipDirs(excludeCommon: boolean): Set<string> {
 // ─── Glob Matching ───────────────────────────────────────────────────────────
 
 /**
- * Test if a relative path matches a glob pattern.
- * Uses picomatch for correct, battle-tested glob semantics.
- *
- * @param pattern - Glob pattern (e.g. "**​/*.py", "**​/venv/**")
- * @param relPath - Relative file path with forward slashes (e.g. "venv/lib/foo.py")
- */
-export function matchGlob(pattern: string, relPath: string): boolean {
-  return picomatch(pattern)(relPath);
-}
-
-/**
- * Test if a relative path matches ANY of the given glob patterns.
- */
-export function matchAny(patterns: string[], relPath: string): boolean {
-  if (patterns.length === 0) return false;
-  const matcher = picomatch(patterns);
-  return matcher(relPath);
-}
-
-/**
  * Create a reusable matcher function for a list of patterns.
  * More efficient when matching many paths against the same patterns.
  *

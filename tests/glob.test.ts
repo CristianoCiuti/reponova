@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { COMMON_SKIP_DIRS, buildSkipDirs, matchGlob, matchAny, createMatcher } from "../src/shared/glob.js";
+import { COMMON_SKIP_DIRS, buildSkipDirs, createMatcher } from "../src/shared/glob.js";
 
 type Equal<A, B> =
   (<T>() => T extends A ? 1 : 2) extends
@@ -76,40 +76,6 @@ describe("shared/glob", () => {
 
       expect(skipDirs).toBeInstanceOf(Set);
       expect(skipDirs.size).toBe(0);
-    });
-  });
-
-  describe("matchGlob", () => {
-    it("matches critical root-level and nested directory patterns", () => {
-      expect(matchGlob("**/venv/**", "venv/lib/foo.py")).toBe(true);
-      expect(matchGlob("**/venv/**", "src/venv/lib/foo.py")).toBe(true);
-      expect(matchGlob("**/node_modules/**", "node_modules/x.js")).toBe(true);
-      expect(matchGlob("**/node_modules/**", "a/node_modules/x.js")).toBe(true);
-      expect(matchGlob("**/.git/**", ".git/config")).toBe(true);
-      expect(matchGlob("**/dist/**", "dist/index.js")).toBe(true);
-      expect(matchGlob("**/__pycache__/**", "__pycache__/foo.pyc")).toBe(true);
-    });
-
-    it("matches critical file patterns with correct root semantics", () => {
-      expect(matchGlob("**/*.py", "venv/lib/foo.py")).toBe(true);
-      expect(matchGlob("**/*.py", "foo.py")).toBe(true);
-      expect(matchGlob("src/**/*.py", "src/main.py")).toBe(true);
-      expect(matchGlob("src/**/*.py", "main.py")).toBe(false);
-      expect(matchGlob("**/CHANGELOG.md", "CHANGELOG.md")).toBe(true);
-      expect(matchGlob("**/CHANGELOG.md", "docs/CHANGELOG.md")).toBe(true);
-    });
-  });
-
-  describe("matchAny", () => {
-    it("returns false for an empty pattern list", () => {
-      expect(matchAny([], "foo.py")).toBe(false);
-      expect(matchAny([], "src/main.ts")).toBe(false);
-    });
-
-    it("returns true when any pattern matches", () => {
-      expect(matchAny(["**/*.py", "**/*.ts"], "foo.py")).toBe(true);
-      expect(matchAny(["**/*.py", "**/*.ts"], "src/app.ts")).toBe(true);
-      expect(matchAny(["**/*.py", "**/*.ts"], "foo.js")).toBe(false);
     });
   });
 

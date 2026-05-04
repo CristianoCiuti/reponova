@@ -2,17 +2,14 @@
  * Tests for src/core/path-resolver.ts — central path resolution module.
  *
  * Covers all public functions in both single-repo and multi-repo modes:
- * - resolveMode()
  * - createPathContext()
  * - prepareWorkspace()
  * - toSourceFile()
- * - matchesPatterns()
- * - isExcluded()
- * - toOutlineRelPath()
  * - extractRepoName()
  * - resolveAbsolutePath()
  * - resolveOutlinePath()
  * - reconstructRepos()
+ * - createPatternMatcher()
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
@@ -21,19 +18,13 @@ import { tmpdir } from "node:os";
 import type { Config } from "../src/shared/types.js";
 import { DEFAULT_CONFIG } from "../src/shared/types.js";
 import {
-  resolveMode,
   createPathContext,
   prepareWorkspace,
   toSourceFile,
-  matchesPatterns,
-  isExcluded,
-  toOutlineRelPath,
   extractRepoName,
   resolveAbsolutePath,
   resolveOutlinePath,
   reconstructRepos,
-  stripRepoPrefix,
-  createDualMatcher,
   createPatternMatcher,
 } from "../src/core/path-resolver.js";
 import type { PathContext, RepoMapping } from "../src/core/path-resolver.js";
@@ -77,34 +68,6 @@ afterEach(() => {
     }
   }
   tmpDirs = [];
-});
-
-// ══════════════════════════════════════════════════════════════════════════════
-// resolveMode
-// ══════════════════════════════════════════════════════════════════════════════
-
-describe("resolveMode", () => {
-  it("returns 'single' for 1 repo", () => {
-    const cfg = makeConfig([{ name: "myapp", path: "." }]);
-    expect(resolveMode(cfg)).toBe("single");
-  });
-
-  it("returns 'multi' for 2 repos", () => {
-    const cfg = makeConfig([
-      { name: "api", path: "./api" },
-      { name: "core", path: "./core" },
-    ]);
-    expect(resolveMode(cfg)).toBe("multi");
-  });
-
-  it("returns 'multi' for 3+ repos", () => {
-    const cfg = makeConfig([
-      { name: "a", path: "./a" },
-      { name: "b", path: "./b" },
-      { name: "c", path: "./c" },
-    ]);
-    expect(resolveMode(cfg)).toBe("multi");
-  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -258,202 +221,6 @@ describe("toSourceFile", () => {
     const result = toSourceFile(ctx, fullPath);
     expect(result).not.toContain("\\");
     expect(result).toBe("src/nested/file.py");
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════════════════
-// matchesPatterns
-// ══════════════════════════════════════════════════════════════════════════════
-
-describe("matchesPatterns", () => {
-  describe("single-repo", () => {
-    let ctx: PathContext;
-    let repoDir: string;
-
-    beforeEach(() => {
-      repoDir = freshTmpDir("mp-single");
-      ctx = {
-        mode: "single",
-        repos: [{ name: "myapp", absPath: repoDir }],
-        workspace: repoDir,
-        outputDir: "",
-      };
-    });
-
-    it("matches repo-relative glob", () => {
-      const file = join(repoDir, "src", "core.py").replace(/\\/g, "/");
-      expect(matchesPatterns(ctx, file, ["src/**/*.py"])).toBe(true);
-    });
-
-    it("does not match non-matching glob", () => {
-      const file = join(repoDir, "tests", "test.py").replace(/\\/g, "/");
-      expect(matchesPatterns(ctx, file, ["src/**/*.py"])).toBe(false);
-    });
-
-    it("matches ** wildcard", () => {
-      const file = join(repoDir, "deep", "nested", "file.py").replace(/\\/g, "/");
-      expect(matchesPatterns(ctx, file, ["**/*.py"])).toBe(true);
-    });
-
-    it("returns true when patterns is empty (include-all)", () => {
-      const file = join(repoDir, "any", "file.txt").replace(/\\/g, "/");
-      expect(matchesPatterns(ctx, file, [])).toBe(true);
-    });
-  });
-
-  describe("multi-repo", () => {
-    let ctx: PathContext;
-    let apiDir: string;
-    let coreDir: string;
-
-    beforeEach(() => {
-      apiDir = freshTmpDir("mp-api");
-      coreDir = freshTmpDir("mp-core");
-      ctx = {
-        mode: "multi",
-        repos: [
-          { name: "api", absPath: apiDir },
-          { name: "core", absPath: coreDir },
-        ],
-        workspace: "",
-        outputDir: "",
-      };
-    });
-
-    it("matches repo-relative pattern across repos", () => {
-      const apiFile = join(apiDir, "src", "main.py").replace(/\\/g, "/");
-      const coreFile = join(coreDir, "src", "lib.py").replace(/\\/g, "/");
-      expect(matchesPatterns(ctx, apiFile, ["src/**/*.py"])).toBe(true);
-      expect(matchesPatterns(ctx, coreFile, ["src/**/*.py"])).toBe(true);
-    });
-
-    it("matches workspace-relative pattern (repo-prefixed)", () => {
-      const apiFile = join(apiDir, "src", "main.py").replace(/\\/g, "/");
-      expect(matchesPatterns(ctx, apiFile, ["api/src/**/*.py"])).toBe(true);
-    });
-
-    it("repo-prefixed pattern does NOT match other repos", () => {
-      const coreFile = join(coreDir, "src", "lib.py").replace(/\\/g, "/");
-      expect(matchesPatterns(ctx, coreFile, ["api/src/**/*.py"])).toBe(false);
-    });
-
-    it("pattern outside src/ does not match", () => {
-      const file = join(apiDir, "tests", "test.py").replace(/\\/g, "/");
-      expect(matchesPatterns(ctx, file, ["src/**/*.py"])).toBe(false);
-    });
-
-    it("returns true when patterns is empty (include-all)", () => {
-      const file = join(apiDir, "any.txt").replace(/\\/g, "/");
-      expect(matchesPatterns(ctx, file, [])).toBe(true);
-    });
-
-    it("file not belonging to any repo returns false", () => {
-      const orphan = join(freshTmpDir("mp-orphan"), "stray.py").replace(/\\/g, "/");
-      expect(matchesPatterns(ctx, orphan, ["**/*.py"])).toBe(false);
-    });
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════════════════
-// isExcluded
-// ══════════════════════════════════════════════════════════════════════════════
-
-describe("isExcluded", () => {
-  describe("single-repo", () => {
-    let ctx: PathContext;
-    let repoDir: string;
-
-    beforeEach(() => {
-      repoDir = freshTmpDir("ex-single");
-      ctx = {
-        mode: "single",
-        repos: [{ name: "myapp", absPath: repoDir }],
-        workspace: repoDir,
-        outputDir: "",
-      };
-    });
-
-    it("excludes matching glob", () => {
-      const file = join(repoDir, "tests", "test_main.py").replace(/\\/g, "/");
-      expect(isExcluded(ctx, file, ["**/tests/**"])).toBe(true);
-    });
-
-    it("does not exclude non-matching glob", () => {
-      const file = join(repoDir, "src", "core.py").replace(/\\/g, "/");
-      expect(isExcluded(ctx, file, ["**/tests/**"])).toBe(false);
-    });
-
-    it("returns false when excludeGlobs is empty", () => {
-      const file = join(repoDir, "anything.py").replace(/\\/g, "/");
-      expect(isExcluded(ctx, file, [])).toBe(false);
-    });
-  });
-
-  describe("multi-repo", () => {
-    let ctx: PathContext;
-    let apiDir: string;
-    let coreDir: string;
-
-    beforeEach(() => {
-      apiDir = freshTmpDir("ex-api");
-      coreDir = freshTmpDir("ex-core");
-      ctx = {
-        mode: "multi",
-        repos: [
-          { name: "api", absPath: apiDir },
-          { name: "core", absPath: coreDir },
-        ],
-        workspace: "",
-        outputDir: "",
-      };
-    });
-
-    it("excludes via repo-relative pattern", () => {
-      const file = join(apiDir, "tests", "test.py").replace(/\\/g, "/");
-      expect(isExcluded(ctx, file, ["**/tests/**"])).toBe(true);
-    });
-
-    it("excludes via workspace-relative (repo-prefixed) pattern", () => {
-      const file = join(apiDir, "venv", "lib.py").replace(/\\/g, "/");
-      expect(isExcluded(ctx, file, ["api/venv/**"])).toBe(true);
-    });
-
-    it("repo-prefixed exclude does NOT affect other repos", () => {
-      const file = join(coreDir, "venv", "lib.py").replace(/\\/g, "/");
-      expect(isExcluded(ctx, file, ["api/venv/**"])).toBe(false);
-    });
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════════════════
-// toOutlineRelPath
-// ══════════════════════════════════════════════════════════════════════════════
-
-describe("toOutlineRelPath", () => {
-  it("single-repo: returns repo-relative path (no prefix)", () => {
-    const repoDir = freshTmpDir("olp-single");
-    const ctx: PathContext = {
-      mode: "single",
-      repos: [{ name: "myapp", absPath: repoDir }],
-      workspace: repoDir,
-      outputDir: "",
-    };
-
-    const file = join(repoDir, "src", "core.py").replace(/\\/g, "/");
-    expect(toOutlineRelPath(ctx, "myapp", repoDir, file)).toBe("src/core.py");
-  });
-
-  it("multi-repo: returns repo-prefixed path", () => {
-    const apiDir = freshTmpDir("olp-api");
-    const ctx: PathContext = {
-      mode: "multi",
-      repos: [{ name: "api", absPath: apiDir }],
-      workspace: "",
-      outputDir: "",
-    };
-
-    const file = join(apiDir, "src", "main.py").replace(/\\/g, "/");
-    expect(toOutlineRelPath(ctx, "api", apiDir, file)).toBe("api/src/main.py");
   });
 });
 
@@ -641,7 +408,7 @@ describe("reconstructRepos", () => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe("integration: full path flow", () => {
-  it("single-repo: config → context → sourceFile → outline → resolve", () => {
+  it("single-repo: config → context → sourceFile → patternMatcher → outline → resolve", () => {
     const repoDir = freshTmpDir("int-single");
     const outputDir = join(repoDir, "out").replace(/\\/g, "/");
     const filePath = touchFile(repoDir, "src/core.py");
@@ -659,28 +426,26 @@ describe("integration: full path flow", () => {
     const sf = toSourceFile(ctx, filePath);
     expect(sf).toBe("src/core.py");
 
-    // 4. matchesPatterns
-    expect(matchesPatterns(ctx, filePath, ["src/**/*.py"])).toBe(true);
-    expect(matchesPatterns(ctx, filePath, ["tests/**/*.py"])).toBe(false);
+    // 4. createPatternMatcher — matches repo-relative
+    const matcher = createPatternMatcher(["src/**/*.py"]);
+    expect(matcher(sf)).toBe(true);
+    const noMatch = createPatternMatcher(["tests/**/*.py"]);
+    expect(noMatch(sf)).toBe(false);
 
     // 5. extractRepoName
     expect(extractRepoName(ctx, sf)).toBe("myapp");
 
-    // 6. toOutlineRelPath — no prefix
-    const olp = toOutlineRelPath(ctx, "myapp", repoDir, filePath);
-    expect(olp).toBe("src/core.py");
-
-    // 7. resolveOutlinePath
+    // 6. resolveOutlinePath
     const op = resolveOutlinePath(outputDir, sf);
     expect(op.replace(/\\/g, "/")).toBe(`${outputDir}/outlines/src/core.py.outline.json`);
 
-    // 8. resolveAbsolutePath
+    // 7. resolveAbsolutePath
     const abs = resolveAbsolutePath(ctx.repos, sf, "single");
     expect(abs).not.toBeNull();
     expect(abs!.replace(/\\/g, "/")).toBe(filePath);
   });
 
-  it("multi-repo: config → context → sourceFile → outline → resolve", () => {
+  it("multi-repo: config → context → sourceFile → patternMatcher → outline → resolve", () => {
     const rootDir = freshTmpDir("int-multi");
     const apiDir = join(rootDir, "services", "api").replace(/\\/g, "/");
     const coreDir = join(rootDir, "services", "core").replace(/\\/g, "/");
@@ -705,29 +470,26 @@ describe("integration: full path flow", () => {
     const sfCore = toSourceFile(ctx, coreFile);
     expect(sfCore).toBe("core/src/lib.py");
 
-    // 3. matchesPatterns — repo-relative matches both
-    expect(matchesPatterns(ctx, apiFile, ["src/**/*.py"])).toBe(true);
-    expect(matchesPatterns(ctx, coreFile, ["src/**/*.py"])).toBe(true);
+    // 3. createPatternMatcher — repo-relative matches both (via strip)
+    const repoNames = new Set(["api", "core"]);
+    const repoRelMatcher = createPatternMatcher(["src/**/*.py"], repoNames);
+    expect(repoRelMatcher(sfApi)).toBe(true);
+    expect(repoRelMatcher(sfCore)).toBe(true);
 
-    // 4. matchesPatterns — workspace-relative matches only target repo
-    expect(matchesPatterns(ctx, apiFile, ["api/src/**/*.py"])).toBe(true);
-    expect(matchesPatterns(ctx, coreFile, ["api/src/**/*.py"])).toBe(false);
+    // 4. createPatternMatcher — workspace-relative matches only target repo
+    const wsRelMatcher = createPatternMatcher(["api/src/**/*.py"], repoNames);
+    expect(wsRelMatcher(sfApi)).toBe(true);
+    expect(wsRelMatcher(sfCore)).toBe(false);
 
     // 5. extractRepoName
     expect(extractRepoName(ctx, sfApi)).toBe("api");
     expect(extractRepoName(ctx, sfCore)).toBe("core");
 
-    // 6. toOutlineRelPath — with prefix
-    const olpApi = toOutlineRelPath(ctx, "api", apiDir, apiFile);
-    expect(olpApi).toBe("api/src/main.py");
-    const olpCore = toOutlineRelPath(ctx, "core", coreDir, coreFile);
-    expect(olpCore).toBe("core/src/lib.py");
-
-    // 7. resolveOutlinePath
+    // 6. resolveOutlinePath
     const opApi = resolveOutlinePath(outputDir, sfApi);
     expect(opApi.replace(/\\/g, "/")).toBe(`${outputDir}/outlines/api/src/main.py.outline.json`);
 
-    // 8. resolveAbsolutePath
+    // 7. resolveAbsolutePath
     const absApi = resolveAbsolutePath(ctx.repos, sfApi, "multi");
     expect(absApi).not.toBeNull();
     expect(absApi!.replace(/\\/g, "/")).toBe(apiFile);
@@ -735,77 +497,6 @@ describe("integration: full path flow", () => {
     const absCore = resolveAbsolutePath(ctx.repos, sfCore, "multi");
     expect(absCore).not.toBeNull();
     expect(absCore!.replace(/\\/g, "/")).toBe(coreFile);
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════════════════
-// stripRepoPrefix
-// ══════════════════════════════════════════════════════════════════════════════
-
-describe("stripRepoPrefix", () => {
-  const repoNames = new Set(["api", "core"]);
-
-  it("strips known repo prefix", () => {
-    expect(stripRepoPrefix("api/src/main.py", repoNames)).toBe("src/main.py");
-    expect(stripRepoPrefix("core/lib/utils.py", repoNames)).toBe("lib/utils.py");
-  });
-
-  it("returns null for unknown repo prefix", () => {
-    expect(stripRepoPrefix("unknown/src/main.py", repoNames)).toBeNull();
-  });
-
-  it("returns null when no slash present", () => {
-    expect(stripRepoPrefix("main.py", repoNames)).toBeNull();
-  });
-
-  it("handles deeply nested paths", () => {
-    expect(stripRepoPrefix("api/a/b/c/d.py", repoNames)).toBe("a/b/c/d.py");
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════════════════
-// createDualMatcher
-// ══════════════════════════════════════════════════════════════════════════════
-
-describe("createDualMatcher", () => {
-  it("returns false-returning function for empty patterns", () => {
-    const matcher = createDualMatcher([], undefined);
-    expect(matcher("anything.py")).toBe(false);
-  });
-
-  it("matches workspace-relative path (no repoNames)", () => {
-    const matcher = createDualMatcher(["src/**/*.py"]);
-    expect(matcher("src/main.py")).toBe(true);
-    expect(matcher("tests/test.py")).toBe(false);
-  });
-
-  it("matches repo-relative pattern in multi-repo", () => {
-    const repoNames = new Set(["api", "core"]);
-    const matcher = createDualMatcher(["src/**/*.py"], repoNames);
-    // workspace-relative: "api/src/main.py" doesn't match "src/**/*.py" directly
-    // but repo-relative "src/main.py" does match
-    expect(matcher("api/src/main.py")).toBe(true);
-    expect(matcher("core/src/lib.py")).toBe(true);
-  });
-
-  it("matches workspace-relative (repo-prefixed) pattern", () => {
-    const repoNames = new Set(["api", "core"]);
-    const matcher = createDualMatcher(["api/src/**/*.py"], repoNames);
-    expect(matcher("api/src/main.py")).toBe(true);
-    expect(matcher("core/src/lib.py")).toBe(false);
-  });
-
-  it("repo-prefixed exclude only affects target repo", () => {
-    const repoNames = new Set(["api", "core"]);
-    const matcher = createDualMatcher(["api/venv/**"], repoNames);
-    expect(matcher("api/venv/lib.py")).toBe(true);
-    expect(matcher("core/venv/lib.py")).toBe(false);
-  });
-
-  it("falls back when repoNames is empty set", () => {
-    const matcher = createDualMatcher(["src/**/*.py"], new Set());
-    expect(matcher("src/main.py")).toBe(true);
-    expect(matcher("api/src/main.py")).toBe(false); // no dual-match
   });
 });
 
