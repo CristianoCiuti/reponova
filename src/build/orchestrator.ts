@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { resolve, join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import type { Config, GraphData } from "../shared/types.js";
 import { loadConfig } from "../core/config.js";
@@ -70,6 +70,12 @@ export async function runBuild(config: Config, configDir: string, options: Build
     const mergedPath = join(outputDir, "graph.json");
     const incremental = config.build.incremental && !options.force;
     const skipDirs = buildSkipDirs(config.build.exclude_common);
+
+    // Prevent the build from walking into its own output directory.
+    // Without this, incremental builds re-ingest generated files (report.md,
+    // .cache/semantic-graph-hash.txt, etc.) because the output dir is often
+    // inside one of the configured repos.
+    skipDirs.add(basename(outputDir));
     const ctx = createPathContext(config, configDir, outputDir);
     log.info(`Build${incremental ? " (incremental)" : ""} [${ctx.mode}-repo mode]...`);
 
@@ -218,6 +224,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
     if (config.outlines.enabled) {
       const outlineForce = options.force || configDiff.outlinesChanged;
       const outlineSkipDirs = buildSkipDirs(config.outlines.exclude_common);
+      outlineSkipDirs.add(basename(outputDir));
       log.info("Generating outlines...");
       const outlineCount = await runOutlineGeneration(config, configDir, outputDir, { force: outlineForce, skipDirs: outlineSkipDirs });
       log.info(`  ✓ ${outlineCount} outlines generated`);

@@ -348,4 +348,32 @@ describe("File Detection", () => {
       expect(f).not.toContain("node_modules");
     }
   });
+
+  it("should skip output dir when its basename is in skipDirs", () => {
+    // Simulate a reponova-out/ directory with generated files that have doc extensions
+    const outDir = join(tmpBase, "reponova-out");
+    const cacheDir = join(outDir, ".cache");
+    mkdirSync(outDir, { recursive: true });
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(join(outDir, "report.md"), "# Build Report\n");
+    writeFileSync(join(cacheDir, "semantic-graph-hash.txt"), "abc123\n");
+
+    // Without skipDirs containing "reponova-out", the generated files are detected
+    const docsNoSkip = detectDocFiles(tmpBase, {
+      enabled: true, patterns: [], exclude: [], max_file_size_kb: 500,
+    }, new Set());
+    expect(docsNoSkip).toContain("reponova-out/report.md");
+    expect(docsNoSkip).toContain("reponova-out/.cache/semantic-graph-hash.txt");
+
+    // With output dir basename in skipDirs (as orchestrator does), generated files are skipped
+    const skipDirs = new Set(["node_modules", "__pycache__", "reponova-out"]);
+    const docsWithSkip = detectDocFiles(tmpBase, {
+      enabled: true, patterns: [], exclude: [], max_file_size_kb: 500,
+    }, skipDirs);
+    expect(docsWithSkip).not.toContain("reponova-out/report.md");
+    expect(docsWithSkip).not.toContain("reponova-out/.cache/semantic-graph-hash.txt");
+    // Real doc files are still detected
+    expect(docsWithSkip).toContain("docs/README.md");
+    expect(docsWithSkip).toContain("docs/guide.txt");
+  });
 });
