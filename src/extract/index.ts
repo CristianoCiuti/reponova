@@ -379,11 +379,12 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       removedFiles: diff.removedFiles.length,
     };
 
-    // Save cache only when incremental builds are enabled
-    if (incremental) {
-      saveBuildCache(outputDir, currentHashes, extractions);
-      cleanStaleCacheEntries(outputDir, currentHashes);
-    }
+    // Always save cache when outputDir is available — even after --force builds.
+    // The incremental flag controls whether to LOAD the cache, not whether to SAVE it.
+    // Without this, a --force build produces no cache, forcing the next incremental
+    // build to re-extract everything from scratch.
+    saveBuildCache(outputDir, currentHashes, extractions);
+    cleanStaleCacheEntries(outputDir, currentHashes);
   } else {
     log.info("Extracting symbols and relationships...");
     extractions = await extractAll(workspace, files);
