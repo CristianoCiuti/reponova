@@ -4,7 +4,7 @@
  * Walks configured repos, applies path filters, and generates
  * pre-computed .outline.json files using the outline module.
  */
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { resolve, join, relative, dirname } from "node:path";
 import { generateOutline, formatOutlineJson } from "../outline/index.js";
 import { log } from "../shared/utils.js";
@@ -34,6 +34,7 @@ export async function runOutlineGeneration(
 
   let count = 0;
   const skipDirs = options.skipDirs ?? new Set<string>();
+  const isMulti = config.repos.length > 1;
 
   for (const repo of config.repos) {
     const repoPath = resolve(configDir, repo.path);
@@ -42,14 +43,22 @@ export async function runOutlineGeneration(
       continue;
     }
 
-    const files = findFiles(repoPath, config.outlines.patterns, config.outlines.exclude, skipDirs);
+    // Multi-repo: pass repo name so patterns like "repoName/path/**" match
+    const files = findFiles(
+      repoPath, config.outlines.patterns, config.outlines.exclude,
+      skipDirs, isMulti ? repo.name : undefined,
+    );
+
+    if (files.length === 0) {
+      log.info(`  ${repo.name}: no files matched outline patterns`);
+    } else {
+      log.info(`  ${repo.name}: ${files.length} file(s) matched`);
+    }
 
     for (const file of files) {
-      // Single-repo: no repo prefix. Multi-repo: prefix with repo name.
-      const mode = config.repos.length === 1 ? "single" : "multi";
-      const relPath = mode === "single"
-        ? relative(repoPath, file).split("\\").join("/")
-        : `${repo.name}/${relative(repoPath, file)}`.split("\\").join("/");
+      const relPath = isMulti
+        ? `${repo.name}/${relative(repoPath, file)}`.split("\\").join("/")
+        : relative(repoPath, file).split("\\").join("/");
       const outPath = join(outlinesDir, relPath + ".outline.json");
       const fileHash = hashFile(file);
       nextHashes.set(relPath, fileHash);
@@ -70,6 +79,21 @@ export async function runOutlineGeneration(
       }
     }
   }
+
+  // Clean up stale outlines: files in previous build but not in current
+  let staleCount = 0;
+  for (const [relPath] of previousHashes) {
+    if (!nextHashes.has(relPath)) {
+      const stalePath = join(outlinesDir, relPath + ".outline.json");
+      try {
+        if (existsSync(stalePath)) {
+          unlinkSync(stalePath);
+          staleCount++;
+        }
+      } catch { /* ignore cleanup failures */ }
+    }
+  }
+  if (staleCount > 0) log.info(`  Removed ${staleCount} stale outline(s)`);
 
   saveOutlineHashes(outputDir, nextHashes);
 
@@ -102,11 +126,19 @@ export function saveOutlineHashes(outputDir: string, hashes: Map<string, string>
 
 // ─── File discovery (shared) ────────────────────────────────────────────────────
 
+/**
+ * Walk baseDir and return files matching patterns.
+ * When repoName is provided (multi-repo), tests BOTH forms:
+ *   - repo-relative:      "commonlib/foo.py"
+ *   - workspace-relative: "motore_common/commonlib/foo.py"
+ * This mirrors the dual-match semantics in path-resolver.ts.
+ */
 function findFiles(
   baseDir: string,
   patterns: string[],
   exclude: string[],
   skipDirs: Set<string>,
+  repoName?: string,
 ): string[] {
   const isIncluded = createMatcher(patterns);
   const isExcluded = createMatcher(exclude);
@@ -128,8 +160,14 @@ function findFiles(
       if (!entry.isFile()) continue;
 
       const relPath = relative(baseDir, fullPath).split("\\").join("/");
+      const wsPath = repoName ? `${repoName}/${relPath}` : null;
+
+      // Check exclusion — either form triggers exclude
       if (isExcluded(relPath)) continue;
-      if (isIncluded(relPath)) {
+      if (wsPath && isExcluded(wsPath)) continue;
+
+      // Check inclusion — either form triggers include
+      if (isIncluded(relPath) || (wsPath && isIncluded(wsPath))) {
         results.push(fullPath);
       }
     }
