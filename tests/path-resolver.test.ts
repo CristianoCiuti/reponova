@@ -34,6 +34,7 @@ import {
   reconstructRepos,
   stripRepoPrefix,
   createDualMatcher,
+  createPatternMatcher,
 } from "../src/core/path-resolver.js";
 import type { PathContext, RepoMapping } from "../src/core/path-resolver.js";
 
@@ -805,5 +806,91 @@ describe("createDualMatcher", () => {
     const matcher = createDualMatcher(["src/**/*.py"], new Set());
     expect(matcher("src/main.py")).toBe(true);
     expect(matcher("api/src/main.py")).toBe(false); // no dual-match
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// createPatternMatcher (bidirectional)
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("createPatternMatcher", () => {
+  it("returns false-returning function for empty patterns", () => {
+    const matcher = createPatternMatcher([]);
+    expect(matcher("anything.py")).toBe(false);
+    expect(matcher("anything.py", "api")).toBe(false);
+  });
+
+  it("matches direct path (no repoNames)", () => {
+    const matcher = createPatternMatcher(["src/**/*.py"]);
+    expect(matcher("src/main.py")).toBe(true);
+    expect(matcher("tests/test.py")).toBe(false);
+  });
+
+  // Direction 1: strip prefix (workspace walk — input has repo prefix)
+  it("strips repo prefix to match repo-relative pattern (workspace walk)", () => {
+    const repoNames = new Set(["api", "core"]);
+    const matcher = createPatternMatcher(["src/**/*.py"], repoNames);
+    // "api/src/main.py" → strip "api/" → "src/main.py" matches "src/**/*.py"
+    expect(matcher("api/src/main.py")).toBe(true);
+    expect(matcher("core/src/lib.py")).toBe(true);
+  });
+
+  // Direction 2: add prefix (per-repo walk — input is repo-relative)
+  it("adds repo prefix to match workspace-relative pattern (per-repo walk)", () => {
+    const repoNames = new Set(["api", "core"]);
+    const matcher = createPatternMatcher(["api/src/**/*.py"], repoNames);
+    // "src/main.py" + repoName="api" → "api/src/main.py" matches "api/src/**/*.py"
+    expect(matcher("src/main.py", "api")).toBe(true);
+    // "src/lib.py" + repoName="core" → "core/src/lib.py" does NOT match "api/src/**/*.py"
+    expect(matcher("src/lib.py", "core")).toBe(false);
+  });
+
+  it("workspace-relative pattern matches directly when path already has prefix", () => {
+    const repoNames = new Set(["api", "core"]);
+    const matcher = createPatternMatcher(["api/src/**/*.py"], repoNames);
+    expect(matcher("api/src/main.py")).toBe(true);
+    expect(matcher("core/src/lib.py")).toBe(false);
+  });
+
+  it("repo-prefixed exclude only affects target repo", () => {
+    const repoNames = new Set(["api", "core"]);
+    const matcher = createPatternMatcher(["api/venv/**"], repoNames);
+    expect(matcher("api/venv/lib.py")).toBe(true);
+    expect(matcher("core/venv/lib.py")).toBe(false);
+    // Per-repo walk: "venv/lib.py" + repoName="api" → "api/venv/lib.py" matches
+    expect(matcher("venv/lib.py", "api")).toBe(true);
+    // Per-repo walk: "venv/lib.py" + repoName="core" → "core/venv/lib.py" no match
+    expect(matcher("venv/lib.py", "core")).toBe(false);
+  });
+
+  it("falls back when repoNames is empty set", () => {
+    const matcher = createPatternMatcher(["src/**/*.py"], new Set());
+    expect(matcher("src/main.py")).toBe(true);
+    expect(matcher("api/src/main.py")).toBe(false); // no dual-match
+  });
+
+  it("wildcard pattern matches both directions", () => {
+    const repoNames = new Set(["api", "core"]);
+    const matcher = createPatternMatcher(["**/*.py"], repoNames);
+    expect(matcher("src/main.py")).toBe(true);
+    expect(matcher("api/src/main.py")).toBe(true);
+    expect(matcher("main.py", "api")).toBe(true);
+  });
+
+  it("without repoName arg, does not try prefix addition", () => {
+    const repoNames = new Set(["api"]);
+    // Pattern requires "api/" prefix, but path doesn't have it and no repoName given
+    const matcher = createPatternMatcher(["api/src/**/*.py"], repoNames);
+    expect(matcher("src/main.py")).toBe(false); // no prefix to strip, no repoName to add
+  });
+
+  it("handles multiple patterns", () => {
+    const repoNames = new Set(["api", "core"]);
+    const matcher = createPatternMatcher(["src/**/*.py", "lib/**/*.ts"], repoNames);
+    expect(matcher("api/src/main.py")).toBe(true);
+    expect(matcher("core/lib/utils.ts")).toBe(true);
+    expect(matcher("src/main.py", "api")).toBe(true);
+    expect(matcher("lib/utils.ts", "core")).toBe(true);
+    expect(matcher("tests/test.py")).toBe(false);
   });
 });

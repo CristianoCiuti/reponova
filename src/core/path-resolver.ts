@@ -7,8 +7,10 @@
 import { resolve, relative, join } from "node:path";
 import { existsSync, symlinkSync, mkdirSync, readdirSync, statSync, copyFileSync } from "node:fs";
 import type { Config } from "../shared/types.js";
-import { createMatcher } from "../shared/glob.js";
+import { createMatcher, buildSkipDirs } from "../shared/glob.js";
 import { log } from "../shared/utils.js";
+
+export { buildSkipDirs } from "../shared/glob.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -295,6 +297,43 @@ export function createDualMatcher(
     if (matcher(relPath)) return true;
     const repoRel = stripRepoPrefix(relPath, repoNames);
     return repoRel !== null && matcher(repoRel);
+  };
+}
+
+/**
+ * Create a bidirectional pattern matcher.
+ *
+ * Tests patterns against multiple forms of the same path:
+ * 1. As given (covers both workspace-relative and repo-relative depending on caller)
+ * 2. Stripped: removes known repo prefix (workspace-relative → repo-relative)
+ * 3. Prefixed: adds repoName (repo-relative → workspace-relative)
+ *
+ * @param patterns - Glob patterns
+ * @param repoNames - Known repo names (enables dual matching)
+ * @returns A function `(relPath, repoName?) => boolean`
+ */
+export function createPatternMatcher(
+  patterns: string[],
+  repoNames?: Set<string>,
+): (relPath: string, repoName?: string) => boolean {
+  if (patterns.length === 0) return () => false;
+  const matcher = createMatcher(patterns);
+  if (!repoNames || repoNames.size === 0) return (p) => matcher(p);
+
+  return (relPath: string, repoName?: string) => {
+    // 1. Test as-is
+    if (matcher(relPath)) return true;
+
+    // 2. Strip known repo prefix (workspace-relative → repo-relative)
+    const stripped = stripRepoPrefix(relPath, repoNames);
+    if (stripped !== null && matcher(stripped)) return true;
+
+    // 3. Add repo prefix (repo-relative → workspace-relative)
+    if (repoName) {
+      return matcher(`${repoName}/${relPath}`);
+    }
+
+    return false;
   };
 }
 
