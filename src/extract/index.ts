@@ -16,7 +16,7 @@ import { getExtractorForFile, getSupportedExtensions } from "./languages/registr
 import { buildGraph, type BuiltGraph } from "./graph-builder.js";
 import { detectCommunities, type CommunityResult } from "./community.js";
 import { exportJson } from "./export-json.js";
-import { buildSkipDirs, createPatternMatcher } from "../core/path-resolver.js";
+import { buildSkipDirs, createPatternMatcher, extensionsToGlobs } from "../core/path-resolver.js";
 import { log } from "../shared/utils.js";
 
 export { buildGraph, type BuiltGraph } from "./graph-builder.js";
@@ -60,8 +60,8 @@ export function detectFiles(
   skipDirs: Set<string> = buildSkipDirs(true),
   repoNames?: Set<string>,
 ): string[] {
-  const extensions = patterns.length > 0 ? null : getCodeExtensions();
-  const isIncluded = patterns.length > 0 ? createPatternMatcher(patterns, repoNames) : null;
+  const effectivePatterns = patterns.length > 0 ? patterns : extensionsToGlobs(getCodeExtensions());
+  const isIncluded = createPatternMatcher(effectivePatterns, repoNames);
   const isExcluded = createPatternMatcher(excludeGlobs, repoNames);
   const files: string[] = [];
 
@@ -84,18 +84,8 @@ export function detectFiles(
         const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
 
         if (isExcluded(relPath)) continue;
-
-        const ext = "." + (entry.name.split(".").pop()?.toLowerCase() ?? "");
-
-        if (isIncluded) {
-          if (isIncluded(relPath)) {
-            files.push(relPath);
-          }
-        } else {
-          // Extension-based (no patterns): works fine as-is
-          if (extensions!.has(ext)) {
-            files.push(relPath);
-          }
+        if (isIncluded(relPath)) {
+          files.push(relPath);
         }
       }
     }
@@ -113,7 +103,8 @@ export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipD
   if (!docsConfig?.enabled) return [];
 
   const maxSizeBytes = (docsConfig.max_file_size_kb ?? 500) * 1024;
-  const isIncluded = docsConfig.patterns.length > 0 ? createPatternMatcher(docsConfig.patterns, repoNames) : null;
+  const effectivePatterns = docsConfig.patterns.length > 0 ? docsConfig.patterns : extensionsToGlobs(DOC_EXTENSIONS);
+  const isIncluded = createPatternMatcher(effectivePatterns, repoNames);
   const isExcluded = createPatternMatcher(docsConfig.exclude, repoNames);
 
   const files: string[] = [];
@@ -134,13 +125,10 @@ export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipD
         if (skipDirs.has(entry.name)) continue;
         walk(fullPath);
       } else if (entry.isFile()) {
-        const ext = "." + (entry.name.split(".").pop()?.toLowerCase() ?? "");
-        if (!DOC_EXTENSIONS.has(ext)) continue;
-
         const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
 
         if (isExcluded(relPath)) continue;
-        if (isIncluded && !isIncluded(relPath)) continue;
+        if (!isIncluded(relPath)) continue;
 
         // Check file size
         try {
@@ -166,8 +154,8 @@ export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipD
 export function detectDiagramFiles(workspace: string, imagesConfig?: ImagesConfig, skipDirs: Set<string> = buildSkipDirs(true), repoNames?: Set<string>): string[] {
   if (!imagesConfig?.enabled) return [];
 
-  const diagramExts = new Set([".puml", ".plantuml", ".svg", ".png", ".jpg", ".jpeg", ".gif"]);
-  const isIncluded = imagesConfig.patterns.length > 0 ? createPatternMatcher(imagesConfig.patterns, repoNames) : null;
+  const effectivePatterns = imagesConfig.patterns.length > 0 ? imagesConfig.patterns : extensionsToGlobs(DIAGRAM_EXTENSIONS);
+  const isIncluded = createPatternMatcher(effectivePatterns, repoNames);
   const isExcluded = createPatternMatcher(imagesConfig.exclude, repoNames);
 
   const files: string[] = [];
@@ -188,18 +176,10 @@ export function detectDiagramFiles(workspace: string, imagesConfig?: ImagesConfi
         if (skipDirs.has(entry.name)) continue;
         walk(fullPath);
       } else if (entry.isFile()) {
-        const ext = "." + (entry.name.split(".").pop()?.toLowerCase() ?? "");
-        if (!diagramExts.has(ext)) continue;
-
         const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
 
         if (isExcluded(relPath)) continue;
-        if (isIncluded && !isIncluded(relPath)) continue;
-
-        // Skip binary images unless puml/svg config says to parse them
-        if ((ext === ".png" || ext === ".jpg" || ext === ".jpeg" || ext === ".gif")) {
-          // Binary images are very lightweight (just metadata node) — include them
-        }
+        if (!isIncluded(relPath)) continue;
 
         files.push(relPath);
       }

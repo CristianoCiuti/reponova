@@ -9,8 +9,7 @@ import { resolve, join, relative, dirname } from "node:path";
 import { generateOutline, formatOutlineJson } from "../outline/index.js";
 import { log } from "../shared/utils.js";
 import type { Config } from "../shared/types.js";
-import { createPatternMatcher } from "../core/path-resolver.js";
-import { buildSkipDirs } from "../core/path-resolver.js";
+import { createPatternMatcher, buildSkipDirs, extensionsToGlobs } from "../core/path-resolver.js";
 import { getOutlineSupportedExtensions } from "../outline/languages/registry.js";
 import { hashFile } from "./incremental.js";
 
@@ -144,8 +143,8 @@ function findFiles(
   repoName?: string,
 ): string[] {
   const repoNames = repoName ? new Set([repoName]) : undefined;
-  const outlineExts = patterns.length === 0 ? getOutlineSupportedExtensions() : null;
-  const isIncluded = patterns.length > 0 ? createPatternMatcher(patterns, repoNames) : null;
+  const effectivePatterns = patterns.length > 0 ? patterns : extensionsToGlobs(getOutlineSupportedExtensions());
+  const isIncluded = createPatternMatcher(effectivePatterns, repoNames);
   const isExcluded = createPatternMatcher(exclude, repoNames);
   const results: string[] = [];
 
@@ -166,20 +165,9 @@ function findFiles(
 
       const relPath = relative(baseDir, fullPath).split("\\").join("/");
 
-      // Check exclusion — pass repoName so workspace-relative excludes work
       if (isExcluded(relPath, repoName)) continue;
-
-      if (isIncluded) {
-        // Pattern-based: pass repoName so workspace-relative patterns work
-        if (isIncluded(relPath, repoName)) {
-          results.push(fullPath);
-        }
-      } else {
-        // Extension-based auto-detect (no patterns)
-        const ext = "." + (entry.name.split(".").pop()?.toLowerCase() ?? "");
-        if (outlineExts!.has(ext)) {
-          results.push(fullPath);
-        }
+      if (isIncluded(relPath, repoName)) {
+        results.push(fullPath);
       }
     }
   }

@@ -44,5 +44,5 @@ export function buildSkipDirs(excludeCommon: boolean): Set<string> {
  */
 export function createMatcher(patterns: string[]): (relPath: string) => boolean {
   if (patterns.length === 0) return () => false;
-  return picomatch(patterns);
+  return picomatch(patterns, { dot: true });
 }

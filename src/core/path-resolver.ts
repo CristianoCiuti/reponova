@@ -187,6 +187,19 @@ export function reconstructRepos(
   }));
 }
 
+// ── Extension → Glob conversion ──────────────────────────────────────────────
+
+/**
+ * Convert a set of file extensions to glob patterns for picomatch.
+ * Used when `patterns: []` (auto-detect mode) to replace raw `Set.has(ext)` checks
+ * with picomatch, ensuring include and exclude use the same matching engine.
+ *
+ * Given {".py", ".pyw"}, returns glob patterns that match those extensions at any depth.
+ */
+export function extensionsToGlobs(extensions: Set<string>): string[] {
+  return [...extensions].map(ext => `**/*${ext}`);
+}
+
 // ── Pattern matching ─────────────────────────────────────────────────────────
 
 /**
