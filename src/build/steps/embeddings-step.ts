@@ -63,7 +63,6 @@ async function generateEmbeddings(config: Config, outputDir: string, graphData: 
   const vectorStore = new VectorStore(outputDir);
   await vectorStore.initialize();
   const existingRecords = await vectorStore.loadAllRecords();
-  await vectorStore.dispose();
 
   const existingVectors = new Map(existingRecords.map((record) => [record.id, record.vector]));
   const itemsNeedingEmbeddings = items.filter((item) => changedIds.has(item.id) || !existingVectors.has(item.id));
@@ -77,6 +76,7 @@ async function generateEmbeddings(config: Config, outputDir: string, graphData: 
   }
 
   if (itemsNeedingEmbeddings.length === 0 && removedIds.size === 0 && staleVectorIds.size === 0) {
+    await vectorStore.dispose();
     saveNodeTextCache(outputDir, currentTexts);
     return 0;
   }
@@ -85,12 +85,10 @@ async function generateEmbeddings(config: Config, outputDir: string, graphData: 
   if (itemsNeedingEmbeddings.length === 0) {
     if (staleVectorIds.size > 0) {
       const cleanedRecords = existingRecords.filter((r) => !staleVectorIds.has(r.id));
-      const store = new VectorStore(outputDir);
-      await store.initialize();
-      await store.upsert(cleanedRecords);
-      await store.dispose();
+      await vectorStore.upsert(cleanedRecords);
       log.info(`  ✓ removed ${staleVectorIds.size} stale vectors`);
     }
+    await vectorStore.dispose();
     // Rebuild TF-IDF vocabulary from current nodes (cheap: just term counting, no embedBatch).
     // The IDF file is used at query time — stale terms degrade search quality.
     if (method === "tfidf" && items.length > 0) {
@@ -107,9 +105,9 @@ async function generateEmbeddings(config: Config, outputDir: string, graphData: 
   // Full path: new embeddings needed (stale cleanup happens implicitly — storeEmbeddings
   // rebuilds from graphData.nodes only, excluding any stale entries)
   if (method === "tfidf") {
-    return generateTfidf(config, outputDir, graphData, items, itemsNeedingEmbeddings, existingRecords, currentTexts);
+    return generateTfidf(config, outputDir, graphData, items, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
   }
-  return generateOnnx(config, outputDir, graphData, itemsNeedingEmbeddings, existingRecords, currentTexts);
+  return generateOnnx(config, outputDir, graphData, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
 }
 
 async function generateTfidf(
@@ -120,6 +118,7 @@ async function generateTfidf(
   itemsToEmbed: Array<{ id: string; text: string }>,
   existingRecords: VectorRecord[],
   currentTexts: Map<string, string>,
+  vectorStore: VectorStore,
 ): Promise<number> {
   try {
     const engine = new TfidfEmbeddingEngine(config.build.embeddings);
@@ -131,10 +130,11 @@ async function generateTfidf(
     engine.saveVocabulary(outputDir);
     engine.dispose();
 
-    return storeEmbeddings(outputDir, graphData, embeddings, existingRecords, currentTexts);
+    return storeEmbeddings(graphData, embeddings, existingRecords, currentTexts, vectorStore, outputDir);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.warn(`TF-IDF embeddings failed (non-blocking): ${msg}`);
+    await vectorStore.dispose();
     return 0;
   }
 }
@@ -146,21 +146,26 @@ async function generateOnnx(
   items: Array<{ id: string; text: string }>,
   existingRecords: VectorRecord[],
   currentTexts: Map<string, string>,
+  vectorStore: VectorStore,
 ): Promise<number> {
   const cacheDir = resolveCacheDir(config.models.cache_dir);
   const engine = new EmbeddingEngine(config.build.embeddings, cacheDir, config.models.download_on_first_use);
 
   try {
     const ready = await engine.initialize();
-    if (!ready) return 0;
+    if (!ready) {
+      await vectorStore.dispose();
+      return 0;
+    }
 
     log.info("Generating ONNX embeddings...");
     const embeddings = await engine.embedBatch(items);
 
-    return storeEmbeddings(outputDir, graphData, embeddings, existingRecords, currentTexts);
+    return storeEmbeddings(graphData, embeddings, existingRecords, currentTexts, vectorStore, outputDir);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.warn(`ONNX embeddings failed (non-blocking): ${msg}`);
+    await vectorStore.dispose();
     return 0;
   } finally {
     await engine.dispose();
@@ -168,15 +173,13 @@ async function generateOnnx(
 }
 
 async function storeEmbeddings(
-  outputDir: string,
   graphData: GraphData,
   embeddings: Array<{ id: string; text: string; vector: Float32Array }>,
   existingRecords: VectorRecord[],
   currentTexts: Map<string, string>,
+  vectorStore: VectorStore,
+  outputDir: string,
 ): Promise<number> {
-  const vectorStore = new VectorStore(outputDir);
-  await vectorStore.initialize();
-
   const updatedVectors = new Map(embeddings.map((embedding) => [embedding.id, Array.from(embedding.vector)]));
   const existingVectorMap = new Map(existingRecords.map((record) => [record.id, record.vector]));
 
