@@ -83,26 +83,31 @@ export class VectorStore {
   }
 
   /**
-   * Store embeddings with metadata.
+   * Store embeddings with metadata. Passing an empty array clears the store.
    */
   async upsert(records: VectorRecord[]): Promise<void> {
-    if (records.length === 0) return;
-
     this.persistSidecar(records);
 
     if (this.useFallback) {
       this.fallbackData = records;
-      log.info(`  Vector fallback: saved ${records.length} records to disk`);
+      if (records.length > 0) {
+        log.info(`  Vector fallback: saved ${records.length} records to disk`);
+      }
       return;
     }
 
     if (!this.db) return;
 
     try {
-      // Drop existing table and recreate
+      // Drop existing table
       const tables = await this.db.tableNames();
       if (tables.includes("embeddings")) {
         await this.db.dropTable("embeddings");
+      }
+
+      if (records.length === 0) {
+        this.table = null;
+        return;
       }
 
       // LanceDB needs plain arrays for vectors

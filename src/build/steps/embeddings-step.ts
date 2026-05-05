@@ -7,7 +7,7 @@
  *
  * Incremental: only re-embeds nodes whose text content changed since last build.
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "../../shared/utils.js";
 import type { Config, GraphData } from "../../shared/types.js";
@@ -32,6 +32,15 @@ export async function runEmbeddingsStep(
 
 async function generateEmbeddings(config: Config, outputDir: string, graphData: GraphData): Promise<number> {
   const method = config.build.embeddings.method;
+
+  // Ensure only method-specific artifacts exist. tfidf_idf.json is TF-IDF exclusive.
+  if (method === "onnx") {
+    const tfidfPath = join(outputDir, "tfidf_idf.json");
+    if (existsSync(tfidfPath)) {
+      unlinkSync(tfidfPath);
+      log.info("Removed stale tfidf_idf.json (method is onnx)");
+    }
+  }
 
   const items = graphData.nodes.map((node) => ({
     id: node.id,
@@ -59,11 +68,44 @@ async function generateEmbeddings(config: Config, outputDir: string, graphData: 
   const existingVectors = new Map(existingRecords.map((record) => [record.id, record.vector]));
   const itemsNeedingEmbeddings = items.filter((item) => changedIds.has(item.id) || !existingVectors.has(item.id));
 
-  if (itemsNeedingEmbeddings.length === 0 && removedIds.size === 0) {
+  // Detect stale vectors: entries in VectorStore for nodes no longer in the graph
+  const staleVectorIds = new Set<string>();
+  for (const id of existingVectors.keys()) {
+    if (!currentTexts.has(id)) {
+      staleVectorIds.add(id);
+    }
+  }
+
+  if (itemsNeedingEmbeddings.length === 0 && removedIds.size === 0 && staleVectorIds.size === 0) {
     saveNodeTextCache(outputDir, currentTexts);
     return 0;
   }
 
+  // Cleanup-only path: no new embeddings needed, just remove stale entries from outputs
+  if (itemsNeedingEmbeddings.length === 0) {
+    if (staleVectorIds.size > 0) {
+      const cleanedRecords = existingRecords.filter((r) => !staleVectorIds.has(r.id));
+      const store = new VectorStore(outputDir);
+      await store.initialize();
+      await store.upsert(cleanedRecords);
+      await store.dispose();
+      log.info(`  ✓ removed ${staleVectorIds.size} stale vectors`);
+    }
+    // Rebuild TF-IDF vocabulary from current nodes (cheap: just term counting, no embedBatch).
+    // The IDF file is used at query time — stale terms degrade search quality.
+    if (method === "tfidf" && items.length > 0) {
+      const engine = new TfidfEmbeddingEngine(config.build.embeddings);
+      engine.buildVocabulary(items.map((i) => i.text));
+      engine.saveVocabulary(outputDir);
+      engine.dispose();
+    }
+    // node-texts.json is always written from currentTexts (which only has current graph nodes)
+    saveNodeTextCache(outputDir, currentTexts);
+    return 0;
+  }
+
+  // Full path: new embeddings needed (stale cleanup happens implicitly — storeEmbeddings
+  // rebuilds from graphData.nodes only, excluding any stale entries)
   if (method === "tfidf") {
     return generateTfidf(config, outputDir, graphData, items, itemsNeedingEmbeddings, existingRecords, currentTexts);
   }
