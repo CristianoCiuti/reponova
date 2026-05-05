@@ -83,7 +83,7 @@ describe("PROP-I3: incremental embeddings", () => {
 
   // ─── Case 4: Stale vectors only (text cache already clean) ─────────────────
 
-  it("removes stale vectors without regenerating any embeddings", async () => {
+  it("re-embeds all remaining nodes when stale vectors cause TF-IDF vocabulary change", async () => {
     const { outputDir, graphJsonPath, makeContext } = setup();
 
     // Build with 3 nodes
@@ -101,8 +101,9 @@ describe("PROP-I3: incremental embeddings", () => {
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
     const result = await runEmbeddingsStep(makeContext());
 
-    expect(result.processed).toBe(0);
-    expect(result.skipped).toBe(true);
+    // TF-IDF re-embeds all remaining nodes (IDF changed due to node removal)
+    expect(result.processed).toBe(2);
+    expect(result.skipped).toBe(false);
     assertOutputIds(outputDir, ["node-a", "node-b"]);
     // tfidf_idf.json REBUILT with vocabulary from only current 2 nodes (N changed)
     const idfAfter = JSON.parse(readFileSync(join(outputDir, "tfidf_idf.json"), "utf-8")) as Record<string, unknown>;
@@ -159,8 +160,9 @@ describe("PROP-I3: incremental embeddings", () => {
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
     const result = await runEmbeddingsStep(makeContext());
 
-    expect(result.processed).toBe(0);
-    expect(result.skipped).toBe(true);
+    // TF-IDF re-embeds all remaining nodes (IDF changed due to node removal)
+    expect(result.processed).toBe(2);
+    expect(result.skipped).toBe(false);
     assertOutputIds(outputDir, ["node-a", "node-b"]);
   });
 
@@ -217,8 +219,9 @@ describe("PROP-I3: incremental embeddings", () => {
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
     const result = await runEmbeddingsStep(makeContext());
 
-    expect(result.processed).toBe(0);
-    expect(result.skipped).toBe(true);
+    // TF-IDF re-embeds all remaining nodes (IDF changed due to node removal)
+    expect(result.processed).toBe(2);
+    expect(result.skipped).toBe(false);
     assertOutputIds(outputDir, ["node-a", "node-b"]);
   });
 

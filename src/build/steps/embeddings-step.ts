@@ -38,6 +38,12 @@ export const runEmbeddingsStep: BuildStep = async (ctx: StepContext): Promise<St
     removeDirectory(vectorsPath);
   }
 
+  // Node texts derive entirely from graph node attributes, so when the graph
+  // structure is unchanged and no config forces, there can be no delta.
+  if (!effectiveForce && !ctx.graphChanged) {
+    return { processed: 0, skipped: true, skipReason: "graph unchanged" };
+  }
+
   const graphData = JSON.parse(readFileSync(ctx.graphJsonPath, "utf-8")) as GraphData;
   return generateEmbeddings(ctx, graphData, effectiveForce);
 };
@@ -88,21 +94,17 @@ async function generateEmbeddings(ctx: StepContext, graphData: GraphData, effect
     }
 
     if (itemsNeedingEmbeddings.length === 0) {
-      const cleanedRecords = existingRecords.filter((record) => !staleVectorIds.has(record.id));
-      await vectorStore.upsert(cleanedRecords);
-
-      if (method === "tfidf") {
-        const engine = new TfidfEmbeddingEngine(config.build.embeddings);
-        try {
-          engine.buildVocabulary(items.map((item) => item.text));
-          atomicWriteJson(join(ctx.outputDir, "tfidf_idf.json"), engine.serializeVocabulary());
-        } finally {
-          engine.dispose();
-        }
+      if (method === "tfidf" && staleVectorIds.size > 0 && items.length > 0) {
+        // Nodes removed → IDF values changed → must re-embed ALL with new vocabulary
+        // to keep stored vectors consistent with the new tfidf_idf.json
+        return generateTfidf(ctx, graphData, items, items, [], currentTexts, vectorStore);
       }
 
+      // ONNX or empty graph: vectors are self-contained / nothing to embed, just clean stale
+      const cleanedRecords = existingRecords.filter((record) => !staleVectorIds.has(record.id));
+      await vectorStore.upsert(cleanedRecords);
       atomicWriteJson(getNodeTextCachePath(ctx.outputDir), Object.fromEntries(currentTexts));
-      return { processed: 0, skipped: true, skipReason: "up to date" };
+      return { processed: 0, skipped: true, skipReason: "stale cleanup only" };
     }
 
     if (method === "tfidf") {

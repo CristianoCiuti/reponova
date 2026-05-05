@@ -43,11 +43,6 @@ export async function runBuild(config: Config, configDir: string, options: Build
 
   const outputDir = resolve(configDir, config.output);
 
-  if (options.force && existsSync(outputDir)) {
-    rmSync(outputDir, { recursive: true, force: true });
-    log.info(`Cleaned output: ${outputDir}`);
-  }
-
   if (!existsSync(outputDir)) {
     mkdirSync(outputDir, { recursive: true });
   }

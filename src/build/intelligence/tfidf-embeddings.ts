@@ -10,7 +10,7 @@
  *
  * No external dependencies. Runs in milliseconds for 10k+ nodes.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "../../shared/utils.js";
 import type { EmbeddingsConfig } from "../../shared/types.js";
@@ -115,14 +115,6 @@ export class TfidfEmbeddingEngine {
   dispose(): void {
     this.idf.clear();
     this.ready = false;
-  }
-
-  /**
-   * Save IDF table to disk so it can be loaded at query time.
-   */
-  saveVocabulary(outputDir: string): void {
-    const data = this.serializeVocabulary();
-    writeFileSync(join(outputDir, "tfidf_idf.json"), JSON.stringify(data));
   }
 
   serializeVocabulary(): Record<string, number> {
