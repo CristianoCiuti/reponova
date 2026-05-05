@@ -11,7 +11,7 @@ import type { Database } from "../../core/db.js";
 import { existsSync, readFileSync } from "node:fs";
 import { OutlineCache } from "../../outline/cache.js";
 import { generateOutline, formatOutlineMarkdown, formatOutlineJson } from "../../outline/index.js";
-import { resolveOutlinePath, resolveAbsolutePath, type RepoMapping } from "../../core/path-resolver.js";
+import { resolveOutlinePath, type PathResolver } from "../../core/path-resolver.js";
 import type { FileOutline } from "../../shared/types.js";
 
 const outlineCache = new OutlineCache();
@@ -20,8 +20,7 @@ export function handleOutline(
   _db: Database,
   graphDir: string,
   args: Record<string, unknown>,
-  repos?: RepoMapping[] | null,
-  mode?: "single" | "multi",
+  resolvePaths?: PathResolver | null,
 ) {
   const filePath = args.file_path as string;
   const format = (args.format as string) ?? "markdown";
@@ -45,11 +44,8 @@ export function handleOutline(
     } catch { /* fall through to on-the-fly */ }
   }
 
-  // 3. On-the-fly generation — resolve absolute path from metadata
-  let absolutePath: string | null = null;
-  if (repos && mode) {
-    absolutePath = resolveAbsolutePath(repos, filePath, mode);
-  }
+  // 3. On-the-fly generation — resolve absolute path via path resolver
+  const absolutePath = resolvePaths?.(filePath)?.absolute_path ?? null;
 
   if (!absolutePath || !existsSync(absolutePath)) {
     return { content: [{ type: "text" as const, text: `File not found: ${filePath}` }] };

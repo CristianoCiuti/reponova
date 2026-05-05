@@ -1,6 +1,7 @@
 import type { Database } from "./db.js";
 import { queryAll, queryOne } from "./db.js";
 import type { ImpactResult, ImpactLayer, ImpactNode, GraphNode } from "../shared/types.js";
+import type { ResolvedPaths } from "./path-resolver.js";
 
 export interface ImpactOptions {
   direction?: "upstream" | "downstream" | "both";
@@ -103,12 +104,20 @@ function isTestFile(filePath: string | null): boolean {
 /**
  * Format impact result as markdown.
  */
-export function formatImpactMarkdown(result: ImpactResult): string {
+export function formatImpactMarkdown(
+  result: ImpactResult,
+  resolvePath?: (sourceFile: string) => ResolvedPaths,
+): string {
   const lines: string[] = [];
   lines.push(`## Impact analysis: ${result.target.label}`);
   lines.push("");
   lines.push(`TARGET: ${result.target.type} ${result.target.label}`);
-  if (result.target.source_file) lines.push(`  File: ${result.target.source_file}`);
+  if (result.target.source_file) {
+    lines.push(`  File: ${result.target.source_file}`);
+    const paths = resolvePath?.(result.target.source_file);
+    if (paths?.graph_rel_path) lines.push(`  Graph path: ${paths.graph_rel_path}`);
+    if (paths?.absolute_path) lines.push(`  Absolute path: ${paths.absolute_path}`);
+  }
   if (result.target.community) lines.push(`  Community: "${result.target.community}"`);
   lines.push("");
 
@@ -121,6 +130,11 @@ export function formatImpactMarkdown(result: ImpactResult): string {
         const file = node.source_file ?? "";
         const via = node.via ? ` [via ${node.via}]` : "";
         lines.push(`    ${file}  ${node.label} [${node.edge_type}]${via}`);
+        if (node.source_file) {
+          const paths = resolvePath?.(node.source_file);
+          if (paths?.graph_rel_path) lines.push(`      Graph path: ${paths.graph_rel_path}`);
+          if (paths?.absolute_path) lines.push(`      Absolute path: ${paths.absolute_path}`);
+        }
       }
     }
     lines.push("");
@@ -133,6 +147,11 @@ export function formatImpactMarkdown(result: ImpactResult): string {
       lines.push(`  Depth ${layer.depth} (${layer.depth === 1 ? "DIRECT" : "INDIRECT"}):`);
       for (const node of layer.nodes) {
         lines.push(`    ${node.source_file ?? ""}  ${node.label} [${node.edge_type}]`);
+        if (node.source_file) {
+          const paths = resolvePath?.(node.source_file);
+          if (paths?.graph_rel_path) lines.push(`      Graph path: ${paths.graph_rel_path}`);
+          if (paths?.absolute_path) lines.push(`      Absolute path: ${paths.absolute_path}`);
+        }
       }
     }
     lines.push("");

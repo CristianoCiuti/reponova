@@ -6,6 +6,7 @@
  */
 import type { Database } from "../../core/db.js";
 import { ContextBuilder } from "../../core/context-builder.js";
+import type { PathResolver } from "../../core/path-resolver.js";
 import type { EmbeddingsConfig } from "../../shared/types.js";
 
 let contextBuilder: ContextBuilder | null = null;
@@ -41,7 +42,12 @@ export async function initContextBuilder(
 /**
  * Handle the graph_context tool call.
  */
-export async function handleContext(db: Database, graphDir: string, args: Record<string, unknown>) {
+export async function handleContext(
+  db: Database,
+  graphDir: string,
+  args: Record<string, unknown>,
+  resolvePaths?: PathResolver | null,
+) {
   const query = args.query as string;
   if (!query) {
     return { content: [{ type: "text" as const, text: "Error: 'query' parameter is required" }], isError: true };
@@ -71,6 +77,13 @@ export async function handleContext(db: Database, graphDir: string, args: Record
   });
 
   if (format === "structured" && result.structured) {
+    if (resolvePaths) {
+      for (const candidate of result.structured.candidates) {
+        const paths = resolvePaths(candidate.source_file);
+        candidate.graph_rel_path = paths.graph_rel_path;
+        candidate.absolute_path = paths.absolute_path;
+      }
+    }
     return {
       content: [{
         type: "text" as const,

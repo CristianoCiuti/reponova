@@ -14,7 +14,14 @@ import { searchNodes } from "./search.js";
 import { VectorStore } from "./vector-store.js";
 import { EmbeddingEngine } from "../build/embeddings.js";
 import { TfidfEmbeddingEngine } from "../build/tfidf-embeddings.js";
-import type { EmbeddingsConfig } from "../shared/types.js";
+import type {
+  CommunitySummaryEntry,
+  ContextCandidate,
+  EmbeddingsConfig,
+  RelationshipEntry,
+  SourceSnippet,
+  StructuredContext,
+} from "../shared/types.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveOutlinePath } from "./path-resolver.js";
@@ -42,45 +49,6 @@ interface ContextSection {
   type: "candidates" | "relationships" | "community" | "source" | "metadata";
   content: string;
   tokens: number;
-}
-
-interface StructuredContext {
-  candidates: CandidateNode[];
-  relationships: RelationshipEntry[];
-  communities: CommunitySummaryEntry[];
-  source_snippets: SourceSnippet[];
-}
-
-interface CandidateNode {
-  id: string;
-  label: string;
-  type: string;
-  source_file?: string;
-  repo?: string;
-  community?: string;
-  score: number;
-  signature?: string;
-  docstring?: string;
-}
-
-interface RelationshipEntry {
-  from: string;
-  to: string;
-  edge_type: string;
-  from_label?: string;
-  to_label?: string;
-}
-
-interface CommunitySummaryEntry {
-  community_id: string;
-  summary: string;
-}
-
-interface SourceSnippet {
-  file: string;
-  start_line: number;
-  end_line: number;
-  content: string;
 }
 
 // ─── Scored candidate (internal) ─────────────────────────────────────────────
@@ -275,7 +243,7 @@ export class ContextBuilder {
 
     if (format === "structured") {
       result.structured = {
-        candidates: candidates.slice(0, 20).map(c => ({
+        candidates: candidates.slice(0, 20).map<ContextCandidate>(c => ({
           id: c.id,
           label: c.label,
           type: c.type,
@@ -287,7 +255,7 @@ export class ContextBuilder {
           docstring: c.docstring,
         })),
         relationships,
-        communities: [...touchedCommunities].map(id => ({
+        communities: [...touchedCommunities].map<CommunitySummaryEntry>(id => ({
           community_id: id,
           summary: this.communitySummaries.get(id) ?? "",
         })).filter(c => c.summary),

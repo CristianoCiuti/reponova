@@ -1,8 +1,13 @@
 import type { Database } from "../../core/db.js";
 import { searchNodes } from "../../core/search.js";
 import { queryAll } from "../../core/db.js";
+import type { PathResolver } from "../../core/path-resolver.js";
 
-export function handleSearch(db: Database, args: Record<string, unknown>) {
+export function handleSearch(
+  db: Database,
+  args: Record<string, unknown>,
+  resolvePaths?: PathResolver | null,
+) {
   const query = args.query as string;
   if (!query) return { content: [{ type: "text" as const, text: "Error: 'query' is required" }], isError: true };
 
@@ -21,6 +26,11 @@ export function handleSearch(db: Database, args: Record<string, unknown>) {
   for (let i = 0; i < results.length; i++) {
     const r = results[i]!;
     lines.push(`${i + 1}. [${r.type}] ${r.label}${r.source_file ? ` \u2014 ${r.source_file}` : ""}`);
+    if (resolvePaths && r.source_file) {
+      const paths = resolvePaths(r.source_file);
+      if (paths.graph_rel_path) lines.push(`   Graph path: ${paths.graph_rel_path}`);
+      if (paths.absolute_path) lines.push(`   Absolute path: ${paths.absolute_path}`);
+    }
     if (r.community) lines.push(`   Community: "${r.community}"`);
   }
 
@@ -42,7 +52,7 @@ export function handleSearch(db: Database, args: Record<string, unknown>) {
 
       // Group edges by depth for readability
       for (const edge of edges) {
-        lines.push(`  ${edge.sourceLabel} --${edge.type}--> ${edge.targetLabel}`);
+        lines.push(`  ${edge.sourceLabel} \u2500\u2500${edge.type}\u2500\u2500\u25ba ${edge.targetLabel}`);
       }
     }
   }

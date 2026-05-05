@@ -250,6 +250,47 @@ export interface PathStep {
   edge_type?: string;
 }
 
+export interface ContextCandidate {
+  id: string;
+  label: string;
+  type: string;
+  source_file?: string;
+  repo?: string;
+  community?: string;
+  score: number;
+  signature?: string;
+  docstring?: string;
+  graph_rel_path?: string | null;
+  absolute_path?: string | null;
+}
+
+export interface RelationshipEntry {
+  from: string;
+  to: string;
+  edge_type: string;
+  from_label?: string;
+  to_label?: string;
+}
+
+export interface CommunitySummaryEntry {
+  community_id: string;
+  summary: string;
+}
+
+export interface SourceSnippet {
+  file: string;
+  start_line: number;
+  end_line: number;
+  content: string;
+}
+
+export interface StructuredContext {
+  candidates: ContextCandidate[];
+  relationships: RelationshipEntry[];
+  communities: CommunitySummaryEntry[];
+  source_snippets: SourceSnippet[];
+}
+
 /** Node detail result */
 export interface NodeDetail {
   id: string;

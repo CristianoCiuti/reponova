@@ -1,7 +1,12 @@
 import type { Database } from "../../core/db.js";
 import { queryAll } from "../../core/db.js";
+import type { PathResolver } from "../../core/path-resolver.js";
 
-export function handleCommunity(db: Database, args: Record<string, unknown>) {
+export function handleCommunity(
+  db: Database,
+  args: Record<string, unknown>,
+  resolvePaths?: PathResolver | null,
+) {
   const communityId = args.community_id;
   if (communityId == null) {
     return { content: [{ type: "text" as const, text: "Error: 'community_id' is required" }], isError: true };
@@ -35,6 +40,11 @@ export function handleCommunity(db: Database, args: Record<string, unknown>) {
   for (const row of rows) {
     const degree = (row.in_degree as number) + (row.out_degree as number);
     lines.push(`- [${row.type}] ${row.label} (degree: ${degree})${row.source_file ? ` — ${row.source_file}` : ""}`);
+    if (resolvePaths && row.source_file) {
+      const paths = resolvePaths(row.source_file as string);
+      if (paths.graph_rel_path) lines.push(`  Graph path: ${paths.graph_rel_path}`);
+      if (paths.absolute_path) lines.push(`  Absolute path: ${paths.absolute_path}`);
+    }
   }
 
   return { content: [{ type: "text" as const, text: lines.join("\n") }] };

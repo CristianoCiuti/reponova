@@ -5,6 +5,7 @@ import { VectorStore } from "../../core/vector-store.js";
 import { EmbeddingEngine } from "../../build/embeddings.js";
 import { TfidfEmbeddingEngine } from "../../build/tfidf-embeddings.js";
 import type { EmbeddingsConfig } from "../../shared/types.js";
+import type { PathResolver } from "../../core/path-resolver.js";
 
 let vectorStore: VectorStore | null = null;
 let embeddingEngine: EmbeddingEngine | null = null;
@@ -60,7 +61,11 @@ async function _doInitSimilaritySearch(graphDir: string, embeddingsConfig: Embed
 /**
  * Handle the graph_similar tool call.
  */
-export async function handleSimilar(_db: unknown, args: Record<string, unknown>) {
+export async function handleSimilar(
+  _db: unknown,
+  args: Record<string, unknown>,
+  resolvePaths?: PathResolver | null,
+) {
   // Wait for initialization to complete before checking state
   if (_initPromise) {
     await _initPromise;
@@ -118,7 +123,14 @@ export async function handleSimilar(_db: unknown, args: Record<string, unknown>)
     const r = results[i]!;
     const scoreStr = (r.score * 100).toFixed(1);
     lines.push(`${i + 1}. [${r.type}] ${r.label} — ${scoreStr}% similarity`);
-    if (r.source_file) lines.push(`   File: ${r.source_file}`);
+    if (r.source_file) {
+      lines.push(`   File: ${r.source_file}`);
+      if (resolvePaths) {
+        const paths = resolvePaths(r.source_file);
+        if (paths.graph_rel_path) lines.push(`   Graph path: ${paths.graph_rel_path}`);
+        if (paths.absolute_path) lines.push(`   Absolute path: ${paths.absolute_path}`);
+      }
+    }
     if (r.repo) lines.push(`   Repo: ${r.repo}`);
     if (r.community) lines.push(`   Community: ${r.community}`);
   }

@@ -1,7 +1,12 @@
 import type { Database } from "../../core/db.js";
 import { queryAll } from "../../core/db.js";
+import type { PathResolver } from "../../core/path-resolver.js";
 
-export function handleHotspots(db: Database, args: Record<string, unknown>) {
+export function handleHotspots(
+  db: Database,
+  args: Record<string, unknown>,
+  resolvePaths?: PathResolver | null,
+) {
   const topN = (args.top_n as number) ?? 10;
   const metric = (args.metric as string) ?? "degree";
 
@@ -43,7 +48,14 @@ export function handleHotspots(db: Database, args: Record<string, unknown>) {
     const btw = (r.betweenness as number).toFixed(3);
     lines.push(`${i + 1}. [${r.type}] ${r.label}`);
     lines.push(`   Degree: ${inDeg + outDeg} (in: ${inDeg}, out: ${outDeg}) | Betweenness: ${btw}`);
-    if (r.source_file) lines.push(`   File: ${r.source_file}`);
+    if (r.source_file) {
+      lines.push(`   File: ${r.source_file}`);
+      if (resolvePaths) {
+        const paths = resolvePaths(r.source_file as string);
+        if (paths.graph_rel_path) lines.push(`   Graph path: ${paths.graph_rel_path}`);
+        if (paths.absolute_path) lines.push(`   Absolute path: ${paths.absolute_path}`);
+      }
+    }
     if (r.community) lines.push(`   Community: ${r.community}`);
   }
 

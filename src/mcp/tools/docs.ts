@@ -5,11 +5,16 @@
  */
 import type { Database } from "../../core/db.js";
 import { queryAll } from "../../core/db.js";
+import type { PathResolver } from "../../core/path-resolver.js";
 
 /**
  * Handle the graph_docs tool call.
  */
-export function handleDocs(db: Database, args: Record<string, unknown>) {
+export function handleDocs(
+  db: Database,
+  args: Record<string, unknown>,
+  resolvePaths?: PathResolver | null,
+) {
   const query = args.query as string;
   if (!query) {
     return { content: [{ type: "text" as const, text: "Error: 'query' parameter is required" }], isError: true };
@@ -64,7 +69,14 @@ export function handleDocs(db: Database, args: Record<string, unknown>) {
 
     lines.push(`### ${i + 1}. ${row.label}`);
     lines.push(`- Type: ${row.type}`);
-    if (row.source_file) lines.push(`- File: ${row.source_file}`);
+    if (row.source_file) {
+      lines.push(`- File: ${row.source_file}`);
+      if (resolvePaths) {
+        const paths = resolvePaths(row.source_file as string);
+        if (paths.graph_rel_path) lines.push(`  Graph path: ${paths.graph_rel_path}`);
+        if (paths.absolute_path) lines.push(`  Absolute path: ${paths.absolute_path}`);
+      }
+    }
     if (row.repo) lines.push(`- Repo: ${row.repo}`);
 
     // Show code references from properties
@@ -97,6 +109,11 @@ export function handleDocs(db: Database, args: Record<string, unknown>) {
       lines.push("## Linked Code Symbols", "");
       for (const edge of linkedEdges) {
         lines.push(`- [${edge.type}] **${edge.label}**${edge.source_file ? ` (${edge.source_file})` : ""}`);
+        if (resolvePaths && edge.source_file) {
+          const paths = resolvePaths(edge.source_file as string);
+          if (paths.graph_rel_path) lines.push(`  Graph path: ${paths.graph_rel_path}`);
+          if (paths.absolute_path) lines.push(`  Absolute path: ${paths.absolute_path}`);
+        }
       }
     }
   }

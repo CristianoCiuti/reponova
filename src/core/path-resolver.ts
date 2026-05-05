@@ -187,6 +187,45 @@ export function reconstructRepos(
   }));
 }
 
+// ── File path resolution for MCP tool responses ─────────────────────────────
+
+export interface ResolvedPaths {
+  /** Path relative to the graph output directory (portable across machines if layout is preserved) */
+  graph_rel_path: string | null;
+  /** Absolute filesystem path (null if file not found or repos unavailable) */
+  absolute_path: string | null;
+}
+
+/**
+ * Path resolution callback — created once at MCP server startup as a closure
+ * that captures graphDir, repos, and mode. Tools receive this single function
+ * instead of needing those three params individually.
+ */
+export type PathResolver = (sourceFile: string) => ResolvedPaths;
+
+/**
+ * Resolve a node's source_file into both a graph-relative path and an absolute path.
+ * Used by MCP tools to include actionable file locations in responses.
+ *
+ * - graph_rel_path: relative(graphDir, absolutePath) — portable if repo layout preserved
+ * - absolute_path: resolveAbsolutePath(repos, sourceFile, mode) — direct filesystem location
+ */
+export function resolveFilePaths(
+  graphDir: string,
+  repos: RepoMapping[] | null | undefined,
+  mode: "single" | "multi",
+  sourceFile: string | null | undefined,
+): ResolvedPaths {
+  if (!sourceFile) return { graph_rel_path: null, absolute_path: null };
+  if (!repos || repos.length === 0) return { graph_rel_path: null, absolute_path: null };
+
+  const abs = resolveAbsolutePath(repos, sourceFile, mode);
+  if (!abs) return { graph_rel_path: null, absolute_path: null };
+
+  const graphRel = relative(graphDir, abs).replace(/\\/g, "/");
+  return { graph_rel_path: graphRel, absolute_path: abs };
+}
+
 // ── Extension → Glob conversion ──────────────────────────────────────────────
 
 /**

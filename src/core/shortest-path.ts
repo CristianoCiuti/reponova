@@ -3,6 +3,7 @@ import { queryAll, queryOne } from "./db.js";
 import type { PathResult, PathStep } from "../shared/types.js";
 import { DEFAULT_EDGE_WEIGHTS } from "../shared/types.js";
 import { fuzzyMatchNode } from "./search.js";
+import type { ResolvedPaths } from "./path-resolver.js";
 
 export interface ShortestPathOptions {
   max_depth?: number;
@@ -119,7 +120,10 @@ function getNode(db: Database, id: string): NodeInfo | null {
 /**
  * Format path result as markdown.
  */
-export function formatPathMarkdown(result: PathResult): string {
+export function formatPathMarkdown(
+  result: PathResult,
+  resolvePath?: (sourceFile: string) => ResolvedPaths,
+): string {
   if (!result.found) {
     return [`## Path: ${result.from} \u2192 ${result.to}`, "", "No path found within the configured depth."].join("\n");
   }
@@ -127,6 +131,11 @@ export function formatPathMarkdown(result: PathResult): string {
   for (let i = 0; i < result.path.length; i++) {
     const step = result.path[i]!;
     lines.push(`${step.label}${step.source_file ? ` (${step.source_file})` : ""}`);
+    if (step.source_file) {
+      const paths = resolvePath?.(step.source_file);
+      if (paths?.graph_rel_path) lines.push(`  Graph path: ${paths.graph_rel_path}`);
+      if (paths?.absolute_path) lines.push(`  Absolute path: ${paths.absolute_path}`);
+    }
     if (i < result.path.length - 1) {
       const next = result.path[i + 1]!;
       lines.push(`  \u2500\u2500[${next.edge_type ?? "UNKNOWN"}]\u2500\u2500\u25ba`);

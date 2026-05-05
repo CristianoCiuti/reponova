@@ -1,9 +1,14 @@
 import type { Database } from "../../core/db.js";
 import { queryOne } from "../../core/db.js";
 import { analyzeImpact, formatImpactMarkdown } from "../../core/impact.js";
+import type { PathResolver } from "../../core/path-resolver.js";
 import { fuzzyMatchNode } from "../../core/search.js";
 
-export function handleImpact(db: Database, args: Record<string, unknown>) {
+export function handleImpact(
+  db: Database,
+  args: Record<string, unknown>,
+  resolvePaths?: PathResolver | null,
+) {
   const symbol = args.symbol as string;
   if (!symbol) return { content: [{ type: "text" as const, text: "Error: 'symbol' is required" }], isError: true };
 
@@ -21,7 +26,7 @@ export function handleImpact(db: Database, args: Record<string, unknown>) {
   });
 
   if (!result) return { content: [{ type: "text" as const, text: `Could not analyze: "${symbol}"` }] };
-  return { content: [{ type: "text" as const, text: formatImpactMarkdown(result) }] };
+  return { content: [{ type: "text" as const, text: formatImpactMarkdown(result, resolvePaths ?? undefined) }] };
 }
 
 function resolveSymbolId(db: Database, symbol: string): string | null {

@@ -246,6 +246,7 @@ Use when: checking if the graph is available and up to date.
 6. **Use graph_context for comprehensive analysis** — combines search, vectors, and graph expansion within a token budget. More thorough than graph_search alone.
 7. **Read report.md** at \`reponova-out/report.md\` for architecture overview, god nodes, and community structure.
 8. **Keep the graph current** — after code changes, run \`reponova build\` to rebuild (incremental, only re-processes changed files).
+9. **Use resolved paths to navigate to files** — tool responses include "Graph path" (relative to graph output dir) and "Absolute path" (full disk path) for every file reference. Use the absolute path to open or edit files directly.
 `;
 
 // ─── Context message injected by hooks ───────────────────────────────────────
