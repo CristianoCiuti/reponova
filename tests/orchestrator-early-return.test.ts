@@ -56,6 +56,35 @@ describe("PROP-I1: orchestrator early return when no files changed", () => {
       },
     }, null, 2));
 
+    // Simulate a completed previous build: manifest + all expected artifacts
+    const cacheDir = join(outputDir, ".cache");
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(join(cacheDir, "build-manifest.json"), JSON.stringify({
+      version: 1,
+      started_at: "2025-01-01T00:00:00.000Z",
+      completed_at: "2025-01-01T00:01:00.000Z",
+      graph_hash: "abc123",
+      steps: {
+        extraction: { status: "completed" },
+        graph_build: { status: "completed" },
+        indexer: { status: "completed" },
+        outlines: { status: "completed" },
+        embeddings: { status: "completed" },
+        community_summaries: { status: "completed" },
+        node_descriptions: { status: "completed" },
+        html: { status: "completed" },
+        report: { status: "completed" },
+      },
+    }, null, 2));
+    // Create expected artifacts
+    writeFileSync(join(outputDir, "graph_search.db"), "SQLite format 3\x00" + "\x00".repeat(100));
+    writeFileSync(join(outputDir, "tfidf_idf.json"), "{}");
+    writeFileSync(join(outputDir, "community_summaries.json"), "[]");
+    writeFileSync(join(outputDir, "node_descriptions.json"), "[]");
+    writeFileSync(join(outputDir, "graph.html"), "<html></html>");
+    writeFileSync(join(outputDir, "report.md"), "# Report");
+    mkdirSync(join(outputDir, "outlines"), { recursive: true });
+
     loadPreviousBuildConfigMock.mockReturnValue({
       hasChanges: false,
       isFirstBuild: false,

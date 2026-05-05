@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { resolveGraphPath, resolveGraphJson } from "../core/graph-resolver.js";
 import { loadGraphData } from "../core/graph-loader.js";
 import { openDatabase, initializeSchema, populateDatabase, saveDatabase } from "../core/db.js";
+import { invalidateManifestStep, validateManifestStep } from "../build/manifest.js";
 import { log } from "../shared/utils.js";
 
 export const indexCommand: CommandModule = {
@@ -27,6 +28,9 @@ export const indexCommand: CommandModule = {
       process.exit(1);
     }
 
+    // Invalidate manifest step so interrupted runs are detected by next build
+    invalidateManifestStep(graphDir, "indexer");
+
     log.info(`Indexing ${graphJsonPath}...`);
     const graphData = loadGraphData(graphJsonPath);
 
@@ -40,5 +44,8 @@ export const indexCommand: CommandModule = {
     log.info(`Search index created: ${dbPath}`);
     log.info(`  Nodes: ${graphData.nodes.length}`);
     log.info(`  Edges: ${graphData.edges.length}`);
+
+    // Mark step complete on success
+    validateManifestStep(graphDir, "indexer");
   },
 };
