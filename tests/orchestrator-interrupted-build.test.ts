@@ -37,6 +37,10 @@ vi.mock("../src/core/config.js", async () => {
 });
 vi.mock("../src/extract/index.js", () => ({ runPipeline: buildMonorepoMock }));
 
+// Mock openDatabase for artifact integrity checks
+const openDatabaseMock = vi.fn();
+vi.mock("../src/core/db.js", () => ({ openDatabase: openDatabaseMock }));
+
 describe("interrupted-build recovery (PROP-I3)", () => {
   afterEach(() => {
     vi.clearAllMocks();
@@ -44,6 +48,20 @@ describe("interrupted-build recovery (PROP-I3)", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // Default: openDatabase throws (simulates missing/corrupt DB).
+  // Tests that create a valid indexer artifact override via createArtifacts().
+  function setupDefaultDbMock(): void {
+    openDatabaseMock.mockRejectedValue(new Error("not a valid database"));
+  }
+
+  /** Mock openDatabase to return a valid DB (call AFTER createArtifacts if indexer included) */
+  function setupValidDbMock(): void {
+    openDatabaseMock.mockResolvedValue({
+      exec: () => [{ values: [[5]] }],
+      close: () => {},
+    });
+  }
 
   function setupConfig(): { config: Config; configDir: string; outputDir: string; graphPath: string } {
     const root = join(tmpdir(), `rn-test-interrupted-${Date.now()}-${Math.random().toString(16).slice(2)}`);
@@ -126,6 +144,7 @@ describe("interrupted-build recovery (PROP-I3)", () => {
           break;
         case "html":
           writeFileSync(join(outputDir, "graph.html"), "<html></html>");
+          writeFileSync(join(outputDir, "graph_communities.html"), "<html></html>");
           break;
         case "outlines":
           mkdirSync(join(outputDir, "outlines"), { recursive: true });
@@ -176,6 +195,7 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     setupNoConfigChange();
     setupNoFileChanges();
     setupIntelligenceMock();
+    setupDefaultDbMock();
     runOutlineGenerationMock.mockResolvedValue(3);
 
     // Simulate: previous build interrupted after extraction + graph_build, before indexer ran
@@ -199,6 +219,7 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     setupNoConfigChange();
     setupNoFileChanges();
     setupIntelligenceMock();
+    setupDefaultDbMock();
     runOutlineGenerationMock.mockResolvedValue(3);
 
     // Manifest says completed (old successful build), but indexer artifact is corrupted/missing
@@ -222,6 +243,7 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     setupNoConfigChange();
     setupNoFileChanges();
     setupIntelligenceMock();
+    setupValidDbMock();
     runOutlineGenerationMock.mockResolvedValue(3);
 
     // Build interrupted: extraction, graph_build, indexer all completed — outlines and beyond not started
@@ -246,6 +268,7 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     setupNoConfigChange();
     setupNoFileChanges();
     setupIntelligenceMock();
+    setupDefaultDbMock(); // openDatabase throws on corrupt file
     runOutlineGenerationMock.mockResolvedValue(3);
 
     // All steps "completed" in manifest but indexer artifact is corrupted
@@ -270,6 +293,7 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     setupNoConfigChange();
     setupNoFileChanges();
     setupIntelligenceMock();
+    setupValidDbMock(); // indexer DB is valid
     runOutlineGenerationMock.mockResolvedValue(3);
 
     writeInterruptedManifest(outputDir, [
@@ -296,6 +320,7 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     setupNoConfigChange();
     setupNoFileChanges();
     setupIntelligenceMock();
+    setupDefaultDbMock();
     runOutlineGenerationMock.mockResolvedValue(3);
 
     // Interrupted build
@@ -317,6 +342,7 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     setupNoConfigChange();
     setupNoFileChanges();
     setupIntelligenceMock();
+    setupDefaultDbMock();
     runOutlineGenerationMock.mockResolvedValue(3);
 
     // No manifest, no artifacts — virgin output directory
@@ -341,6 +367,7 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     writeGraphJson(graphPath);
     setupNoConfigChange();
     setupNoFileChanges();
+    setupDefaultDbMock();
     runOutlineGenerationMock.mockResolvedValue(3);
 
     // Intelligence layer throws
@@ -365,5 +392,175 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     expect(manifest.steps.indexer.status).toBe("completed");
     expect(manifest.steps.html.status).toBe("completed");
     expect(manifest.steps.report.status).toBe("completed");
+  });
+
+  // ── Improvement #1: Step "running" + artifact exists → re-run ──────────
+
+  it("re-runs step when manifest says 'running' even if artifact exists on disk (partial artifact)", async () => {
+    const { config, configDir, outputDir, graphPath } = setupConfig();
+    writeGraphJson(graphPath);
+    setupNoConfigChange();
+    setupNoFileChanges();
+    setupIntelligenceMock();
+    setupValidDbMock(); // DB appears valid but...
+    runOutlineGenerationMock.mockResolvedValue(3);
+
+    // Manifest: indexer was "running" when build was killed (artifact may be partial)
+    const cacheDir = join(outputDir, ".cache");
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(join(cacheDir, "build-manifest.json"), JSON.stringify({
+      version: 1,
+      started_at: "2025-01-01T00:00:00.000Z",
+      completed_at: null,
+      graph_hash: null,
+      steps: {
+        extraction: { status: "completed" },
+        graph_build: { status: "completed" },
+        indexer: { status: "running" }, // WAS INTERRUPTED
+        outlines: { status: "pending" },
+        embeddings: { status: "pending" },
+        community_summaries: { status: "pending" },
+        node_descriptions: { status: "pending" },
+        html: { status: "pending" },
+        report: { status: "pending" },
+      },
+    }, null, 2));
+    // Indexer artifact exists (but might be partial since step was interrupted)
+    createArtifacts(outputDir, ["indexer"]);
+
+    const { runBuild } = await import("../src/build/orchestrator.js");
+    await runBuild(config, configDir, { force: false });
+
+    // Even though artifact exists, manifest says "running" → MUST re-run
+    expect(runIndexerMock).toHaveBeenCalled();
+  });
+
+  // ── Improvement #2: Step "failed" + artifact exists → retry ────────────
+
+  it("retries step when manifest says 'failed' even if artifact exists (model now available)", async () => {
+    const { config, configDir, outputDir, graphPath } = setupConfig();
+    writeGraphJson(graphPath);
+    setupNoConfigChange();
+    setupNoFileChanges();
+    setupIntelligenceMock();
+    setupValidDbMock();
+    runOutlineGenerationMock.mockResolvedValue(3);
+
+    // Manifest: intelligence layer failed previously but left partial artifacts
+    const cacheDir = join(outputDir, ".cache");
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(join(cacheDir, "build-manifest.json"), JSON.stringify({
+      version: 1,
+      started_at: "2025-01-01T00:00:00.000Z",
+      completed_at: null,
+      graph_hash: null,
+      steps: {
+        extraction: { status: "completed" },
+        graph_build: { status: "completed" },
+        indexer: { status: "completed" },
+        outlines: { status: "completed" },
+        embeddings: { status: "failed", skip_reason: "Model OOM" },
+        community_summaries: { status: "failed", skip_reason: "Model OOM" },
+        node_descriptions: { status: "failed", skip_reason: "Model OOM" },
+        html: { status: "completed" },
+        report: { status: "completed" },
+      },
+    }, null, 2));
+    // All artifacts exist (including partial/stale ones from failed intelligence)
+    createArtifacts(outputDir, ["indexer", "embeddings", "community_summaries", "node_descriptions", "html", "outlines", "report"]);
+
+    const { runBuild } = await import("../src/build/orchestrator.js");
+    await runBuild(config, configDir, { force: false });
+
+    // Even though artifacts exist, manifest says "failed" → MUST retry intelligence
+    expect(runIntelligenceLayerMock).toHaveBeenCalled();
+    // Indexer should be SKIPPED (status "completed" + artifact valid)
+    expect(runIndexerMock).not.toHaveBeenCalled();
+  });
+
+  // ── Improvement #3: SQLite integrity check via actual query ────────────
+
+  it("re-runs indexer when DB exists but query returns 0 rows (empty/corrupt DB)", async () => {
+    const { config, configDir, outputDir, graphPath } = setupConfig();
+    writeGraphJson(graphPath);
+    setupNoConfigChange();
+    setupNoFileChanges();
+    setupIntelligenceMock();
+    runOutlineGenerationMock.mockResolvedValue(3);
+
+    // Mock openDatabase to return empty result (DB exists but has no data)
+    openDatabaseMock.mockResolvedValue({
+      exec: () => [{ values: [[0]] }], // 0 nodes = corrupt/empty
+      close: () => {},
+    });
+
+    // Manifest says all completed, but DB has no data
+    const cacheDir = join(outputDir, ".cache");
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(join(cacheDir, "build-manifest.json"), JSON.stringify({
+      version: 1,
+      started_at: "2025-01-01T00:00:00.000Z",
+      completed_at: null,
+      graph_hash: null,
+      steps: {
+        extraction: { status: "completed" },
+        graph_build: { status: "completed" },
+        indexer: { status: "completed" },
+        outlines: { status: "completed" },
+        embeddings: { status: "completed" },
+        community_summaries: { status: "completed" },
+        node_descriptions: { status: "completed" },
+        html: { status: "completed" },
+        report: { status: "completed" },
+      },
+    }, null, 2));
+    createArtifacts(outputDir, ["embeddings", "community_summaries", "node_descriptions", "html", "outlines", "report"]);
+    writeFileSync(join(outputDir, "graph_search.db"), "SQLite format 3\x00" + "\x00".repeat(100));
+
+    const { runBuild } = await import("../src/build/orchestrator.js");
+    await runBuild(config, configDir, { force: false });
+
+    // Empty DB detected via query → indexer re-run
+    expect(runIndexerMock).toHaveBeenCalled();
+  });
+
+  it("re-runs indexer when openDatabase throws (corrupted binary)", async () => {
+    const { config, configDir, outputDir, graphPath } = setupConfig();
+    writeGraphJson(graphPath);
+    setupNoConfigChange();
+    setupNoFileChanges();
+    setupIntelligenceMock();
+    runOutlineGenerationMock.mockResolvedValue(3);
+
+    // Mock openDatabase to throw (corrupt DB can't be opened)
+    openDatabaseMock.mockRejectedValue(new Error("malformed database schema"));
+
+    const cacheDir = join(outputDir, ".cache");
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(join(cacheDir, "build-manifest.json"), JSON.stringify({
+      version: 1,
+      started_at: "2025-01-01T00:00:00.000Z",
+      completed_at: null,
+      graph_hash: null,
+      steps: {
+        extraction: { status: "completed" },
+        graph_build: { status: "completed" },
+        indexer: { status: "completed" },
+        outlines: { status: "completed" },
+        embeddings: { status: "completed" },
+        community_summaries: { status: "completed" },
+        node_descriptions: { status: "completed" },
+        html: { status: "completed" },
+        report: { status: "completed" },
+      },
+    }, null, 2));
+    createArtifacts(outputDir, ["embeddings", "community_summaries", "node_descriptions", "html", "outlines", "report"]);
+    writeFileSync(join(outputDir, "graph_search.db"), "corrupted binary data here");
+
+    const { runBuild } = await import("../src/build/orchestrator.js");
+    await runBuild(config, configDir, { force: false });
+
+    // openDatabase threw → indexer must be re-run
+    expect(runIndexerMock).toHaveBeenCalled();
   });
 });

@@ -30,6 +30,10 @@ vi.mock("../src/core/config.js", async () => {
 });
 vi.mock("../src/extract/index.js", () => ({ runPipeline: buildMonorepoMock }));
 
+// Mock openDatabase for artifact integrity checks
+const openDatabaseMock = vi.fn();
+vi.mock("../src/core/db.js", () => ({ openDatabase: openDatabaseMock }));
+
 describe("PROP-I1: orchestrator early return when no files changed", () => {
   afterEach(() => {
     vi.clearAllMocks();
@@ -82,8 +86,15 @@ describe("PROP-I1: orchestrator early return when no files changed", () => {
     writeFileSync(join(outputDir, "community_summaries.json"), "[]");
     writeFileSync(join(outputDir, "node_descriptions.json"), "[]");
     writeFileSync(join(outputDir, "graph.html"), "<html></html>");
+    writeFileSync(join(outputDir, "graph_communities.html"), "<html></html>");
     writeFileSync(join(outputDir, "report.md"), "# Report");
     mkdirSync(join(outputDir, "outlines"), { recursive: true });
+
+    // Mock openDatabase to report a valid DB with nodes
+    openDatabaseMock.mockResolvedValue({
+      exec: () => [{ values: [[5]] }],
+      close: () => {},
+    });
 
     loadPreviousBuildConfigMock.mockReturnValue({
       hasChanges: false,

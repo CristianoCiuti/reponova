@@ -17,8 +17,10 @@ import { computeSemanticGraphHash, loadPreviousGraphHash, saveGraphHash } from "
 import { createPathContext, prepareWorkspace, extractRepoName } from "../core/path-resolver.js";
 import {
   createManifest, loadManifest, updateStep, completeManifest,
-  isManifestComplete, invalidateManifestStep, validateManifestStep,
+  isManifestComplete,
 } from "./manifest.js";
+import type { BuildManifest, StepName } from "./manifest.js";
+import { openDatabase } from "../core/db.js";
 
 export interface BuildOptions {
   force: boolean;
@@ -144,7 +146,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
     const noFileChanges = result.incrementalStats?.reextractedFiles === 0
       && (result.incrementalStats?.removedFiles ?? 0) === 0;
 
-    const missingArtifacts = checkExpectedArtifacts(outputDir, config);
+    const missingArtifacts = await checkExpectedArtifacts(outputDir, config);
     const previousBuildComplete = previousManifest !== null
       && isManifestComplete(previousManifest)
       && missingArtifacts.length === 0;
@@ -253,7 +255,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
     }
 
     // ── Determine which steps need running ───────────────────────────────
-    const stepsToRun = determineStepsToRun(missingArtifacts, config);
+    const stepsToRun = determineStepsToRun(missingArtifacts, config, previousManifest);
 
     // ── Step: Search index ───────────────────────────────────────────────
     if (stepsToRun.has("indexer")) {
@@ -473,20 +475,20 @@ function tagNodesWithRepo(graphJsonPath: string, repoNames: string[], mode: "sin
  * Used to prevent early-return when a previous build was interrupted.
  * Performs both existence AND integrity checks.
  */
-function checkExpectedArtifacts(outputDir: string, config: Config): string[] {
+async function checkExpectedArtifacts(outputDir: string, config: Config): Promise<string[]> {
   const missing: string[] = [];
 
-  // Search index: check existence + basic integrity (parseable)
+  // Search index: check existence + integrity via actual SQLite query
   const dbPath = join(outputDir, "graph_search.db");
   if (!existsSync(dbPath)) {
     missing.push("indexer");
   } else {
     try {
-      const content = readFileSync(dbPath);
-      // SQLite files start with "SQLite format 3\000"
-      if (content.length < 100 || !content.toString("utf-8", 0, 15).startsWith("SQLite format 3")) {
-        missing.push("indexer");
-      }
+      const db = await openDatabase(dbPath, { readonly: true });
+      const result = db.exec("SELECT COUNT(*) as c FROM nodes");
+      const count = result[0]?.values[0]?.[0] as number ?? 0;
+      db.close();
+      if (count === 0) missing.push("indexer");
     } catch {
       missing.push("indexer");
     }
@@ -519,7 +521,7 @@ function checkExpectedArtifacts(outputDir: string, config: Config): string[] {
     }
   }
 
-  if (config.build.html && !existsSync(join(outputDir, "graph.html"))) {
+  if (config.build.html && (!existsSync(join(outputDir, "graph.html")) || !existsSync(join(outputDir, "graph_communities.html")))) {
     missing.push("html");
   }
 
@@ -534,21 +536,39 @@ function checkExpectedArtifacts(outputDir: string, config: Config): string[] {
 }
 
 /**
- * Determine which pipeline steps need to run based on missing artifacts.
+ * Determine which pipeline steps need to run based on missing artifacts AND manifest state.
  * On a full build (no missing artifacts from early-return skip), runs everything.
+ *
+ * Manifest-aware: steps marked "running" (interrupted) or "failed" in the previous
+ * manifest are ALWAYS re-run, even if their artifact exists on disk — the artifact
+ * may be partial/stale from the interrupted execution.
  */
-function determineStepsToRun(missingArtifacts: string[], config: Config): Set<string> {
-  // If there are missing artifacts, only run those (plus dependencies).
-  // Otherwise run everything (normal full build after graph change).
-  if (missingArtifacts.length === 0) {
-    // Full build — run all steps
+function determineStepsToRun(missingArtifacts: string[], config: Config, previousManifest: BuildManifest | null): Set<string> {
+  // Start with artifact-based missing steps
+  const steps = new Set<string>(missingArtifacts);
+
+  // Manifest-aware: force re-run for steps that were "running" or "failed" in previous build
+  // even if artifact appears to exist (it might be partial/stale)
+  if (previousManifest !== null && !isManifestComplete(previousManifest)) {
+    const manifestSteps: StepName[] = [
+      "indexer", "outlines", "embeddings", "community_summaries", "node_descriptions", "html", "report",
+    ];
+    for (const step of manifestSteps) {
+      const status = previousManifest.steps[step]?.status;
+      if (status === "running" || status === "failed") {
+        steps.add(step);
+      }
+    }
+  }
+
+  // If no steps to run after manifest check, and no missing artifacts → full build
+  // (this handles normal graph-change rebuild where everything needs regeneration)
+  if (missingArtifacts.length === 0 && steps.size === 0) {
     const all = new Set<string>(["indexer", "outlines", "embeddings", "community_summaries", "node_descriptions", "html", "report"]);
     return all;
   }
 
-  // Selective recovery: run missing steps + their dependents
-  const steps = new Set<string>(missingArtifacts);
-
+  // Selective recovery: add dependents
   // HTML depends on community_summaries (for names in visualization)
   if (steps.has("community_summaries") && config.build.html) steps.add("html");
   // Report depends on community_summaries

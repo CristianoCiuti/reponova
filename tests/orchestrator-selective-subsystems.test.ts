@@ -34,6 +34,10 @@ vi.mock("../src/build/graph-hash.js", () => ({
   saveGraphHash: saveGraphHashMock,
 }));
 
+// Mock openDatabase for artifact integrity checks (not called when db file doesn't exist)
+const openDatabaseMock = vi.fn();
+vi.mock("../src/core/db.js", () => ({ openDatabase: openDatabaseMock }));
+
 describe("PROP-I2: selective subsystem execution", () => {
   afterEach(() => {
     vi.clearAllMocks();
