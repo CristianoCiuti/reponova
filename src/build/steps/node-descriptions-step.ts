@@ -10,10 +10,10 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { log } from "../shared/utils.js";
-import type { Config, GraphData } from "../shared/types.js";
-import { NodeDescriptionGenerator } from "./node-description-generator.js";
-import type { LlmEnginePool } from "./llm-engine-pool.js";
+import { log } from "../../shared/utils.js";
+import type { Config, GraphData } from "../../shared/types.js";
+import { NodeDescriptionGenerator } from "../intelligence/node-description-generator.js";
+import type { LlmEnginePool } from "../intelligence/llm-engine-pool.js";
 
 /**
  * Run the node descriptions step.

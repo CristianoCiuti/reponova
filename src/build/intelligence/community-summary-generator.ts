@@ -6,8 +6,8 @@
  * - Algorithmic (always available): template-based from node metadata
  * - LLM-enhanced (when engine provided): richer prose via local model
  */
-import { log } from "../shared/utils.js";
-import type { CommunitySummariesConfig, GraphNode } from "../shared/types.js";
+import { log } from "../../shared/utils.js";
+import type { CommunitySummariesConfig, GraphNode } from "../../shared/types.js";
 import type { LlmEngine } from "./llm-engine.js";
 
 export interface CommunitySummary {

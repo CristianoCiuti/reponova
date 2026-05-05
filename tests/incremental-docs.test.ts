@@ -14,7 +14,7 @@ import {
   saveBuildCache,
   diffFiles,
   loadCachedExtraction,
-} from "../src/build/incremental.js";
+} from "../src/build/incremental/incremental.js";
 
 // Markdown extractor
 import { MarkdownExtractor } from "../src/extract/languages/markdown.js";

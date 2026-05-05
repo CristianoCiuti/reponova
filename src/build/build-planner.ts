@@ -13,7 +13,7 @@ import { join } from "node:path";
 import type { Config } from "../shared/types.js";
 import type { BuildManifest, StepName } from "./manifest.js";
 import { isManifestComplete } from "./manifest.js";
-import type { ConfigDiff } from "./config-diff.js";
+import type { ConfigDiff } from "./incremental/config-diff.js";
 import { openDatabase } from "../core/db.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────

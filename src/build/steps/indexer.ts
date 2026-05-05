@@ -1,8 +1,8 @@
 import { join } from "node:path";
 import { existsSync, unlinkSync } from "node:fs";
-import { loadGraphData } from "../core/graph-loader.js";
-import { openDatabase, initializeSchema, populateDatabase, saveDatabase } from "../core/db.js";
-import { log } from "../shared/utils.js";
+import { loadGraphData } from "../../core/graph-loader.js";
+import { openDatabase, initializeSchema, populateDatabase, saveDatabase } from "../../core/db.js";
+import { log } from "../../shared/utils.js";
 
 /**
  * Generate the SQLite search index from graph.json.

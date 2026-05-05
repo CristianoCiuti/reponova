@@ -3,7 +3,7 @@ import Graph from "graphology";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { computeSemanticGraphHash, loadPreviousGraphHash, saveGraphHash } from "../src/build/graph-hash.js";
+import { computeSemanticGraphHash, loadPreviousGraphHash, saveGraphHash } from "../src/build/incremental/graph-hash.js";
 
 const tempDirs: string[] = [];
 

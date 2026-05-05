@@ -8,7 +8,7 @@ import type { CommandModule } from "yargs";
 import { resolve } from "node:path";
 import { loadConfig } from "../core/config.js";
 import { resolveGraphPath } from "../core/graph-resolver.js";
-import { runOutlineGeneration } from "../build/outlines.js";
+import { runOutlineGeneration } from "../build/steps/outlines.js";
 import { buildSkipDirs } from "../core/path-resolver.js";
 import { invalidateManifestStep, validateManifestStep } from "../build/manifest.js";
 import { log } from "../shared/utils.js";

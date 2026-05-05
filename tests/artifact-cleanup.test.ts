@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { cleanStaleArtifacts } from "../src/build/artifact-cleanup.js";
+import { cleanStaleArtifacts } from "../src/build/incremental/artifact-cleanup.js";
 import type { Config, BuildConfigFingerprint } from "../src/shared/types.js";
 import { DEFAULT_CONFIG } from "../src/shared/types.js";
-import type { ConfigDiff } from "../src/build/config-diff.js";
+import type { ConfigDiff } from "../src/build/incremental/config-diff.js";
 
 const tempDirs: string[] = [];
 

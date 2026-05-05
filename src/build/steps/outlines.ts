@@ -6,12 +6,12 @@
  */
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, rmdirSync } from "node:fs";
 import { resolve, join, relative, dirname } from "node:path";
-import { generateOutline, formatOutlineJson } from "../outline/index.js";
-import { log } from "../shared/utils.js";
-import type { Config } from "../shared/types.js";
-import { createPatternMatcher, buildSkipDirs, extensionsToGlobs } from "../core/path-resolver.js";
-import { getOutlineSupportedExtensions } from "../outline/languages/registry.js";
-import { hashFile } from "./incremental.js";
+import { generateOutline, formatOutlineJson } from "../../outline/index.js";
+import { log } from "../../shared/utils.js";
+import type { Config } from "../../shared/types.js";
+import { createPatternMatcher, buildSkipDirs, extensionsToGlobs } from "../../core/path-resolver.js";
+import { getOutlineSupportedExtensions } from "../../outline/languages/registry.js";
+import { hashFile } from "../incremental/incremental.js";
 
 export interface OutlineOptions {
   force: boolean;

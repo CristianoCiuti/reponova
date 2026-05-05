@@ -7,9 +7,9 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { log } from "../shared/utils.js";
-import type { EmbeddingsConfig } from "../shared/types.js";
-import { resolveCacheDir } from "./shared/cache-dir.js";
+import { log } from "../../shared/utils.js";
+import type { EmbeddingsConfig } from "../../shared/types.js";
+import { resolveCacheDir } from "./cache-dir.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

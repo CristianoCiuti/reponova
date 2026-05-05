@@ -9,12 +9,12 @@
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { log } from "../shared/utils.js";
-import type { Config, GraphData } from "../shared/types.js";
-import { EmbeddingEngine, composeNodeText } from "./embeddings.js";
-import { TfidfEmbeddingEngine } from "./tfidf-embeddings.js";
-import { VectorStore, type VectorRecord } from "../core/vector-store.js";
-import { resolveCacheDir } from "./shared/cache-dir.js";
+import { log } from "../../shared/utils.js";
+import type { Config, GraphData } from "../../shared/types.js";
+import { EmbeddingEngine, composeNodeText } from "../intelligence/embeddings.js";
+import { TfidfEmbeddingEngine } from "../intelligence/tfidf-embeddings.js";
+import { VectorStore, type VectorRecord } from "../../core/vector-store.js";
+import { resolveCacheDir } from "../intelligence/cache-dir.js";
 
 /**
  * Run the embeddings step.

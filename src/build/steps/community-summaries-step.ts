@@ -10,10 +10,10 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { log } from "../shared/utils.js";
-import type { Config, GraphData, GraphNode } from "../shared/types.js";
-import { CommunitySummaryGenerator, type CommunityData } from "./community-summary-generator.js";
-import type { LlmEnginePool } from "./llm-engine-pool.js";
+import { log } from "../../shared/utils.js";
+import type { Config, GraphData, GraphNode } from "../../shared/types.js";
+import { CommunitySummaryGenerator, type CommunityData } from "../intelligence/community-summary-generator.js";
+import type { LlmEnginePool } from "../intelligence/llm-engine-pool.js";
 
 /**
  * Run the community summaries step.

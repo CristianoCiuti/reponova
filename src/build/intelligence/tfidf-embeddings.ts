@@ -12,8 +12,8 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { log } from "../shared/utils.js";
-import type { EmbeddingsConfig } from "../shared/types.js";
+import { log } from "../../shared/utils.js";
+import type { EmbeddingsConfig } from "../../shared/types.js";
 import type { EmbeddingResult } from "./embeddings.js";
 
 // ─── TF-IDF Engine ──────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@
  * and compares with the current config to detect subsystem-level changes.
  */
 import { readFileSync, existsSync } from "node:fs";
-import type { Config, BuildConfigFingerprint } from "../shared/types.js";
+import type { Config, BuildConfigFingerprint } from "../../shared/types.js";
 
 export interface ConfigDiff {
   /** True if any subsystem config changed */

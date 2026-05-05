@@ -13,8 +13,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import type { FileExtraction } from "../extract/types.js";
-import { log } from "../shared/utils.js";
+import type { FileExtraction } from "../../extract/types.js";
+import { log } from "../../shared/utils.js";
 
 export interface BuildCache {
   /** Stored hashes from the last build: relPath → sha256 */

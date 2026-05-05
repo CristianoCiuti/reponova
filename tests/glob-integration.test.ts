@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { detectFiles, detectDocFiles, detectDiagramFiles } from "../src/extract/index.js";
 import { buildSkipDirs, COMMON_SKIP_DIRS } from "../src/shared/glob.js";
-import { diffFiles, type BuildCache } from "../src/build/incremental.js";
-import { loadPreviousBuildConfig } from "../src/build/config-diff.js";
+import { diffFiles, type BuildCache } from "../src/build/incremental/incremental.js";
+import { loadPreviousBuildConfig } from "../src/build/incremental/config-diff.js";
 import type { Config, BuildConfigFingerprint } from "../src/shared/types.js";
 import { DEFAULT_CONFIG } from "../src/shared/types.js";
 

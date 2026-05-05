@@ -13,9 +13,9 @@
  * Context size promotion: if a second acquire() requests a larger context
  * than the cached engine, the pool re-creates with the larger size.
  */
-import { log } from "../shared/utils.js";
+import { log } from "../../shared/utils.js";
 import { LlmEngine, areModelsEquivalent, type LlmEngineOptions } from "./llm-engine.js";
-import type { ModelsConfig } from "../shared/types.js";
+import type { ModelsConfig } from "../../shared/types.js";
 
 interface PoolEntry {
   engine: LlmEngine;

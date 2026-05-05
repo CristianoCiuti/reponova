@@ -2,8 +2,8 @@
  * graph_similar MCP tool — semantic similarity search via vector embeddings.
  */
 import { VectorStore } from "../../core/vector-store.js";
-import { EmbeddingEngine } from "../../build/embeddings.js";
-import { TfidfEmbeddingEngine } from "../../build/tfidf-embeddings.js";
+import { EmbeddingEngine } from "../../build/intelligence/embeddings.js";
+import { TfidfEmbeddingEngine } from "../../build/intelligence/tfidf-embeddings.js";
 import type { EmbeddingsConfig } from "../../shared/types.js";
 import type { PathResolver } from "../../core/path-resolver.js";
 

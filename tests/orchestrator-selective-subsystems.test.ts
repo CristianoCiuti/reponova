@@ -23,19 +23,19 @@ const computeSemanticGraphHashMock = vi.fn();
 const saveGraphHashMock = vi.fn();
 
 vi.mock("../src/extract/index.js", () => ({ runPipeline: runPipelineMock }));
-vi.mock("../src/build/indexer.js", () => ({ runIndexer: runIndexerMock }));
-vi.mock("../src/build/outlines.js", () => ({ runOutlineGeneration: runOutlineGenerationMock }));
-vi.mock("../src/build/embeddings-step.js", () => ({ runEmbeddingsStep: runEmbeddingsStepMock }));
-vi.mock("../src/build/community-summaries-step.js", () => ({ runCommunitySummariesStep: runCommunitySummariesStepMock }));
-vi.mock("../src/build/node-descriptions-step.js", () => ({ runNodeDescriptionsStep: runNodeDescriptionsStepMock }));
-vi.mock("../src/build/llm-engine-pool.js", () => ({
+vi.mock("../src/build/steps/indexer.js", () => ({ runIndexer: runIndexerMock }));
+vi.mock("../src/build/steps/outlines.js", () => ({ runOutlineGeneration: runOutlineGenerationMock }));
+vi.mock("../src/build/steps/embeddings-step.js", () => ({ runEmbeddingsStep: runEmbeddingsStepMock }));
+vi.mock("../src/build/steps/community-summaries-step.js", () => ({ runCommunitySummariesStep: runCommunitySummariesStepMock }));
+vi.mock("../src/build/steps/node-descriptions-step.js", () => ({ runNodeDescriptionsStep: runNodeDescriptionsStepMock }));
+vi.mock("../src/build/intelligence/llm-engine-pool.js", () => ({
   LlmEnginePool: vi.fn().mockImplementation(() => ({ disposeAll: vi.fn() })),
 }));
-vi.mock("../src/build/report.ts", () => ({ generateGraphReport: generateGraphReportMock }));
+vi.mock("../src/build/steps/report.ts", () => ({ generateGraphReport: generateGraphReportMock }));
 vi.mock("../src/extract/export-html.js", () => ({ exportHtml: exportHtmlMock, exportCommunityHtml: exportCommunityHtmlMock }));
-vi.mock("../src/build/config-diff.js", () => ({ loadPreviousBuildConfig: loadPreviousBuildConfigMock }));
-vi.mock("../src/build/artifact-cleanup.js", () => ({ cleanStaleArtifacts: cleanStaleArtifactsMock }));
-vi.mock("../src/build/graph-hash.js", () => ({
+vi.mock("../src/build/incremental/config-diff.js", () => ({ loadPreviousBuildConfig: loadPreviousBuildConfigMock }));
+vi.mock("../src/build/incremental/artifact-cleanup.js", () => ({ cleanStaleArtifacts: cleanStaleArtifactsMock }));
+vi.mock("../src/build/incremental/graph-hash.js", () => ({
   loadPreviousGraphHash: loadPreviousGraphHashMock,
   computeSemanticGraphHash: computeSemanticGraphHashMock,
   saveGraphHash: saveGraphHashMock,

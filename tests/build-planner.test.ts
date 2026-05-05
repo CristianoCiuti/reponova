@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import type { Config } from "../src/shared/types.js";
 import { DEFAULT_CONFIG } from "../src/shared/types.js";
 import type { BuildManifest, StepName } from "../src/build/manifest.js";
-import type { ConfigDiff } from "../src/build/config-diff.js";
+import type { ConfigDiff } from "../src/build/incremental/config-diff.js";
 import type { PlannerInput } from "../src/build/build-planner.js";
 
 // Mock openDatabase for artifact integrity checks

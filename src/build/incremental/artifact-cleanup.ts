@@ -1,7 +1,7 @@
 import { existsSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { log } from "../shared/utils.js";
-import type { Config } from "../shared/types.js";
+import { log } from "../../shared/utils.js";
+import type { Config } from "../../shared/types.js";
 import type { ConfigDiff } from "./config-diff.js";
 
 export function cleanStaleArtifacts(outputDir: string, diff: ConfigDiff, config: Config): void {

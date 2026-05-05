@@ -19,10 +19,10 @@ export { resolveAbsolutePath, reconstructRepos, resolveOutlinePath, createPatter
 export type { RepoMapping, PathContext } from "./core/path-resolver.js";
 
 // Intelligence layer exports
-export { EmbeddingEngine, composeNodeText } from "./build/embeddings.js";
+export { EmbeddingEngine, composeNodeText } from "./build/intelligence/embeddings.js";
 export { VectorStore } from "./core/vector-store.js";
-export { LlmEngine } from "./build/llm-engine.js";
-export { CommunitySummaryGenerator } from "./build/community-summary-generator.js";
+export { LlmEngine } from "./build/intelligence/llm-engine.js";
+export { CommunitySummaryGenerator } from "./build/intelligence/community-summary-generator.js";
 export { ContextBuilder } from "./core/context-builder.js";
 
 

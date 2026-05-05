@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runOutlineGeneration, loadOutlineHashes } from "../src/build/outlines.js";
+import { runOutlineGeneration, loadOutlineHashes } from "../src/build/steps/outlines.js";
 import type { Config } from "../src/shared/types.js";
 import { DEFAULT_CONFIG } from "../src/shared/types.js";
 

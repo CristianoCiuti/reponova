@@ -1,7 +1,7 @@
 import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { extname, join } from "node:path";
 import type Graph from "graphology";
-import type { CommunityResult } from "../extract/community.js";
+import type { CommunityResult } from "../../extract/community.js";
 
 export interface GenerateGraphReportOptions {
   graph: Graph;

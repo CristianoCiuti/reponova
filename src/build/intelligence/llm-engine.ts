@@ -7,8 +7,8 @@
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { log } from "../shared/utils.js";
-import { resolveCacheDir } from "./shared/cache-dir.js";
+import { log } from "../../shared/utils.js";
+import { resolveCacheDir } from "./cache-dir.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

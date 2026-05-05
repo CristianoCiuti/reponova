@@ -5,7 +5,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { writeFileSync, mkdirSync, existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { loadPreviousBuildConfig } from "../src/build/config-diff.js";
+import { loadPreviousBuildConfig } from "../src/build/incremental/config-diff.js";
 import type { Config } from "../src/shared/types.js";
 import { DEFAULT_CONFIG } from "../src/shared/types.js";
 

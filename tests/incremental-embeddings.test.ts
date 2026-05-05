@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { runEmbeddingsStep, loadNodeTextCache } from "../src/build/embeddings-step.js";
+import { runEmbeddingsStep, loadNodeTextCache } from "../src/build/steps/embeddings-step.js";
 import type { Config, GraphData } from "../src/shared/types.js";
 import { DEFAULT_CONFIG } from "../src/shared/types.js";
 

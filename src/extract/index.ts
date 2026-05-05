@@ -353,7 +353,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
   if (outputDir) {
     // Lazy-import to avoid circular dependencies
-    const { computeHashes, loadBuildCache, diffFiles, saveBuildCache, cleanStaleCacheEntries } = await import("../build/incremental.js");
+    const { computeHashes, loadBuildCache, diffFiles, saveBuildCache, cleanStaleCacheEntries } = await import("../build/incremental/incremental.js");
 
     log.info("Computing file hashes...");
     const currentHashes = computeHashes(workspace, files);
