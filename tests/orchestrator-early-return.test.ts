@@ -1,55 +1,53 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { Config } from "../src/shared/types.js";
+import type { Config, GraphData } from "../src/shared/types.js";
 import { DEFAULT_CONFIG } from "../src/shared/types.js";
 
 const tempDirs: string[] = [];
 
-const buildMonorepoMock = vi.fn();
-const runIndexerMock = vi.fn();
-const runOutlineGenerationMock = vi.fn();
-const runEmbeddingsStepMock = vi.fn();
-const runCommunitySummariesStepMock = vi.fn();
-const runNodeDescriptionsStepMock = vi.fn();
-const generateGraphReportMock = vi.fn();
-const exportHtmlMock = vi.fn();
-const exportCommunityHtmlMock = vi.fn();
-const loadPreviousBuildConfigMock = vi.fn();
-const cleanStaleArtifactsMock = vi.fn();
-const loadPreviousGraphHashMock = vi.fn();
-const computeSemanticGraphHashMock = vi.fn();
-const saveGraphHashMock = vi.fn();
+const mocks = vi.hoisted(() => ({
+  runIndexerStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
+  runOutlinesStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "graph unchanged" })),
+  runEmbeddingsStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "graph unchanged" })),
+  runCommunitySummariesStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "graph unchanged" })),
+  runNodeDescriptionsStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "graph unchanged" })),
+  runHtmlStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
+  runReportStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
+  runPipeline: vi.fn(),
+  loadPreviousBuildConfig: vi.fn(),
+  loadPreviousGraphHash: vi.fn(),
+  computeSemanticGraphHash: vi.fn(),
+  saveGraphHash: vi.fn(),
+}));
 
-vi.mock("../src/build/steps/indexer.js", () => ({ runIndexer: runIndexerMock }));
-vi.mock("../src/build/steps/outlines.js", () => ({ runOutlineGeneration: runOutlineGenerationMock }));
-vi.mock("../src/build/steps/embeddings-step.js", () => ({ runEmbeddingsStep: runEmbeddingsStepMock }));
-vi.mock("../src/build/steps/community-summaries-step.js", () => ({ runCommunitySummariesStep: runCommunitySummariesStepMock }));
-vi.mock("../src/build/steps/node-descriptions-step.js", () => ({ runNodeDescriptionsStep: runNodeDescriptionsStepMock }));
-vi.mock("../src/build/intelligence/llm-engine-pool.js", () => ({
-  LlmEnginePool: vi.fn().mockImplementation(() => ({ disposeAll: vi.fn() })),
-}));
-vi.mock("../src/build/steps/report.ts", () => ({ generateGraphReport: generateGraphReportMock }));
-vi.mock("../src/extract/export-html.js", () => ({ exportHtml: exportHtmlMock, exportCommunityHtml: exportCommunityHtmlMock }));
-vi.mock("../src/build/incremental/config-diff.js", () => ({ loadPreviousBuildConfig: loadPreviousBuildConfigMock }));
-vi.mock("../src/build/incremental/artifact-cleanup.js", () => ({ cleanStaleArtifacts: cleanStaleArtifactsMock }));
-vi.mock("../src/build/incremental/graph-hash.js", () => ({
-  loadPreviousGraphHash: loadPreviousGraphHashMock,
-  computeSemanticGraphHash: computeSemanticGraphHashMock,
-  saveGraphHash: saveGraphHashMock,
-}));
-vi.mock("../src/core/config.js", async () => {
-  const actual = await vi.importActual<typeof import("../src/core/config.js")>("../src/core/config.js");
-  return actual;
+vi.mock("../src/build/steps/indexer.js", () => ({ runIndexerStep: mocks.runIndexerStep }));
+vi.mock("../src/build/steps/outlines.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/build/steps/outlines.js")>("../src/build/steps/outlines.js");
+  return { ...actual, runOutlinesStep: mocks.runOutlinesStep };
 });
-vi.mock("../src/extract/index.js", () => ({ runPipeline: buildMonorepoMock }));
+vi.mock("../src/build/steps/embeddings-step.js", () => ({ runEmbeddingsStep: mocks.runEmbeddingsStep }));
+vi.mock("../src/build/steps/community-summaries-step.js", () => ({ runCommunitySummariesStep: mocks.runCommunitySummariesStep }));
+vi.mock("../src/build/steps/node-descriptions-step.js", () => ({ runNodeDescriptionsStep: mocks.runNodeDescriptionsStep }));
+vi.mock("../src/build/steps/html-step.js", () => ({ runHtmlStep: mocks.runHtmlStep }));
+vi.mock("../src/build/steps/report.js", () => ({ runReportStep: mocks.runReportStep }));
+vi.mock("../src/build/intelligence/llm-engine-pool.js", () => ({
+  LlmEnginePool: class {
+    async disposeAll(): Promise<void> {}
+  },
+}));
+vi.mock("../src/extract/index.js", () => ({ runPipeline: mocks.runPipeline }));
+vi.mock("../src/build/incremental/config-diff.js", () => ({ loadPreviousBuildConfig: mocks.loadPreviousBuildConfig }));
+vi.mock("../src/build/incremental/graph-hash.js", () => ({
+  loadPreviousGraphHash: mocks.loadPreviousGraphHash,
+  computeSemanticGraphHash: mocks.computeSemanticGraphHash,
+  saveGraphHash: mocks.saveGraphHash,
+}));
 
-// Mock openDatabase for artifact integrity checks
-const openDatabaseMock = vi.fn();
-vi.mock("../src/core/db.js", () => ({ openDatabase: openDatabaseMock }));
+import { runBuild } from "../src/build/orchestrator.js";
 
-describe("PROP-I1: orchestrator early return when no files changed", () => {
+describe("orchestrator skipped-step flow", () => {
   afterEach(() => {
     vi.clearAllMocks();
     for (const dir of tempDirs.splice(0)) {
@@ -57,61 +55,10 @@ describe("PROP-I1: orchestrator early return when no files changed", () => {
     }
   });
 
-  it("returns existing graph counts and skips downstream work when incremental build is unchanged", async () => {
-    const { config, configDir, outputDir, graphPath } = setupConfig();
-    writeFileSync(graphPath, JSON.stringify({
-      nodes: [{ id: "n1", label: "A", type: "module" }],
-      edges: [{ source: "n1", target: "n1", type: "self" }],
-      communities: [{ id: "0", name: "Main", members: ["n1"], size: 1 }],
-      metadata: {
-        node_count: 11,
-        edge_count: 7,
-        build_config: {
-          embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-          outlines: { enabled: true, patterns: ["src/**/*.ts"], exclude: [], exclude_common: true },
-          community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
-          node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
-        },
-      },
-    }, null, 2));
+  it("marks all autonomous steps as skipped when graphChanged=false", async () => {
+    const { config, configDir, outputDir } = setupConfig();
 
-    // Simulate a completed previous build: manifest + all expected artifacts
-    const cacheDir = join(outputDir, ".cache");
-    mkdirSync(cacheDir, { recursive: true });
-    writeFileSync(join(cacheDir, "build-manifest.json"), JSON.stringify({
-      version: 1,
-      started_at: "2025-01-01T00:00:00.000Z",
-      completed_at: "2025-01-01T00:01:00.000Z",
-      graph_hash: "abc123",
-      steps: {
-        extraction: { status: "completed" },
-        graph_build: { status: "completed" },
-        indexer: { status: "completed" },
-        outlines: { status: "completed" },
-        embeddings: { status: "completed" },
-        community_summaries: { status: "completed" },
-        node_descriptions: { status: "completed" },
-        html: { status: "completed" },
-        report: { status: "completed" },
-      },
-    }, null, 2));
-    // Create expected artifacts
-    writeFileSync(join(outputDir, "graph_search.db"), "SQLite format 3\x00" + "\x00".repeat(100));
-    writeFileSync(join(outputDir, "tfidf_idf.json"), "{}");
-    writeFileSync(join(outputDir, "community_summaries.json"), "[]");
-    writeFileSync(join(outputDir, "node_descriptions.json"), "[]");
-    writeFileSync(join(outputDir, "graph.html"), "<html></html>");
-    writeFileSync(join(outputDir, "graph_communities.html"), "<html></html>");
-    writeFileSync(join(outputDir, "report.md"), "# Report");
-    mkdirSync(join(outputDir, "outlines"), { recursive: true });
-
-    // Mock openDatabase to report a valid DB with nodes
-    openDatabaseMock.mockResolvedValue({
-      exec: () => [{ values: [[5]] }],
-      close: () => {},
-    });
-
-    loadPreviousBuildConfigMock.mockReturnValue({
+    mocks.loadPreviousBuildConfig.mockReturnValue({
       hasChanges: false,
       isFirstBuild: false,
       embeddingsChanged: false,
@@ -120,51 +67,45 @@ describe("PROP-I1: orchestrator early return when no files changed", () => {
       nodeDescriptionsChanged: false,
       previous: null,
     });
-
-    // Same graph hash = no change
-    computeSemanticGraphHashMock.mockReturnValue("same_hash");
-    loadPreviousGraphHashMock.mockReturnValue("same_hash");
-
-    buildMonorepoMock.mockResolvedValue({
-      builtGraph: {
-        graph: { forEachNode: vi.fn(), forEachEdge: vi.fn() },
-        stats: { nodeCount: 99, edgeCount: 88 },
-      },
-      communities: { count: 55 },
-      fileCount: 13,
-      extractionCount: 13,
-      incrementalStats: {
-        cachedFiles: 13,
-        reextractedFiles: 0,
-      },
+    mocks.loadPreviousGraphHash.mockReturnValue("same-hash");
+    mocks.computeSemanticGraphHash.mockReturnValue("same-hash");
+    mocks.runPipeline.mockImplementation(async ({ graphJsonPath }: { graphJsonPath: string }) => {
+      writeGraph(graphJsonPath);
+      return {
+        builtGraph: {
+          graph: {},
+          stats: { nodeCount: 2, edgeCount: 1 },
+        },
+        communities: { count: 1 },
+        fileCount: 2,
+      };
     });
 
-    const { runBuild } = await import("../src/build/orchestrator.js");
-    const result = await runBuild(config, configDir, { force: false });
+    await runBuild(config, configDir, { force: false });
 
-    expect(result).toEqual({
-      outputDir,
-      fileCount: 13,
-      nodeCount: 11,
-      edgeCount: 7,
-      communityCount: 1,
-    });
+    const manifest = JSON.parse(readFileSync(join(outputDir, ".cache", "build-manifest.json"), "utf-8")) as {
+      steps: Record<string, { status: string }>;
+    };
 
-    expect(cleanStaleArtifactsMock).toHaveBeenCalledTimes(1);
-    expect(runIndexerMock).not.toHaveBeenCalled();
-    expect(runOutlineGenerationMock).not.toHaveBeenCalled();
-    expect(runEmbeddingsStepMock).not.toHaveBeenCalled();
-    expect(runCommunitySummariesStepMock).not.toHaveBeenCalled();
-    expect(runNodeDescriptionsStepMock).not.toHaveBeenCalled();
-    expect(exportHtmlMock).not.toHaveBeenCalled();
-    expect(exportCommunityHtmlMock).not.toHaveBeenCalled();
-    expect(generateGraphReportMock).not.toHaveBeenCalled();
+    expect(mocks.runEmbeddingsStep).toHaveBeenCalledWith(expect.objectContaining({ graphChanged: false, force: false }));
+    expect(mocks.runCommunitySummariesStep).toHaveBeenCalledWith(expect.objectContaining({ graphChanged: false, force: false }));
+    expect(mocks.runNodeDescriptionsStep).toHaveBeenCalledWith(expect.objectContaining({ graphChanged: false, force: false }));
+    expect(mocks.runOutlinesStep).toHaveBeenCalledWith(expect.objectContaining({ graphChanged: false, force: false }));
+
+    expect(manifest.steps.embeddings.status).toBe("skipped");
+    expect(manifest.steps.community_summaries.status).toBe("skipped");
+    expect(manifest.steps.node_descriptions.status).toBe("skipped");
+    expect(manifest.steps.outlines.status).toBe("skipped");
+    expect(manifest.steps.indexer.status).toBe("skipped");
+    expect(manifest.steps.html.status).toBe("skipped");
+    expect(manifest.steps.report.status).toBe("skipped");
   });
 });
 
-function setupConfig(): { config: Config; configDir: string; outputDir: string; graphPath: string } {
-  const root = join(tmpdir(), `rn-test-prop-i1-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+function setupConfig(): { config: Config; configDir: string; outputDir: string } {
+  const root = join(tmpdir(), `rn-test-orch-skip-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   tempDirs.push(root);
+
   const configDir = join(root, "config");
   const repoDir = join(root, "repo");
   const outputDir = join(root, "out");
@@ -172,15 +113,30 @@ function setupConfig(): { config: Config; configDir: string; outputDir: string; 
   mkdirSync(configDir, { recursive: true });
   mkdirSync(repoDir, { recursive: true });
   mkdirSync(outputDir, { recursive: true });
+  writeFileSync(join(repoDir, "main.py"), "def main():\n    return 1\n");
 
   const config = JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as Config;
   config.output = "../out";
   config.repos = [{ name: "repo", path: "../repo" }];
 
-  return {
-    config,
-    configDir,
-    outputDir,
-    graphPath: join(outputDir, "graph.json"),
+  return { config, configDir, outputDir };
+}
+
+function writeGraph(graphJsonPath: string): void {
+  const graph: GraphData = {
+    nodes: [
+      { id: "a", label: "main", type: "function", source_file: "main.py", repo: "repo" },
+      { id: "b", label: "helper", type: "function", source_file: "main.py", repo: "repo" },
+    ],
+    edges: [{ source: "a", target: "b", type: "calls" }],
+    metadata: {
+      build_config: {
+        embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
+        outlines: { enabled: true, patterns: [], exclude: [], exclude_common: true },
+        community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
+        node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
+      },
+    },
   };
+  writeFileSync(graphJsonPath, JSON.stringify(graph, null, 2));
 }

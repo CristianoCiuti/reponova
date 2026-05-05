@@ -3,53 +3,37 @@ import { resolve, join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import type { Config, GraphData } from "../shared/types.js";
 import { loadConfig } from "../core/config.js";
-import { runIndexer } from "./steps/indexer.js";
-import { runOutlineGeneration } from "./steps/outlines.js";
+import { runIndexerStep } from "./steps/indexer.js";
+import { runOutlinesStep } from "./steps/outlines.js";
 import { runEmbeddingsStep } from "./steps/embeddings-step.js";
 import { runCommunitySummariesStep } from "./steps/community-summaries-step.js";
 import { runNodeDescriptionsStep } from "./steps/node-descriptions-step.js";
+import { runReportStep } from "./steps/report.js";
+import { runHtmlStep } from "./steps/html-step.js";
 import { LlmEnginePool } from "./intelligence/llm-engine-pool.js";
-import { generateGraphReport } from "./steps/report.js";
-import { exportHtml, exportCommunityHtml, type CommunitySummaryInfo } from "../extract/export-html.js";
 import { log } from "../shared/utils.js";
 import { runPipeline } from "../extract/index.js";
-import { buildSkipDirs } from "../core/path-resolver.js";
+import { buildSkipDirs, createPathContext, prepareWorkspace, extractRepoName } from "../core/path-resolver.js";
 import { loadPreviousBuildConfig } from "./incremental/config-diff.js";
-import { cleanStaleArtifacts } from "./incremental/artifact-cleanup.js";
 import { computeSemanticGraphHash, loadPreviousGraphHash, saveGraphHash } from "./incremental/graph-hash.js";
-import { createPathContext, prepareWorkspace, extractRepoName } from "../core/path-resolver.js";
 import {
   createManifest, loadManifest, updateStep, completeManifest,
 } from "./manifest.js";
-import type { StepName } from "./manifest.js";
-import { computeBuildPlan } from "./build-planner.js";
+import type { BuildManifest, StepName } from "./manifest.js";
+import type { BuildStep, StepContext } from "./types.js";
 
 export interface BuildOptions {
   force: boolean;
 }
 
-/**
- * Build result returned by both `runBuild()` and the public `build()` API.
- */
 export interface BuildResult {
-  /** Absolute path to the output directory */
   outputDir: string;
-  /** Number of source files processed */
   fileCount: number;
-  /** Number of nodes in the graph */
   nodeCount: number;
-  /** Number of edges in the graph */
   edgeCount: number;
-  /** Number of detected communities */
   communityCount: number;
 }
 
-/**
- * Run the full build pipeline.
- *
- * Phase 0 rewrite: Uses in-process extraction engine (web-tree-sitter WASM +
- * graphology) instead of Python subprocess. Zero external runtime dependencies.
- */
 export async function runBuild(config: Config, configDir: string, options: BuildOptions): Promise<BuildResult> {
   log.info("reponova build (in-process extraction engine)");
 
@@ -57,14 +41,11 @@ export async function runBuild(config: Config, configDir: string, options: Build
     throw new Error("No repos configured. Add repos to reponova.yml");
   }
 
-  // Create output directory (with --force cleanup)
   const outputDir = resolve(configDir, config.output);
 
-  if (options.force) {
-    if (existsSync(outputDir)) {
-      rmSync(outputDir, { recursive: true, force: true });
-      log.info(`Cleaned output: ${outputDir}`);
-    }
+  if (options.force && existsSync(outputDir)) {
+    rmSync(outputDir, { recursive: true, force: true });
+    log.info(`Cleaned output: ${outputDir}`);
   }
 
   if (!existsSync(outputDir)) {
@@ -75,50 +56,34 @@ export async function runBuild(config: Config, configDir: string, options: Build
   mkdirSync(tmpDir, { recursive: true });
 
   try {
-    const mergedPath = join(outputDir, "graph.json");
+    const graphJsonPath = join(outputDir, "graph.json");
     const incremental = config.build.incremental && !options.force;
     const skipDirs = buildSkipDirs(config.build.exclude_common);
-
-    // Prevent the build from walking into its own output directory.
     skipDirs.add(basename(outputDir));
-    const ctx = createPathContext(config, configDir, outputDir);
-    log.info(`Build${incremental ? " (incremental)" : ""} [${ctx.mode}-repo mode]...`);
 
-    // ── Manifest: track pipeline completion state ────────────────────────
-    // Load previous manifest BEFORE creating new one (to check if last build completed)
+    const pathContext = createPathContext(config, configDir, outputDir);
+    log.info(`Build${incremental ? " (incremental)" : ""} [${pathContext.mode}-repo mode]...`);
+
     const previousManifest = loadManifest(outputDir);
     const manifest = createManifest(outputDir);
+    const previousConfig = loadPreviousBuildConfig(graphJsonPath, config).previous;
+    const previousGraphHash = loadPreviousGraphHash(outputDir);
 
-    // ── Config change detection ──────────────────────────────────────────
-    const configDiff = loadPreviousBuildConfig(mergedPath, config);
-
-    if (configDiff.hasChanges) {
-      log.info("Config changes detected since last build:");
-      if (configDiff.embeddingsChanged) log.info("  → Embeddings config changed — will regenerate vectors");
-      if (configDiff.outlinesChanged) log.info("  → Outlines config changed — will regenerate outlines");
-      if (configDiff.communitySummariesChanged) log.info("  → Community summaries config changed — will regenerate summaries");
-      if (configDiff.nodeDescriptionsChanged) log.info("  → Node descriptions config changed — will regenerate descriptions");
-    }
-
-    cleanStaleArtifacts(outputDir, configDiff, config);
-
-    const workspace = prepareWorkspace(ctx, tmpDir, skipDirs);
-    const repoNames = ctx.repos.map((r) => r.name);
-
+    const workspace = prepareWorkspace(pathContext, tmpDir, skipDirs);
+    const repoNames = pathContext.repos.map((repo) => repo.name);
     if (repoNames.length === 0) {
       throw new Error("No repos linked. Check repo paths in reponova.yml");
     }
 
     log.info(`Building unified graph (${repoNames.length} repo${repoNames.length > 1 ? "s" : ""})...`);
 
-    // ── Step: Extraction + Graph Build ───────────────────────────────────
     updateStep(outputDir, manifest, "extraction", "running");
     const result = await runPipeline({
       workspace,
       patterns: config.build.patterns,
       excludeGlobs: config.build.exclude,
       skipDirs,
-      graphJsonPath: mergedPath,
+      graphJsonPath,
       htmlMinDegree: config.build.html_min_degree,
       outputDir,
       incremental,
@@ -126,16 +91,13 @@ export async function runBuild(config: Config, configDir: string, options: Build
       imagesConfig: config.build.images,
       config,
       configDir,
-      // Single-repo: pass repo name so nodes are tagged directly
-      repoName: ctx.mode === "single" ? repoNames[0] : undefined,
-      // Multi-repo: pass repo names for pattern matching fix
-      repoNames: ctx.mode === "multi" ? new Set(repoNames) : undefined,
+      repoName: pathContext.mode === "single" ? repoNames[0] : undefined,
+      repoNames: pathContext.mode === "multi" ? new Set(repoNames) : undefined,
     });
     updateStep(outputDir, manifest, "extraction", "completed");
 
-    // Tag nodes with repo name
     updateStep(outputDir, manifest, "graph_build", "running");
-    tagNodesWithRepo(mergedPath, repoNames, ctx.mode);
+    tagNodesWithRepo(graphJsonPath, repoNames, pathContext.mode);
     updateStep(outputDir, manifest, "graph_build", "completed");
 
     log.info(`Graph: ${result.builtGraph.stats.nodeCount} nodes, ${result.builtGraph.stats.edgeCount} edges, ${result.communities.count} communities`);
@@ -144,171 +106,35 @@ export async function runBuild(config: Config, configDir: string, options: Build
       log.info(`  Incremental: ${result.incrementalStats.cachedFiles} cached, ${result.incrementalStats.reextractedFiles} re-extracted${removed > 0 ? `, ${removed} removed` : ""}`);
     }
 
-    // ── Compute build plan (single unified decision) ─────────────────────
     const currentGraphHash = computeSemanticGraphHash(result.builtGraph.graph);
-    const plan = await computeBuildPlan({
-      previousManifest,
-      configDiff,
-      fileChanges: {
-        reextractedFiles: result.incrementalStats?.reextractedFiles ?? 0,
-        removedFiles: result.incrementalStats?.removedFiles ?? 0,
-      },
-      previousGraphHash: loadPreviousGraphHash(outputDir),
-      currentGraphHash,
-      config,
-      outputDir,
-      force: options.force,
-    });
-
-    // ── Early return if nothing to do ────────────────────────────────────
-    if (plan.isUpToDate) {
-      log.info("No changes detected — graph is up to date");
-      completeManifest(outputDir, manifest, currentGraphHash);
-      const existingCounts = readExistingGraphCounts(mergedPath);
-      return {
-        outputDir,
-        fileCount: result.fileCount,
-        nodeCount: existingCounts.nodeCount,
-        edgeCount: existingCounts.edgeCount,
-        communityCount: existingCounts.communityCount,
-      };
-    }
-
-    // ── Log build plan ───────────────────────────────────────────────────
-    logBuildPlan(plan.stepsToRun, plan.reasons);
-
-    // ── Step: Search index ───────────────────────────────────────────────
-    if (plan.stepsToRun.has("indexer")) {
-      updateStep(outputDir, manifest, "indexer", "running");
-      await runIndexer(mergedPath, outputDir);
-      updateStep(outputDir, manifest, "indexer", "completed");
-    } else {
-      updateStep(outputDir, manifest, "indexer", "skipped", "up to date");
-    }
-
-    // ── Step: Outlines ───────────────────────────────────────────────────
-    if (plan.stepsToRun.has("outlines")) {
-      updateStep(outputDir, manifest, "outlines", "running");
-      const outlineForce = options.force || configDiff.outlinesChanged;
-      const outlineSkipDirs = buildSkipDirs(config.outlines.exclude_common);
-      outlineSkipDirs.add(basename(outputDir));
-      log.info("Generating outlines...");
-      const outlineCount = await runOutlineGeneration(config, configDir, outputDir, { force: outlineForce, skipDirs: outlineSkipDirs });
-      log.info(`  ✓ ${outlineCount} outlines generated`);
-      updateStep(outputDir, manifest, "outlines", "completed");
-    } else if (!config.outlines.enabled) {
-      updateStep(outputDir, manifest, "outlines", "skipped", "disabled in config");
-    } else {
-      updateStep(outputDir, manifest, "outlines", "skipped", "up to date");
-    }
-
-    // ── Intelligence Layer (shared LLM pool for model dedup) ─────────────
+    const graphChanged = previousGraphHash !== currentGraphHash;
     const llmPool = new LlmEnginePool(config.models);
 
-    // ── Step: Embeddings ───────────────────────────────────────────────
-    if (plan.stepsToRun.has("embeddings")) {
-      updateStep(outputDir, manifest, "embeddings", "running");
-      try {
-        const embCount = await runEmbeddingsStep(config, outputDir, mergedPath);
-        log.info(`Embeddings: ${embCount} generated`);
-        updateStep(outputDir, manifest, "embeddings", "completed");
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        log.warn(`Embeddings failed (non-blocking): ${msg}`);
-        updateStep(outputDir, manifest, "embeddings", "failed", msg);
-      }
-    } else if (!config.build.embeddings.enabled) {
-      updateStep(outputDir, manifest, "embeddings", "skipped", "disabled in config");
-    } else {
-      updateStep(outputDir, manifest, "embeddings", "skipped", "up to date");
-    }
-
-    // ── Step: Community Summaries ────────────────────────────────────────
-    if (plan.stepsToRun.has("community_summaries")) {
-      updateStep(outputDir, manifest, "community_summaries", "running");
-      try {
-        const summaryCount = await runCommunitySummariesStep(config, outputDir, mergedPath, llmPool);
-        log.info(`Community summaries: ${summaryCount} generated`);
-        updateStep(outputDir, manifest, "community_summaries", "completed");
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        log.warn(`Community summaries failed (non-blocking): ${msg}`);
-        updateStep(outputDir, manifest, "community_summaries", "failed", msg);
-      }
-    } else if (!config.build.community_summaries.enabled) {
-      updateStep(outputDir, manifest, "community_summaries", "skipped", "disabled in config");
-    } else {
-      updateStep(outputDir, manifest, "community_summaries", "skipped", "up to date");
-    }
-
-    // ── Step: Node Descriptions ──────────────────────────────────────────
-    if (plan.stepsToRun.has("node_descriptions")) {
-      updateStep(outputDir, manifest, "node_descriptions", "running");
-      try {
-        const descCount = await runNodeDescriptionsStep(config, outputDir, mergedPath, llmPool);
-        log.info(`Node descriptions: ${descCount} generated`);
-        updateStep(outputDir, manifest, "node_descriptions", "completed");
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        log.warn(`Node descriptions failed (non-blocking): ${msg}`);
-        updateStep(outputDir, manifest, "node_descriptions", "failed", msg);
-      }
-    } else if (!config.build.node_descriptions.enabled) {
-      updateStep(outputDir, manifest, "node_descriptions", "skipped", "disabled in config");
-    } else {
-      updateStep(outputDir, manifest, "node_descriptions", "skipped", "up to date");
-    }
-
-    await llmPool.disposeAll();
-
-    // ── Step: HTML visualizations ────────────────────────────────────────
-    if (plan.stepsToRun.has("html")) {
-      updateStep(outputDir, manifest, "html", "running");
-
-      // Load community summaries (if generated by intelligence layer)
-      const communitySummaries = loadCommunitySummaries(outputDir);
-
-      const htmlPath = join(outputDir, "graph.html");
-      log.info("Generating graph.html...");
-      exportHtml({
-        graph: result.builtGraph.graph,
-        communities: result.communities,
-        outputPath: htmlPath,
-        minDegree: config.build.html_min_degree,
-      });
-
-      const htmlCommunityPath = join(outputDir, "graph_communities.html");
-      log.info("Generating graph_communities.html...");
-      exportCommunityHtml({
-        graph: result.builtGraph.graph,
-        communities: result.communities,
-        outputPath: htmlCommunityPath,
-        communitySummaries,
-      });
-
-      updateStep(outputDir, manifest, "html", "completed");
-    } else if (!config.build.html) {
-      updateStep(outputDir, manifest, "html", "skipped", "disabled in config");
-    } else {
-      updateStep(outputDir, manifest, "html", "skipped", "up to date");
-    }
-
-    // ── Step: Report ─────────────────────────────────────────────────────
-    if (plan.stepsToRun.has("report")) {
-      updateStep(outputDir, manifest, "report", "running");
-      log.info("Generating report.md...");
-      generateGraphReport({
-        graph: result.builtGraph.graph,
-        communities: result.communities,
+    try {
+      const stepContext: StepContext = {
+        config,
+        configDir,
         outputDir,
-        outputPath: join(outputDir, "report.md"),
-      });
-      updateStep(outputDir, manifest, "report", "completed");
-    } else {
-      updateStep(outputDir, manifest, "report", "skipped", "up to date");
+        graphJsonPath,
+        force: options.force,
+        graphChanged,
+        previousConfig,
+        llmPool,
+        graph: result.builtGraph.graph,
+        communities: result.communities,
+      };
+
+      await executeStep(outputDir, manifest, previousManifest, "embeddings", runEmbeddingsStep, stepContext);
+      await executeStep(outputDir, manifest, previousManifest, "community_summaries", runCommunitySummariesStep, stepContext);
+      await executeStep(outputDir, manifest, previousManifest, "node_descriptions", runNodeDescriptionsStep, stepContext);
+      await executeStep(outputDir, manifest, previousManifest, "outlines", runOutlinesStep, stepContext);
+      await executeStep(outputDir, manifest, previousManifest, "indexer", runIndexerStep, stepContext);
+      await executeStep(outputDir, manifest, previousManifest, "html", runHtmlStep, stepContext);
+      await executeStep(outputDir, manifest, previousManifest, "report", runReportStep, stepContext);
+    } finally {
+      await llmPool.disposeAll();
     }
 
-    // ── Save graph hash ONLY after all steps complete ────────────────────
     saveGraphHash(outputDir, currentGraphHash);
     completeManifest(outputDir, manifest, currentGraphHash);
 
@@ -337,59 +163,38 @@ export async function runBuild(config: Config, configDir: string, options: Build
   }
 }
 
-function loadCommunitySummaries(outputDir: string): CommunitySummaryInfo[] | undefined {
-  const summariesPath = join(outputDir, "community_summaries.json");
-  if (!existsSync(summariesPath)) return undefined;
+async function executeStep(
+  outputDir: string,
+  manifest: BuildManifest,
+  previousManifest: BuildManifest | null,
+  name: StepName,
+  stepFn: BuildStep,
+  ctx: StepContext,
+): Promise<void> {
+  updateStep(outputDir, manifest, name, "running");
 
   try {
-    return JSON.parse(readFileSync(summariesPath, "utf-8")) as CommunitySummaryInfo[];
-  } catch {
-    return undefined;
+    const force = ctx.force || shouldForceStep(previousManifest, name);
+    const result = await stepFn({ ...ctx, force });
+    if (result.skipped) {
+      updateStep(outputDir, manifest, name, "skipped", result.skipReason ?? "up to date");
+    } else {
+      updateStep(outputDir, manifest, name, "completed");
+      log.info(`${name}: ${result.processed} processed`);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    updateStep(outputDir, manifest, name, "failed", message);
+    log.warn(`${name} failed (non-blocking): ${message}`);
   }
 }
 
-function readExistingGraphCounts(graphJsonPath: string): { nodeCount: number; edgeCount: number; communityCount: number } {
-  const raw = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
-  return {
-    nodeCount: raw.metadata?.node_count ?? raw.nodes.length,
-    edgeCount: raw.metadata?.edge_count ?? raw.edges.length,
-    communityCount: raw.communities?.length ?? 0,
-  };
+function shouldForceStep(previousManifest: BuildManifest | null, step: StepName): boolean {
+  if (!previousManifest) return false;
+  const status = previousManifest.steps[step]?.status;
+  return status === "running" || status === "failed";
 }
 
-/**
- * Log the build plan: which steps will run and why.
- */
-function logBuildPlan(stepsToRun: Set<StepName>, reasons: Map<StepName, string>): void {
-  log.info("Build plan:");
-  for (const step of stepsToRun) {
-    log.info(`  → ${step}: ${reasons.get(step) ?? "unknown"}`);
-  }
-}
-
-// ─── Public API ──────────────────────────────────────────────────────────────
-
-/**
- * Build the knowledge graph programmatically.
- *
- * This is the public entry point for running a build from code.
- * Register custom extractors, outline languages, or NL rulesets
- * BEFORE calling this function — they will be picked up automatically.
- *
- * @param configPath - Path to `reponova.yml`. If omitted, auto-detected
- *                     from standard locations (see Config Resolution docs).
- * @param options - Build options. `force` deletes existing output and rebuilds.
- * @returns Build result with output path and graph statistics.
- *
- * @example
- * ```typescript
- * import { build, registerExtractor } from "reponova";
- *
- * registerExtractor(myCustomExtractor);
- * const result = await build("./reponova.yml");
- * console.log(`Built: ${result.nodeCount} nodes, ${result.edgeCount} edges`);
- * ```
- */
 export async function build(
   configPath?: string,
   options?: { force?: boolean },
@@ -398,16 +203,10 @@ export async function build(
   return runBuild(config, configDir, { force: options?.force ?? false });
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Tag each node's `repo` field using extractRepoName from path-resolver.
- */
 function tagNodesWithRepo(graphJsonPath: string, repoNames: string[], mode: "single" | "multi"): void {
   const raw = readFileSync(graphJsonPath, "utf-8");
   const data = JSON.parse(raw) as GraphData;
 
-  // Build a minimal PathContext for extractRepoName
   const ctx = {
     mode,
     repos: repoNames.map((name) => ({ name, absPath: "" })),

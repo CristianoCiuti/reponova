@@ -1,64 +1,94 @@
 /**
- * Community summaries step — generates natural-language summaries for graph communities.
- *
- * Orchestrates:
- * 1. Load graph data
- * 2. Build community data (group nodes, filter small communities)
- * 3. Acquire LLM from pool (if model configured)
- * 4. Run CommunitySummaryGenerator
- * 5. Write community_summaries.json
+ * Incremental community summaries step.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { atomicWriteJson } from "../../shared/atomic-write.js";
 import { log } from "../../shared/utils.js";
-import type { Config, GraphData, GraphNode } from "../../shared/types.js";
-import { CommunitySummaryGenerator, type CommunityData } from "../intelligence/community-summary-generator.js";
-import type { LlmEnginePool } from "../intelligence/llm-engine-pool.js";
+import type { GraphData, GraphNode } from "../../shared/types.js";
+import type { BuildStep, StepContext, StepResult } from "../types.js";
+import {
+  CommunitySummaryGenerator,
+  type CommunityData,
+  type CommunitySummary,
+} from "../intelligence/community-summary-generator.js";
 
-/**
- * Run the community summaries step.
- * Returns the number of summaries generated (0 if disabled or no qualifying communities).
- */
-export async function runCommunitySummariesStep(
-  config: Config,
-  outputDir: string,
-  graphJsonPath: string,
-  llmPool?: LlmEnginePool,
-): Promise<number> {
-  if (!config.build.community_summaries.enabled) return 0;
+export const runCommunitySummariesStep: BuildStep = async (ctx: StepContext): Promise<StepResult> => {
+  const config = ctx.config.build.community_summaries;
+  const summariesPath = join(ctx.outputDir, "community_summaries.json");
+  const cachePath = join(ctx.outputDir, ".cache", "community-summary-fingerprints.json");
 
-  const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
-  const communities = buildCommunityData(graphData);
-
-  if (communities.length === 0) {
-    log.info("Community summaries skipped: no qualifying communities (min 3 nodes)");
-    return 0;
+  if (!config.enabled) {
+    removeFile(summariesPath);
+    removeFile(cachePath);
+    return { processed: 0, skipped: true, skipReason: "disabled in config" };
   }
 
-  const summariesCfg = config.build.community_summaries;
-  const modelUri = summariesCfg.model ?? null;
+  const previous = ctx.previousConfig?.community_summaries;
+  const modelChanged = previous != null && (previous.model ?? null) !== (config.model ?? null);
+  const contextSizeChanged = previous != null && previous.context_size !== config.context_size;
+  const effectiveForce = ctx.force || modelChanged || ((config.model ?? null) != null && contextSizeChanged);
 
+  if (!ctx.graphChanged && !effectiveForce) {
+    return { processed: 0, skipped: true, skipReason: "graph unchanged" };
+  }
+
+  const graphData = JSON.parse(readFileSync(ctx.graphJsonPath, "utf-8")) as GraphData;
+  const communities = buildCommunityData(graphData, config.max_number);
+  if (communities.length === 0) {
+    atomicWriteJson(summariesPath, []);
+    atomicWriteJson(cachePath, {});
+    return { processed: 0, skipped: true, skipReason: "no qualifying communities" };
+  }
+
+  const previousCache = effectiveForce ? {} : loadFingerprintCache(cachePath);
+  const keptSummaries: CommunitySummary[] = [];
+  const regenCommunities: CommunityData[] = [];
+
+  for (const community of communities) {
+    const fingerprint = computeCommunityFingerprint(community.nodes);
+    const cached = previousCache[fingerprint];
+    if (cached) {
+      keptSummaries.push({ ...cached, id: community.id });
+    } else {
+      regenCommunities.push(community);
+    }
+  }
+
+  if (regenCommunities.length === 0) {
+    const cache = buildFingerprintCache(communities, keptSummaries);
+    atomicWriteJson(summariesPath, keptSummaries);
+    atomicWriteJson(cachePath, cache);
+    return { processed: 0, skipped: true, skipReason: "up to date" };
+  }
+
+  const modelUri = config.model ?? null;
   let llm = null;
-  if (modelUri && llmPool) {
-    llm = await llmPool.acquire(modelUri, summariesCfg.context_size);
+  if (modelUri && ctx.llmPool) {
+    llm = await ctx.llmPool.acquire(modelUri, config.context_size);
     if (!llm) {
       log.info("  Community summaries LLM not available — using algorithmic");
     }
   }
 
-  const generator = new CommunitySummaryGenerator(summariesCfg, llm);
-  const summaries = await generator.generate(communities);
+  const generator = new CommunitySummaryGenerator(config, llm);
+  const generated = await generator.generate(regenCommunities);
+  const generatedById = new Map(generated.map((summary) => [summary.id, summary]));
 
-  if (summaries.length > 0) {
-    const summariesPath = join(outputDir, "community_summaries.json");
-    writeFileSync(summariesPath, JSON.stringify(summaries, null, 2));
-    log.info(`  Saved ${summaries.length} community summaries → community_summaries.json`);
-  }
+  const allSummaries = communities.map((community) => {
+    const kept = keptSummaries.find((summary) => summary.id === community.id);
+    return kept ?? generatedById.get(community.id);
+  }).filter((summary): summary is CommunitySummary => summary != null);
 
-  return summaries.length;
-}
+  const cache = buildFingerprintCache(communities, allSummaries);
+  atomicWriteJson(summariesPath, allSummaries);
+  atomicWriteJson(cachePath, cache);
 
-function buildCommunityData(graphData: GraphData): CommunityData[] {
+  return { processed: generated.length, skipped: false };
+};
+
+function buildCommunityData(graphData: GraphData, maxNumber: number): CommunityData[] {
   const communityMap = new Map<string, GraphNode[]>();
 
   for (const node of graphData.nodes) {
@@ -75,5 +105,54 @@ function buildCommunityData(graphData: GraphData): CommunityData[] {
     communities.push({ id, nodes });
   }
 
-  return communities;
+  communities.sort((a, b) => b.nodes.length - a.nodes.length || a.id.localeCompare(b.id));
+  return maxNumber > 0 ? communities.slice(0, maxNumber) : communities;
+}
+
+function computeCommunityFingerprint(nodes: GraphNode[]): string {
+  const nodeHashes = nodes.map(computeNodeHash).sort();
+  return createHash("sha256").update(nodeHashes.join(",")).digest("hex");
+}
+
+function computeNodeHash(node: GraphNode): string {
+  const input = [
+    node.id,
+    node.label,
+    node.type,
+    node.signature ?? "",
+    node.docstring ?? "",
+    node.source_file ?? "",
+  ].join("|");
+  return createHash("sha256").update(input).digest("hex");
+}
+
+function loadFingerprintCache(path: string): Record<string, CommunitySummary> {
+  if (!existsSync(path)) return {};
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as Record<string, CommunitySummary>;
+  } catch {
+    return {};
+  }
+}
+
+function buildFingerprintCache(
+  communities: CommunityData[],
+  summaries: CommunitySummary[],
+): Record<string, CommunitySummary> {
+  const summaryById = new Map(summaries.map((summary) => [summary.id, summary]));
+  const cache: Record<string, CommunitySummary> = {};
+
+  for (const community of communities) {
+    const summary = summaryById.get(community.id);
+    if (!summary) continue;
+    cache[computeCommunityFingerprint(community.nodes)] = summary;
+  }
+
+  return cache;
+}
+
+function removeFile(path: string): void {
+  if (existsSync(path)) {
+    unlinkSync(path);
+  }
 }

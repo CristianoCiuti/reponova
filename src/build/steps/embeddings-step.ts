@@ -1,47 +1,50 @@
 /**
- * Embeddings step — generates vector representations for all graph nodes.
- *
- * Supports two methods:
- * - TF-IDF: Feature-hashed vectors (fast, no model download)
- * - ONNX: MiniLM-L6-v2 sentence embeddings (more accurate, ~86MB model)
- *
- * Incremental: only re-embeds nodes whose text content changed since last build.
+ * Embeddings step — incrementally generates vector representations for graph nodes.
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { atomicWriteJson } from "../../shared/atomic-write.js";
 import { log } from "../../shared/utils.js";
-import type { Config, GraphData } from "../../shared/types.js";
+import type { GraphData } from "../../shared/types.js";
+import type { BuildStep, StepContext, StepResult } from "../types.js";
 import { EmbeddingEngine, composeNodeText } from "../intelligence/embeddings.js";
 import { TfidfEmbeddingEngine } from "../intelligence/tfidf-embeddings.js";
 import { VectorStore, type VectorRecord } from "../../core/vector-store.js";
 import { resolveCacheDir } from "../intelligence/cache-dir.js";
 
-/**
- * Run the embeddings step.
- * Returns the number of embeddings generated (0 if all up-to-date or disabled).
- */
-export async function runEmbeddingsStep(
-  config: Config,
-  outputDir: string,
-  graphJsonPath: string,
-): Promise<number> {
-  if (!config.build.embeddings.enabled) return 0;
-  const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
-  return generateEmbeddings(config, outputDir, graphData);
-}
+export const runEmbeddingsStep: BuildStep = async (ctx: StepContext): Promise<StepResult> => {
+  const config = ctx.config.build.embeddings;
+  const vectorsPath = join(ctx.outputDir, "vectors");
+  const tfidfPath = join(ctx.outputDir, "tfidf_idf.json");
+  const cachePath = join(ctx.outputDir, ".cache", "node-texts.json");
 
-async function generateEmbeddings(config: Config, outputDir: string, graphData: GraphData): Promise<number> {
-  const method = config.build.embeddings.method;
-
-  // Ensure only method-specific artifacts exist. tfidf_idf.json is TF-IDF exclusive.
-  if (method === "onnx") {
-    const tfidfPath = join(outputDir, "tfidf_idf.json");
-    if (existsSync(tfidfPath)) {
-      unlinkSync(tfidfPath);
-      log.info("Removed stale tfidf_idf.json (method is onnx)");
-    }
+  if (!config.enabled) {
+    removeDirectory(vectorsPath);
+    removeFile(tfidfPath);
+    removeFile(cachePath);
+    return { processed: 0, skipped: true, skipReason: "disabled in config" };
   }
 
+  const previous = ctx.previousConfig?.embeddings;
+  const methodChanged = previous != null && previous.method !== config.method;
+  const modelChanged = previous != null && previous.model !== config.model;
+  const dimensionsChanged = previous != null && previous.dimensions !== config.dimensions;
+  const effectiveForce = ctx.force || methodChanged || modelChanged || dimensionsChanged;
+
+  if (config.method === "onnx") {
+    removeFile(tfidfPath);
+  }
+  if (methodChanged || modelChanged || dimensionsChanged) {
+    removeDirectory(vectorsPath);
+  }
+
+  const graphData = JSON.parse(readFileSync(ctx.graphJsonPath, "utf-8")) as GraphData;
+  return generateEmbeddings(ctx, graphData, effectiveForce);
+};
+
+async function generateEmbeddings(ctx: StepContext, graphData: GraphData, effectiveForce: boolean): Promise<StepResult> {
+  const config = ctx.config;
+  const method = config.build.embeddings.method;
   const items = graphData.nodes.map((node) => ({
     id: node.id,
     text: composeNodeText({
@@ -56,130 +59,155 @@ async function generateEmbeddings(config: Config, outputDir: string, graphData: 
   }));
 
   const currentTexts = new Map(items.map((item) => [item.id, item.text]));
-  const previousTexts = loadNodeTextCache(outputDir);
-  const changedIds = getChangedNodeIds(currentTexts, previousTexts);
-  const removedIds = getRemovedNodeIds(currentTexts, previousTexts);
+  const previousTexts = effectiveForce ? new Map<string, string>() : loadNodeTextCache(ctx.outputDir);
+  const changedIds = effectiveForce
+    ? new Set(items.map((item) => item.id))
+    : getChangedNodeIds(currentTexts, previousTexts);
+  const removedIds = effectiveForce ? new Set<string>() : getRemovedNodeIds(currentTexts, previousTexts);
 
-  const vectorStore = new VectorStore(outputDir);
+  const vectorStore = new VectorStore(ctx.outputDir);
   await vectorStore.initialize();
-  const existingRecords = await vectorStore.loadAllRecords();
 
-  const existingVectors = new Map(existingRecords.map((record) => [record.id, record.vector]));
-  const itemsNeedingEmbeddings = items.filter((item) => changedIds.has(item.id) || !existingVectors.has(item.id));
+  try {
+    const existingRecords = effectiveForce ? [] : await vectorStore.loadAllRecords();
+    const existingVectors = new Map(existingRecords.map((record) => [record.id, record.vector]));
+    const itemsNeedingEmbeddings = effectiveForce
+      ? items
+      : items.filter((item) => changedIds.has(item.id) || !existingVectors.has(item.id));
 
-  // Detect stale vectors: entries in VectorStore for nodes no longer in the graph
-  const staleVectorIds = new Set<string>();
-  for (const id of existingVectors.keys()) {
-    if (!currentTexts.has(id)) {
-      staleVectorIds.add(id);
+    const staleVectorIds = new Set<string>();
+    for (const id of existingVectors.keys()) {
+      if (!currentTexts.has(id)) {
+        staleVectorIds.add(id);
+      }
     }
-  }
 
-  if (itemsNeedingEmbeddings.length === 0 && removedIds.size === 0 && staleVectorIds.size === 0) {
-    await vectorStore.dispose();
-    saveNodeTextCache(outputDir, currentTexts);
-    return 0;
-  }
+    if (itemsNeedingEmbeddings.length === 0 && removedIds.size === 0 && staleVectorIds.size === 0) {
+      atomicWriteJson(getNodeTextCachePath(ctx.outputDir), Object.fromEntries(currentTexts));
+      return { processed: 0, skipped: true, skipReason: "up to date" };
+    }
 
-  // Cleanup-only path: no new embeddings needed, just remove stale entries from outputs
-  if (itemsNeedingEmbeddings.length === 0) {
-    if (staleVectorIds.size > 0) {
-      const cleanedRecords = existingRecords.filter((r) => !staleVectorIds.has(r.id));
+    if (itemsNeedingEmbeddings.length === 0) {
+      const cleanedRecords = existingRecords.filter((record) => !staleVectorIds.has(record.id));
       await vectorStore.upsert(cleanedRecords);
-      log.info(`  ✓ removed ${staleVectorIds.size} stale vectors`);
-    }
-    await vectorStore.dispose();
-    // Rebuild TF-IDF vocabulary from current nodes (cheap: just term counting, no embedBatch).
-    // The IDF file is used at query time — stale terms degrade search quality.
-    if (method === "tfidf" && items.length > 0) {
-      const engine = new TfidfEmbeddingEngine(config.build.embeddings);
-      engine.buildVocabulary(items.map((i) => i.text));
-      engine.saveVocabulary(outputDir);
-      engine.dispose();
-    }
-    // node-texts.json is always written from currentTexts (which only has current graph nodes)
-    saveNodeTextCache(outputDir, currentTexts);
-    return 0;
-  }
 
-  // Full path: new embeddings needed (stale cleanup happens implicitly — storeEmbeddings
-  // rebuilds from graphData.nodes only, excluding any stale entries)
-  if (method === "tfidf") {
-    return generateTfidf(config, outputDir, graphData, items, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
+      if (method === "tfidf") {
+        const engine = new TfidfEmbeddingEngine(config.build.embeddings);
+        try {
+          engine.buildVocabulary(items.map((item) => item.text));
+          atomicWriteJson(join(ctx.outputDir, "tfidf_idf.json"), engine.serializeVocabulary());
+        } finally {
+          engine.dispose();
+        }
+      }
+
+      atomicWriteJson(getNodeTextCachePath(ctx.outputDir), Object.fromEntries(currentTexts));
+      return { processed: 0, skipped: true, skipReason: "up to date" };
+    }
+
+    if (method === "tfidf") {
+      return generateTfidf(ctx, graphData, items, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
+    }
+
+    return generateOnnx(ctx, graphData, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
+  } finally {
+    await vectorStore.dispose();
   }
-  return generateOnnx(config, outputDir, graphData, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
 }
 
 async function generateTfidf(
-  config: Config,
-  outputDir: string,
+  ctx: StepContext,
   graphData: GraphData,
   allItems: Array<{ id: string; text: string }>,
   itemsToEmbed: Array<{ id: string; text: string }>,
   existingRecords: VectorRecord[],
   currentTexts: Map<string, string>,
   vectorStore: VectorStore,
-): Promise<number> {
+): Promise<StepResult> {
+  const engine = new TfidfEmbeddingEngine(ctx.config.build.embeddings);
+
   try {
-    const engine = new TfidfEmbeddingEngine(config.build.embeddings);
-
     log.info("Generating TF-IDF embeddings...");
-    engine.buildVocabulary(allItems.map((i) => i.text));
-
+    engine.buildVocabulary(allItems.map((item) => item.text));
     const embeddings = itemsToEmbed.length > 0 ? engine.embedBatch(itemsToEmbed) : [];
-    engine.saveVocabulary(outputDir);
-    engine.dispose();
 
-    return storeEmbeddings(graphData, embeddings, existingRecords, currentTexts, vectorStore, outputDir);
+    await storeEmbeddings({
+      graphData,
+      embeddings,
+      existingRecords,
+      currentTexts,
+      vectorStore,
+      outputDir: ctx.outputDir,
+      vocabulary: engine.serializeVocabulary(),
+    });
+
+    return { processed: embeddings.length, skipped: false };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.warn(`TF-IDF embeddings failed (non-blocking): ${msg}`);
-    await vectorStore.dispose();
-    return 0;
+    return { processed: 0, skipped: true, skipReason: msg };
+  } finally {
+    engine.dispose();
   }
 }
 
 async function generateOnnx(
-  config: Config,
-  outputDir: string,
+  ctx: StepContext,
   graphData: GraphData,
   items: Array<{ id: string; text: string }>,
   existingRecords: VectorRecord[],
   currentTexts: Map<string, string>,
   vectorStore: VectorStore,
-): Promise<number> {
-  const cacheDir = resolveCacheDir(config.models.cache_dir);
-  const engine = new EmbeddingEngine(config.build.embeddings, cacheDir, config.models.download_on_first_use);
+): Promise<StepResult> {
+  const cacheDir = resolveCacheDir(ctx.config.models.cache_dir);
+  const engine = new EmbeddingEngine(ctx.config.build.embeddings, cacheDir, ctx.config.models.download_on_first_use);
 
   try {
     const ready = await engine.initialize();
     if (!ready) {
-      await vectorStore.dispose();
-      return 0;
+      return { processed: 0, skipped: true, skipReason: "embedding engine unavailable" };
     }
 
     log.info("Generating ONNX embeddings...");
     const embeddings = await engine.embedBatch(items);
+    await storeEmbeddings({
+      graphData,
+      embeddings,
+      existingRecords,
+      currentTexts,
+      vectorStore,
+      outputDir: ctx.outputDir,
+    });
 
-    return storeEmbeddings(graphData, embeddings, existingRecords, currentTexts, vectorStore, outputDir);
+    return { processed: embeddings.length, skipped: false };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.warn(`ONNX embeddings failed (non-blocking): ${msg}`);
-    await vectorStore.dispose();
-    return 0;
+    return { processed: 0, skipped: true, skipReason: msg };
   } finally {
     await engine.dispose();
   }
 }
 
-async function storeEmbeddings(
-  graphData: GraphData,
-  embeddings: Array<{ id: string; text: string; vector: Float32Array }>,
-  existingRecords: VectorRecord[],
-  currentTexts: Map<string, string>,
-  vectorStore: VectorStore,
-  outputDir: string,
-): Promise<number> {
+async function storeEmbeddings(options: {
+  graphData: GraphData;
+  embeddings: Array<{ id: string; text: string; vector: Float32Array }>;
+  existingRecords: VectorRecord[];
+  currentTexts: Map<string, string>;
+  vectorStore: VectorStore;
+  outputDir: string;
+  vocabulary?: Record<string, number>;
+}): Promise<void> {
+  const {
+    graphData,
+    embeddings,
+    existingRecords,
+    currentTexts,
+    vectorStore,
+    outputDir,
+    vocabulary,
+  } = options;
+
   const updatedVectors = new Map(embeddings.map((embedding) => [embedding.id, Array.from(embedding.vector)]));
   const existingVectorMap = new Map(existingRecords.map((record) => [record.id, record.vector]));
 
@@ -200,17 +228,17 @@ async function storeEmbeddings(
   });
 
   await vectorStore.upsert(records);
-  await vectorStore.dispose();
-  saveNodeTextCache(outputDir, currentTexts);
+  atomicWriteJson(getNodeTextCachePath(outputDir), Object.fromEntries(currentTexts));
+
+  if (vocabulary) {
+    atomicWriteJson(join(outputDir, "tfidf_idf.json"), vocabulary);
+  }
 
   log.info(`  ✓ ${embeddings.length} embeddings generated and indexed`);
-  return embeddings.length;
 }
 
-// ─── Node Text Cache (exported for tests) ────────────────────────────────────
-
 export function loadNodeTextCache(outputDir: string): Map<string, string> {
-  const path = join(outputDir, ".cache", "node-texts.json");
+  const path = getNodeTextCachePath(outputDir);
   if (!existsSync(path)) return new Map();
 
   try {
@@ -221,9 +249,11 @@ export function loadNodeTextCache(outputDir: string): Map<string, string> {
 }
 
 export function saveNodeTextCache(outputDir: string, texts: Map<string, string>): void {
-  const cacheDir = join(outputDir, ".cache");
-  mkdirSync(cacheDir, { recursive: true });
-  writeFileSync(join(cacheDir, "node-texts.json"), JSON.stringify(Object.fromEntries(texts), null, 2));
+  atomicWriteJson(getNodeTextCachePath(outputDir), Object.fromEntries(texts));
+}
+
+function getNodeTextCachePath(outputDir: string): string {
+  return join(outputDir, ".cache", "node-texts.json");
 }
 
 function getChangedNodeIds(currentTexts: Map<string, string>, previousTexts: Map<string, string>): Set<string> {
@@ -244,4 +274,16 @@ function getRemovedNodeIds(currentTexts: Map<string, string>, previousTexts: Map
     }
   }
   return removed;
+}
+
+function removeDirectory(path: string): void {
+  if (existsSync(path)) {
+    rmSync(path, { recursive: true, force: true });
+  }
+}
+
+function removeFile(path: string): void {
+  if (existsSync(path)) {
+    unlinkSync(path);
+  }
 }

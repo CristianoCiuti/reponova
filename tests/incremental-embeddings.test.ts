@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { runEmbeddingsStep, loadNodeTextCache, saveNodeTextCache } from "../src/build/steps/embeddings-step.js";
+import type { StepContext } from "../src/build/types.js";
 import type { Config, GraphData } from "../src/shared/types.js";
 import { DEFAULT_CONFIG } from "../src/shared/types.js";
 
@@ -23,19 +24,21 @@ describe("PROP-I3: incremental embeddings", () => {
   // ─── Case 1: Nothing changed → early return ────────────────────────────────
 
   it("skips regeneration when texts are unchanged (all outputs stable)", async () => {
-    const { config, outputDir, graphJsonPath } = setup();
+    const { outputDir, graphJsonPath, makeContext } = setup();
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
 
-    const firstCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    const firstResult = await runEmbeddingsStep(makeContext());
     const firstVectors = loadVectors(outputDir);
     const firstIdf = readFileSync(join(outputDir, "tfidf_idf.json"), "utf-8");
 
-    const secondCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    const secondResult = await runEmbeddingsStep(makeContext());
     const secondVectors = loadVectors(outputDir);
     const secondIdf = readFileSync(join(outputDir, "tfidf_idf.json"), "utf-8");
 
-    expect(firstCount).toBe(2);
-    expect(secondCount).toBe(0);
+    expect(firstResult.processed).toBe(2);
+    expect(firstResult.skipped).toBe(false);
+    expect(secondResult.processed).toBe(0);
+    expect(secondResult.skipped).toBe(true);
     // All outputs identical
     expect(secondVectors).toEqual(firstVectors);
     expect(secondIdf).toEqual(firstIdf);
@@ -46,16 +49,17 @@ describe("PROP-I3: incremental embeddings", () => {
   // ─── Case 2: Text changed → re-embed only changed ──────────────────────────
 
   it("regenerates only changed node embeddings and preserves unchanged vectors", async () => {
-    const { config, outputDir, graphJsonPath } = setup();
+    const { outputDir, graphJsonPath, makeContext } = setup();
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
-    await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(makeContext());
     const firstVectors = loadVectors(outputDir);
 
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha updated"), makeNode("node-b", "Beta")]);
-    const resultCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    const result = await runEmbeddingsStep(makeContext());
     const secondVectors = loadVectors(outputDir);
 
-    expect(resultCount).toBe(1);
+    expect(result.processed).toBe(1);
+    expect(result.skipped).toBe(false);
     expect(vectorFor(firstVectors, "node-b")).toEqual(vectorFor(secondVectors, "node-b"));
     expect(vectorFor(firstVectors, "node-a")).not.toEqual(vectorFor(secondVectors, "node-a"));
     assertOutputIds(outputDir, ["node-a", "node-b"]);
@@ -64,14 +68,14 @@ describe("PROP-I3: incremental embeddings", () => {
   // ─── Case 3: Node added + node removed (normal incremental) ────────────────
 
   it("adds new nodes and removes deleted nodes from ALL outputs", async () => {
-    const { config, outputDir, graphJsonPath } = setup();
+    const { outputDir, graphJsonPath, makeContext } = setup();
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
-    await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(makeContext());
 
     writeGraph(graphJsonPath, [makeNode("node-b", "Beta"), makeNode("node-c", "Gamma")]);
-    const resultCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    const result = await runEmbeddingsStep(makeContext());
 
-    expect(resultCount).toBe(1);
+    expect(result.processed).toBe(1);
     assertOutputIds(outputDir, ["node-b", "node-c"]);
     // tfidf_idf.json rebuilt with new vocabulary
     expect(existsSync(join(outputDir, "tfidf_idf.json"))).toBe(true);
@@ -80,11 +84,11 @@ describe("PROP-I3: incremental embeddings", () => {
   // ─── Case 4: Stale vectors only (text cache already clean) ─────────────────
 
   it("removes stale vectors without regenerating any embeddings", async () => {
-    const { config, outputDir, graphJsonPath } = setup();
+    const { outputDir, graphJsonPath, makeContext } = setup();
 
     // Build with 3 nodes
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta"), makeNode("node-c", "Gamma")]);
-    await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(makeContext());
     const idfBefore = JSON.parse(readFileSync(join(outputDir, "tfidf_idf.json"), "utf-8")) as Record<string, unknown>;
     expect(loadVectors(outputDir)).toHaveLength(3);
 
@@ -95,9 +99,10 @@ describe("PROP-I3: incremental embeddings", () => {
 
     // Run with 2-node graph — VectorStore has stale node-c
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
-    const resultCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    const result = await runEmbeddingsStep(makeContext());
 
-    expect(resultCount).toBe(0);
+    expect(result.processed).toBe(0);
+    expect(result.skipped).toBe(true);
     assertOutputIds(outputDir, ["node-a", "node-b"]);
     // tfidf_idf.json REBUILT with vocabulary from only current 2 nodes (N changed)
     const idfAfter = JSON.parse(readFileSync(join(outputDir, "tfidf_idf.json"), "utf-8")) as Record<string, unknown>;
@@ -107,11 +112,11 @@ describe("PROP-I3: incremental embeddings", () => {
   // ─── Case 5: Stale text cache only (no stale vectors) ─────────────────────
 
   it("cleans stale text cache entries without touching vectors (TF-IDF vocabulary still rebuilt)", async () => {
-    const { config, outputDir, graphJsonPath } = setup();
+    const { outputDir, graphJsonPath, makeContext } = setup();
 
     // Build with 2 nodes
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
-    await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(makeContext());
     const vectorsBefore = loadVectors(outputDir);
 
     // Simulate: text cache has a ghost entry (node-ghost) but NO corresponding vector
@@ -121,9 +126,10 @@ describe("PROP-I3: incremental embeddings", () => {
 
     // Run with same 2-node graph — text cache has stale "node-ghost" but VectorStore is clean
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
-    const resultCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    const result = await runEmbeddingsStep(makeContext());
 
-    expect(resultCount).toBe(0);
+    expect(result.processed).toBe(0);
+    expect(result.skipped).toBe(true);
     assertOutputIds(outputDir, ["node-a", "node-b"]);
     // Vectors untouched (no stale vectors to remove)
     expect(loadVectors(outputDir)).toEqual(vectorsBefore);
@@ -136,11 +142,11 @@ describe("PROP-I3: incremental embeddings", () => {
   // ─── Case 6: Both stale vectors AND stale text cache (different nodes) ─────
 
   it("handles simultaneous stale vectors and stale text entries", async () => {
-    const { config, outputDir, graphJsonPath } = setup();
+    const { outputDir, graphJsonPath, makeContext } = setup();
 
     // Build with 3 nodes
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta"), makeNode("node-c", "Gamma")]);
-    await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(makeContext());
 
     // Simulate: node-c removed from text cache (stale text) + add ghost text entry (stale text without vector)
     // VectorStore still has node-c (stale vector)
@@ -151,20 +157,21 @@ describe("PROP-I3: incremental embeddings", () => {
 
     // Run with 2-node graph
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
-    const resultCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    const result = await runEmbeddingsStep(makeContext());
 
-    expect(resultCount).toBe(0);
+    expect(result.processed).toBe(0);
+    expect(result.skipped).toBe(true);
     assertOutputIds(outputDir, ["node-a", "node-b"]);
   });
 
   // ─── Case 7: Stale vectors + new embeddings needed simultaneously ──────────
 
   it("handles stale vector cleanup together with new embeddings via full pipeline", async () => {
-    const { config, outputDir, graphJsonPath } = setup();
+    const { outputDir, graphJsonPath, makeContext } = setup();
 
     // Build with 3 nodes
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta"), makeNode("node-c", "Gamma")]);
-    await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(makeContext());
 
     // Simulate: text cache already cleaned of node-c, but VectorStore still has it
     const cache = loadNodeTextCache(outputDir);
@@ -174,10 +181,10 @@ describe("PROP-I3: incremental embeddings", () => {
     // Run with graph that has node-a, node-b (unchanged) + node-d (NEW)
     // This triggers: staleVectorIds={node-c}, itemsNeedingEmbeddings=[node-d]
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta"), makeNode("node-d", "Delta")]);
-    const resultCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    const result = await runEmbeddingsStep(makeContext());
 
     // node-d is the only NEW embedding
-    expect(resultCount).toBe(1);
+    expect(result.processed).toBe(1);
     assertOutputIds(outputDir, ["node-a", "node-b", "node-d"]);
     // tfidf_idf.json rebuilt (full pipeline ran)
     expect(existsSync(join(outputDir, "tfidf_idf.json"))).toBe(true);
@@ -186,7 +193,7 @@ describe("PROP-I3: incremental embeddings", () => {
   // ─── Case 8: Multiple nodes removed at once ───────────────────────────────
 
   it("removes multiple stale vectors in a single cleanup pass", async () => {
-    const { config, outputDir, graphJsonPath } = setup();
+    const { outputDir, graphJsonPath, makeContext } = setup();
 
     // Build with 5 nodes
     writeGraph(graphJsonPath, [
@@ -196,7 +203,7 @@ describe("PROP-I3: incremental embeddings", () => {
       makeNode("node-d", "Delta"),
       makeNode("node-e", "Epsilon"),
     ]);
-    await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(makeContext());
     expect(loadVectors(outputDir)).toHaveLength(5);
 
     // Simulate: remove 3 nodes from text cache but VectorStore still has them
@@ -208,41 +215,43 @@ describe("PROP-I3: incremental embeddings", () => {
 
     // Run with only 2 nodes
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
-    const resultCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    const result = await runEmbeddingsStep(makeContext());
 
-    expect(resultCount).toBe(0);
+    expect(result.processed).toBe(0);
+    expect(result.skipped).toBe(true);
     assertOutputIds(outputDir, ["node-a", "node-b"]);
   });
 
   // ─── Case 9: Complete graph replacement ────────────────────────────────────
 
   it("handles complete graph replacement (all old nodes removed, all new nodes added)", async () => {
-    const { config, outputDir, graphJsonPath } = setup();
+    const { outputDir, graphJsonPath, makeContext } = setup();
 
     writeGraph(graphJsonPath, [makeNode("old-a", "OldAlpha"), makeNode("old-b", "OldBeta")]);
-    await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(makeContext());
 
     writeGraph(graphJsonPath, [makeNode("new-x", "NewX"), makeNode("new-y", "NewY")]);
-    const resultCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    const result = await runEmbeddingsStep(makeContext());
 
-    expect(resultCount).toBe(2);
+    expect(result.processed).toBe(2);
     assertOutputIds(outputDir, ["new-x", "new-y"]);
   });
 
   // ─── Case 10: Empty graph after populated build ────────────────────────────
 
   it("cleans all vectors when graph becomes empty", async () => {
-    const { config, outputDir, graphJsonPath } = setup();
+    const { outputDir, graphJsonPath, makeContext } = setup();
 
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
-    await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(makeContext());
     expect(loadVectors(outputDir)).toHaveLength(2);
 
     // Empty graph
     writeGraph(graphJsonPath, []);
-    const resultCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    const result = await runEmbeddingsStep(makeContext());
 
-    expect(resultCount).toBe(0);
+    expect(result.processed).toBe(0);
+    expect(result.skipped).toBe(true);
     expect(loadNodeTextCache(outputDir).size).toBe(0);
     // vectors.json should not exist or be empty (upsert with 0 records is a no-op)
     const vectorsPath = join(outputDir, "vectors", "vectors.json");
@@ -255,11 +264,11 @@ describe("PROP-I3: incremental embeddings", () => {
   // ─── Case 11: Switching from TF-IDF to ONNX removes tfidf_idf.json ────────
 
   it("removes tfidf_idf.json when method is onnx (method-exclusive artifacts)", async () => {
-    const { config, outputDir, graphJsonPath } = setup();
+    const { config, outputDir, graphJsonPath, makeContext } = setup();
 
     // Build with TF-IDF first
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
-    await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(makeContext());
     expect(existsSync(join(outputDir, "tfidf_idf.json"))).toBe(true);
 
     // Switch to ONNX — note: ONNX engine won't initialize in test (mocked lancedb), but
@@ -267,7 +276,7 @@ describe("PROP-I3: incremental embeddings", () => {
     config.build.embeddings.method = "onnx";
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
     // ONNX will fail gracefully (no model), but artifact cleanup must still happen
-    await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(makeContext());
 
     expect(existsSync(join(outputDir, "tfidf_idf.json"))).toBe(false);
   });
@@ -275,15 +284,15 @@ describe("PROP-I3: incremental embeddings", () => {
   // ─── Case 12: tfidf_idf.json stays when method is tfidf ───────────────────
 
   it("preserves tfidf_idf.json when method remains tfidf", async () => {
-    const { config, outputDir, graphJsonPath } = setup();
+    const { outputDir, graphJsonPath, makeContext } = setup();
 
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
-    await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(makeContext());
     expect(existsSync(join(outputDir, "tfidf_idf.json"))).toBe(true);
 
     // Run again still in tfidf mode
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta"), makeNode("node-c", "Gamma")]);
-    await runEmbeddingsStep(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(makeContext());
 
     expect(existsSync(join(outputDir, "tfidf_idf.json"))).toBe(true);
   });
@@ -291,7 +300,12 @@ describe("PROP-I3: incremental embeddings", () => {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function setup(): { config: Config; outputDir: string; graphJsonPath: string } {
+function setup(): {
+  config: Config;
+  outputDir: string;
+  graphJsonPath: string;
+  makeContext: (overrides?: Partial<StepContext>) => StepContext;
+} {
   const root = join(tmpdir(), `rn-test-prop-i3-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   tempDirs.push(root);
   const outputDir = join(root, "out");
@@ -312,6 +326,15 @@ function setup(): { config: Config; outputDir: string; graphJsonPath: string } {
     config,
     outputDir,
     graphJsonPath: join(outputDir, "graph.json"),
+    makeContext: (overrides = {}) => ({
+      config,
+      outputDir,
+      graphJsonPath: join(outputDir, "graph.json"),
+      force: false,
+      graphChanged: true,
+      previousConfig: null,
+      ...overrides,
+    }),
   };
 }
 

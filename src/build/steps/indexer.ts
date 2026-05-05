@@ -1,20 +1,20 @@
 import { join } from "node:path";
-import { existsSync, unlinkSync } from "node:fs";
+import { existsSync, statSync, unlinkSync } from "node:fs";
 import { loadGraphData } from "../../core/graph-loader.js";
 import { openDatabase, initializeSchema, populateDatabase, saveDatabase } from "../../core/db.js";
 import { log } from "../../shared/utils.js";
+import type { BuildStep, StepContext } from "../types.js";
 
-/**
- * Generate the SQLite search index from graph.json.
- * Deletes existing DB before writing to avoid stale data from larger previous builds.
- */
-export async function runIndexer(graphJsonPath: string, outputDir: string): Promise<void> {
+export const runIndexerStep: BuildStep = async (ctx: StepContext) => {
+  const dbPath = join(ctx.outputDir, "graph_search.db");
+
+  if (!shouldRunIndexer(ctx.graphJsonPath, dbPath, ctx.force)) {
+    return { processed: 0, skipped: true, skipReason: "up to date" };
+  }
+
   log.info("Generating search index...");
+  const graphData = loadGraphData(ctx.graphJsonPath);
 
-  const graphData = loadGraphData(graphJsonPath);
-  const dbPath = join(outputDir, "graph_search.db");
-
-  // Truncate: delete existing DB to avoid leftover data from previous builds
   if (existsSync(dbPath)) {
     unlinkSync(dbPath);
   }
@@ -25,5 +25,12 @@ export async function runIndexer(graphJsonPath: string, outputDir: string): Prom
   saveDatabase(db, dbPath);
   db.close();
 
-  log.info(`\u2713 Search index: ${dbPath} (${graphData.nodes.length} nodes, ${graphData.edges.length} edges)`);
+  log.info(`✓ Search index: ${dbPath} (${graphData.nodes.length} nodes, ${graphData.edges.length} edges)`);
+  return { processed: graphData.nodes.length, skipped: false };
+};
+
+function shouldRunIndexer(graphJsonPath: string, dbPath: string, force: boolean): boolean {
+  if (force) return true;
+  if (!existsSync(dbPath)) return true;
+  return statSync(graphJsonPath).mtimeMs > statSync(dbPath).mtimeMs;
 }

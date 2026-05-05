@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type Graph from "graphology";
+import { atomicWriteText } from "../../shared/atomic-write.js";
 
 interface SemanticNodeRecord {
   id: string;
@@ -67,9 +68,7 @@ export function loadPreviousGraphHash(outputDir: string): string | null {
 }
 
 export function saveGraphHash(outputDir: string, hash: string): void {
-  const cacheDir = join(outputDir, ".cache");
-  mkdirSync(cacheDir, { recursive: true });
-  writeFileSync(join(cacheDir, "semantic-graph-hash.txt"), `${hash}\n`);
+  atomicWriteText(join(outputDir, ".cache", "semantic-graph-hash.txt"), `${hash}\n`);
 }
 
 function toOptionalString(value: unknown): string | undefined {

@@ -1,10 +1,10 @@
 import type { CommandModule } from "yargs";
-import { join } from "node:path";
 import { resolveGraphPath, resolveGraphJson } from "../core/graph-resolver.js";
-import { loadGraphData } from "../core/graph-loader.js";
-import { openDatabase, initializeSchema, populateDatabase, saveDatabase } from "../core/db.js";
 import { invalidateManifestStep, validateManifestStep } from "../build/manifest.js";
+import { runIndexerStep } from "../build/steps/indexer.js";
 import { log } from "../shared/utils.js";
+import type { StepContext } from "../build/types.js";
+import { DEFAULT_CONFIG } from "../shared/types.js";
 
 export const indexCommand: CommandModule = {
   command: "index",
@@ -28,24 +28,25 @@ export const indexCommand: CommandModule = {
       process.exit(1);
     }
 
-    // Invalidate manifest step so interrupted runs are detected by next build
     invalidateManifestStep(graphDir, "indexer");
 
     log.info(`Indexing ${graphJsonPath}...`);
-    const graphData = loadGraphData(graphJsonPath);
+    const stepContext: StepContext = {
+      config: DEFAULT_CONFIG,
+      outputDir: graphDir,
+      graphJsonPath,
+      force: true,
+      graphChanged: true,
+      previousConfig: null,
+    };
 
-    const dbPath = join(graphDir, "graph_search.db");
-    const db = await openDatabase(dbPath);
-    initializeSchema(db);
-    populateDatabase(db, graphData);
-    saveDatabase(db, dbPath);
-    db.close();
+    const result = await runIndexerStep(stepContext);
+    if (result.skipped) {
+      log.info(`Search index skipped: ${result.skipReason ?? "up to date"}`);
+    } else {
+      log.info(`Search index created with ${result.processed} nodes`);
+    }
 
-    log.info(`Search index created: ${dbPath}`);
-    log.info(`  Nodes: ${graphData.nodes.length}`);
-    log.info(`  Edges: ${graphData.edges.length}`);
-
-    // Mark step complete on success
     validateManifestStep(graphDir, "indexer");
   },
 };

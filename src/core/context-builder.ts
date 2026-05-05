@@ -111,9 +111,9 @@ export class ContextBuilder {
     const summariesPath = join(this.graphDir, "community_summaries.json");
     if (existsSync(summariesPath)) {
       try {
-        const raw = JSON.parse(readFileSync(summariesPath, "utf-8")) as Array<{ community_id: string; summary: string }>;
+        const raw = JSON.parse(readFileSync(summariesPath, "utf-8")) as Array<{ id: string; summary: string }>;
         for (const s of raw) {
-          this.communitySummaries.set(String(s.community_id), s.summary);
+          this.communitySummaries.set(String(s.id), s.summary);
         }
       } catch { /* ignore */ }
     }

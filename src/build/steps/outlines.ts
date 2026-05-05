@@ -1,108 +1,142 @@
 /**
- * Outline generation for the build pipeline.
- *
- * Walks configured repos, applies path filters, and generates
- * pre-computed .outline.json files using the outline module.
+ * Outline generation step.
  */
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, rmdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  readdirSync,
+  unlinkSync,
+  rmSync,
+  copyFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve, join, relative, dirname } from "node:path";
 import { generateOutline, formatOutlineJson } from "../../outline/index.js";
+import { atomicWriteJson } from "../../shared/atomic-write.js";
 import { log } from "../../shared/utils.js";
-import type { Config } from "../../shared/types.js";
+import type { BuildStep, StepContext, StepResult } from "../types.js";
 import { createPatternMatcher, buildSkipDirs, extensionsToGlobs } from "../../core/path-resolver.js";
 import { getOutlineSupportedExtensions } from "../../outline/languages/registry.js";
 import { hashFile } from "../incremental/incremental.js";
 
-export interface OutlineOptions {
-  force: boolean;
-  skipDirs?: Set<string>;
-}
+export const runOutlinesStep: BuildStep = async (ctx: StepContext): Promise<StepResult> => {
+  const config = ctx.config.outlines;
+  const outlinesDir = join(ctx.outputDir, "outlines");
+  const cachePath = join(ctx.outputDir, ".cache", "outline-hashes.json");
+  const effectiveForce = ctx.force;
 
-/**
- * Generate pre-computed outlines for all configured repos/patterns.
- * Called by both `build` (when outlines.enabled) and the standalone `outline` CLI command.
- */
-export async function runOutlineGeneration(
-  config: Config,
-  configDir: string,
-  outputDir: string,
-  options: OutlineOptions,
-): Promise<number> {
-  const outlinesDir = join(outputDir, "outlines");
-  if (!existsSync(outlinesDir)) mkdirSync(outlinesDir, { recursive: true });
-  const previousHashes = loadOutlineHashes(outputDir);
+  if (!config.enabled) {
+    removeDirectory(outlinesDir);
+    removeFile(cachePath);
+    return { processed: 0, skipped: true, skipReason: "disabled in config" };
+  }
+
+  if (!ctx.graphChanged && !effectiveForce) {
+    return { processed: 0, skipped: true, skipReason: "graph unchanged" };
+  }
+
+  const configDir = ctx.configDir;
+  if (!configDir) {
+    throw new Error("Outlines step requires configDir in StepContext");
+  }
+
+  const previousHashes = effectiveForce ? new Map<string, string>() : loadOutlineHashes(ctx.outputDir);
   const nextHashes = new Map<string, string>();
+  const pendingWrites = new Map<string, string>();
+  const tmpRoot = join(tmpdir(), `rn-outlines-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   let count = 0;
-  const skipDirs = options.skipDirs ?? buildSkipDirs(config.outlines.exclude_common);
-  const isMulti = config.repos.length > 1;
+  const skipDirs = buildSkipDirs(config.exclude_common);
+  const isMulti = ctx.config.repos.length > 1;
 
-  for (const repo of config.repos) {
-    const repoPath = resolve(configDir, repo.path);
-    if (!existsSync(repoPath)) {
-      log.warn(`Repo path not found: ${repoPath}`);
-      continue;
-    }
+  mkdirSync(tmpRoot, { recursive: true });
 
-    // Multi-repo: pass repo name so patterns like "repoName/path/**" match
-    const files = findFiles(
-      repoPath, config.outlines.patterns, config.outlines.exclude,
-      skipDirs, isMulti ? repo.name : undefined,
-    );
+  try {
+    for (const repo of ctx.config.repos) {
+      const repoPath = resolve(configDir, repo.path);
+      if (!existsSync(repoPath)) {
+        log.warn(`Repo path not found: ${repoPath}`);
+        continue;
+      }
 
-    if (files.length === 0) {
-      log.info(`  ${repo.name}: no files matched outline patterns`);
-    } else {
-      log.info(`  ${repo.name}: ${files.length} file(s) matched`);
-    }
+      const files = findFiles(
+        repoPath,
+        config.patterns,
+        config.exclude,
+        skipDirs,
+        isMulti ? repo.name : undefined,
+      );
 
-    for (const file of files) {
-      const relPath = isMulti
-        ? `${repo.name}/${relative(repoPath, file)}`.split("\\").join("/")
-        : relative(repoPath, file).split("\\").join("/");
-      const outPath = join(outlinesDir, relPath + ".outline.json");
-      const fileHash = hashFile(file);
-      nextHashes.set(relPath, fileHash);
+      if (files.length === 0) {
+        log.info(`  ${repo.name}: no files matched outline patterns`);
+      } else {
+        log.info(`  ${repo.name}: ${files.length} file(s) matched`);
+      }
 
-      if (!options.force && existsSync(outPath) && previousHashes.get(relPath) === fileHash) continue;
+      for (const file of files) {
+        const relPath = isMulti
+          ? `${repo.name}/${relative(repoPath, file)}`.split("\\").join("/")
+          : relative(repoPath, file).split("\\").join("/");
+        const outPath = join(outlinesDir, relPath + ".outline.json");
+        const fileHash = hashFile(file);
+        nextHashes.set(relPath, fileHash);
 
-      try {
-        const source = readFileSync(file, "utf-8");
-        const outline = await generateOutline(relPath, source);
-        if (!outline) continue;
+        if (!effectiveForce && existsSync(outPath) && previousHashes.get(relPath) === fileHash) {
+          continue;
+        }
 
-        const outDir = dirname(outPath);
-        if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
-        writeFileSync(outPath, formatOutlineJson(outline));
-        count++;
-      } catch (error) {
-        log.warn(`Failed to process ${file}: ${error}`);
+        try {
+          const source = readFileSync(file, "utf-8");
+          const outline = await generateOutline(relPath, source);
+          if (!outline) continue;
+
+          const tmpPath = join(tmpRoot, relPath + ".outline.json");
+          mkdirSync(dirname(tmpPath), { recursive: true });
+          writeFileSync(tmpPath, formatOutlineJson(outline));
+          pendingWrites.set(relPath, tmpPath);
+          count++;
+        } catch (error) {
+          log.warn(`Failed to process ${file}: ${error}`);
+        }
       }
     }
-  }
 
-  // Clean up stale outlines: files in previous build but not in current
-  let staleCount = 0;
-  for (const [relPath] of previousHashes) {
-    if (!nextHashes.has(relPath)) {
-      const stalePath = join(outlinesDir, relPath + ".outline.json");
-      try {
-        if (existsSync(stalePath)) {
-          unlinkSync(stalePath);
-          staleCount++;
-        }
-      } catch { /* ignore cleanup failures */ }
+    for (const [relPath, tmpPath] of pendingWrites) {
+      const finalPath = join(outlinesDir, relPath + ".outline.json");
+      mkdirSync(dirname(finalPath), { recursive: true });
+      copyFileSync(tmpPath, finalPath);
     }
+
+    let staleCount = 0;
+    for (const [relPath] of previousHashes) {
+      if (!nextHashes.has(relPath)) {
+        const stalePath = join(outlinesDir, relPath + ".outline.json");
+        try {
+          if (existsSync(stalePath)) {
+            unlinkSync(stalePath);
+            staleCount++;
+          }
+        } catch {
+          // ignore cleanup failures
+        }
+      }
+    }
+
+    if (staleCount > 0) log.info(`  Removed ${staleCount} stale outline(s)`);
+    removeEmptyDirs(outlinesDir);
+    saveOutlineHashes(ctx.outputDir, nextHashes);
+
+    if (count === 0 && staleCount === 0) {
+      return { processed: 0, skipped: true, skipReason: "up to date" };
+    }
+
+    return { processed: count, skipped: false };
+  } finally {
+    removeDirectory(tmpRoot);
   }
-  if (staleCount > 0) log.info(`  Removed ${staleCount} stale outline(s)`);
-
-  // Clean up empty directories left behind by stale removal
-  removeEmptyDirs(outlinesDir);
-
-  saveOutlineHashes(outputDir, nextHashes);
-
-  return count;
-}
+};
 
 export function loadOutlineHashes(outputDir: string): Map<string, string> {
   const hashesPath = join(outputDir, ".cache", "outline-hashes.json");
@@ -117,24 +151,13 @@ export function loadOutlineHashes(outputDir: string): Map<string, string> {
 }
 
 export function saveOutlineHashes(outputDir: string, hashes: Map<string, string>): void {
-  const cacheDir = join(outputDir, ".cache");
-  mkdirSync(cacheDir, { recursive: true });
-
   const serialized: Record<string, string> = {};
   for (const [filePath, hash] of hashes) {
     serialized[filePath] = hash;
   }
-
-  writeFileSync(join(cacheDir, "outline-hashes.json"), JSON.stringify(serialized, null, 2));
+  atomicWriteJson(join(outputDir, ".cache", "outline-hashes.json"), serialized);
 }
 
-// ─── File discovery (shared) ────────────────────────────────────────────────────
-
-/**
- * Walk baseDir and return files matching patterns.
- * When patterns is empty, auto-detects by file extension using the outline language registry.
- * When patterns is provided, uses createPatternMatcher for bidirectional dual matching.
- */
 function findFiles(
   baseDir: string,
   patterns: string[],
@@ -164,11 +187,8 @@ function findFiles(
       if (!entry.isFile()) continue;
 
       const relPath = relative(baseDir, fullPath).split("\\").join("/");
-
       if (isExcluded(relPath, repoName)) continue;
-      if (isIncluded(relPath, repoName)) {
-        results.push(fullPath);
-      }
+      if (isIncluded(relPath, repoName)) results.push(fullPath);
     }
   }
 
@@ -176,10 +196,6 @@ function findFiles(
   return results;
 }
 
-/**
- * Recursively remove empty directories under root (bottom-up).
- * Leaves root itself intact even if empty.
- */
 function removeEmptyDirs(root: string): void {
   let entries;
   try { entries = readdirSync(root, { withFileTypes: true }); } catch { return; }
@@ -188,10 +204,23 @@ function removeEmptyDirs(root: string): void {
     if (entry.isDirectory()) {
       const child = join(root, entry.name);
       removeEmptyDirs(child);
-      // After recursing, try to remove if now empty
       try {
-        if (readdirSync(child).length === 0) rmdirSync(child);
-      } catch { /* ignore */ }
+        if (readdirSync(child).length === 0) rmSync(child, { recursive: true, force: true });
+      } catch {
+        // ignore
+      }
     }
+  }
+}
+
+function removeDirectory(path: string): void {
+  if (existsSync(path)) {
+    rmSync(path, { recursive: true, force: true });
+  }
+}
+
+function removeFile(path: string): void {
+  if (existsSync(path)) {
+    unlinkSync(path);
   }
 }

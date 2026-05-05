@@ -121,8 +121,12 @@ export class TfidfEmbeddingEngine {
    * Save IDF table to disk so it can be loaded at query time.
    */
   saveVocabulary(outputDir: string): void {
-    const data = Object.fromEntries(this.idf);
+    const data = this.serializeVocabulary();
     writeFileSync(join(outputDir, "tfidf_idf.json"), JSON.stringify(data));
+  }
+
+  serializeVocabulary(): Record<string, number> {
+    return Object.fromEntries(this.idf);
   }
 
   /**

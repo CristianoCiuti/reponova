@@ -1,17 +1,14 @@
 /**
  * CLI command: outline
- *
- * Standalone command to pre-compute outlines.
- * Delegates to the shared runOutlineGeneration (same logic used by `build`).
  */
 import type { CommandModule } from "yargs";
 import { resolve } from "node:path";
 import { loadConfig } from "../core/config.js";
 import { resolveGraphPath } from "../core/graph-resolver.js";
-import { runOutlineGeneration } from "../build/steps/outlines.js";
-import { buildSkipDirs } from "../core/path-resolver.js";
+import { runOutlinesStep } from "../build/steps/outlines.js";
 import { invalidateManifestStep, validateManifestStep } from "../build/manifest.js";
 import { log } from "../shared/utils.js";
+import type { StepContext } from "../build/types.js";
 
 export const outlineCommand: CommandModule = {
   command: "outline",
@@ -33,15 +30,26 @@ export const outlineCommand: CommandModule = {
       ? resolveGraphPath(argv.graph as string) ?? resolve(configDir, config.output)
       : resolve(configDir, config.output);
 
-    // Invalidate manifest step so interrupted runs are detected by next build
     invalidateManifestStep(outputDir, "outlines");
 
-    log.info(`Generating outlines in ${outputDir}/outlines...`);
-    const skipDirs = buildSkipDirs(config.outlines.exclude_common);
-    const count = await runOutlineGeneration(config, configDir, outputDir, { force: argv.force as boolean, skipDirs });
-    log.info(`Generated ${count} outlines`);
+    const stepContext: StepContext = {
+      config,
+      configDir,
+      outputDir,
+      graphJsonPath: resolve(outputDir, "graph.json"),
+      force: argv.force as boolean,
+      graphChanged: true,
+      previousConfig: null,
+    };
 
-    // Mark step complete on success
+    log.info(`Generating outlines in ${outputDir}/outlines...`);
+    const result = await runOutlinesStep(stepContext);
+    if (result.skipped) {
+      log.info(`Outlines skipped: ${result.skipReason ?? "up to date"}`);
+    } else {
+      log.info(`Generated ${result.processed} outlines`);
+    }
+
     validateManifestStep(outputDir, "outlines");
   },
 };

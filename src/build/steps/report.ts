@@ -1,17 +1,10 @@
-import { writeFileSync, readFileSync, existsSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
-import type Graph from "graphology";
-import type { CommunityResult } from "../../extract/community.js";
-
-export interface GenerateGraphReportOptions {
-  graph: Graph;
-  communities: CommunityResult;
-  outputDir: string;
-  outputPath: string;
-}
+import type { GraphData, GraphNode } from "../../shared/types.js";
+import type { BuildStep, StepContext } from "../types.js";
 
 interface RankedCommunity {
-  id: number;
+  id: string;
   members: string[];
   name: string;
   repos: string[];
@@ -24,94 +17,74 @@ interface LoadedCommunitySummary {
   hub_nodes: string[];
 }
 
-export function generateGraphReport(options: GenerateGraphReportOptions): void {
-  const { graph, communities, outputDir, outputPath } = options;
+export const runReportStep: BuildStep = async (ctx: StepContext) => {
+  const outputPath = join(ctx.outputDir, "report.md");
+  const summariesPath = join(ctx.outputDir, "community_summaries.json");
+
+  if (!shouldRunReport(ctx.graphJsonPath, outputPath, summariesPath, ctx.force)) {
+    return { processed: 0, skipped: true, skipReason: "up to date" };
+  }
+
+  const graphData = JSON.parse(readFileSync(ctx.graphJsonPath, "utf-8")) as GraphData;
+  generateGraphReport({ graphData, outputDir: ctx.outputDir, outputPath });
+  return { processed: graphData.nodes.length, skipped: false };
+};
+
+export function generateGraphReport(options: {
+  graphData: GraphData;
+  outputDir: string;
+  outputPath: string;
+}): void {
+  const { graphData, outputDir, outputPath } = options;
   const repoNames = new Set<string>();
   const edgeTypeCounts = new Map<string, number>();
   const crossRepoCounts = new Map<string, number>();
   const fileTypeCounts = new Map<string, number>();
   const filePaths = new Set<string>();
   const seenFiles = new Set<string>();
+  const nodeMap = new Map(graphData.nodes.map((node) => [node.id, node]));
+  const degreeMap = computeDegreeMap(graphData);
   let crossRepoEdgeCount = 0;
 
-  graph.forEachNode((_nodeId, attrs) => {
-    const repo = toNonEmptyString(attrs.repo);
-    const sourceFile = toNonEmptyString(attrs.source_file);
+  for (const node of graphData.nodes) {
+    const repo = toNonEmptyString(node.repo);
+    const sourceFile = toNonEmptyString(node.source_file);
 
     if (repo) repoNames.add(repo);
     if (sourceFile) filePaths.add(sourceFile);
-
-    if (sourceFile && !seenFiles.has(sourceFile) && isFileLevelNode(attrs.type)) {
+    if (sourceFile && !seenFiles.has(sourceFile) && isFileLevelNode(node.type)) {
       seenFiles.add(sourceFile);
       incrementCount(fileTypeCounts, getFileTypeLabel(sourceFile));
     }
-  });
+  }
 
-  graph.forEachEdge((_edgeId, attrs, source, target) => {
-    const relation = toNonEmptyString(attrs.relation) || "unknown";
+  for (const edge of graphData.edges) {
+    const relation = toNonEmptyString(edge.type) || "unknown";
     incrementCount(edgeTypeCounts, relation);
 
-    const sourceRepo = toNonEmptyString(graph.getNodeAttribute(source, "repo"));
-    const targetRepo = toNonEmptyString(graph.getNodeAttribute(target, "repo"));
+    const sourceRepo = toNonEmptyString(nodeMap.get(edge.source)?.repo);
+    const targetRepo = toNonEmptyString(nodeMap.get(edge.target)?.repo);
     if (sourceRepo && targetRepo && sourceRepo !== targetRepo) {
       crossRepoEdgeCount++;
       incrementCount(crossRepoCounts, `${sourceRepo} → ${targetRepo}`);
     }
-  });
+  }
 
-  const topGodNodes = graph
-    .nodes()
-    .map((nodeId) => {
-      const attrs = graph.getNodeAttributes(nodeId);
-      return {
-        label: toNonEmptyString(attrs.label) || nodeId,
-        type: toNonEmptyString(attrs.type) || "unknown",
-        repo: toNonEmptyString(attrs.repo) || "-",
-        degree: graph.degree(nodeId),
-      };
-    })
+  const topGodNodes = graphData.nodes
+    .map((node) => ({
+      label: node.label || node.id,
+      type: node.type || "unknown",
+      repo: node.repo || "-",
+      degree: degreeMap.get(node.id) ?? 0,
+    }))
     .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label))
     .slice(0, 15);
 
-  // Load community summaries if intelligence layer produced them
   const summaryMap = loadCommunitySummaries(outputDir);
-
-  const rankedCommunities: RankedCommunity[] = Array.from(communities.communities.entries())
-    .map(([id, members]) => {
-      const rankedMembers = members
-        .filter((nodeId) => graph.hasNode(nodeId))
-        .map((nodeId) => ({
-          label: toNonEmptyString(graph.getNodeAttribute(nodeId, "label")) || nodeId,
-          degree: graph.degree(nodeId),
-          repo: toNonEmptyString(graph.getNodeAttribute(nodeId, "repo")),
-          type: toNonEmptyString(graph.getNodeAttribute(nodeId, "type")),
-        }))
-        .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label));
-
-      const repos = Array.from(new Set(rankedMembers.map((member) => member.repo).filter(Boolean) as string[])).sort();
-
-      // Use LLM-generated summary as community name if available, fallback to top members
-      const llmSummary = summaryMap.get(String(id));
-      let name: string;
-      if (llmSummary) {
-        name = llmSummary;
-      } else {
-        const nameSeed = rankedMembers
-          .filter((member) => member.type !== "module" && member.type !== "document")
-          .slice(0, 2)
-          .map((member) => member.label);
-        name = nameSeed.length > 0 ? nameSeed.join(" / ") : `Community ${id}`;
-      }
-
-      return {
-        id,
-        members,
-        name,
-        repos,
-        keyMembers: rankedMembers.slice(0, 5).map((member) => `${member.label} (${member.degree})`),
-      };
-    })
-    .sort((a, b) => b.members.length - a.members.length || a.id - b.id)
+  const groupedCommunities = buildCommunityGroups(graphData.nodes);
+  const rankedCommunities: RankedCommunity[] = [...groupedCommunities.entries()]
+    .map(([id, members]) => buildRankedCommunity(id, members, nodeMap, degreeMap, summaryMap))
+    .sort((a, b) => b.members.length - a.members.length || a.id.localeCompare(b.id))
     .slice(0, 10);
 
   const lines = [
@@ -121,13 +94,12 @@ export function generateGraphReport(options: GenerateGraphReportOptions): void {
     "",
     "## Overall Stats",
     "",
-    `- Nodes: ${graph.order}`,
-    `- Edges: ${graph.size}`,
-    `- Communities: ${communities.count}`,
+    `- Nodes: ${graphData.nodes.length}`,
+    `- Edges: ${graphData.edges.length}`,
+    `- Communities: ${groupedCommunities.size}`,
     `- Repos: ${repoNames.size}`,
     `- Files: ${filePaths.size}`,
     `- Cross-repo edges: ${crossRepoEdgeCount}`,
-    `- Modularity: ${communities.modularity.toFixed(4)}`,
     "",
     "## Top God Nodes",
     "",
@@ -168,6 +140,70 @@ export function generateGraphReport(options: GenerateGraphReportOptions): void {
   writeFileSync(outputPath, lines.join("\n"));
 }
 
+function shouldRunReport(graphJsonPath: string, outputPath: string, summariesPath: string, force: boolean): boolean {
+  if (force) return true;
+  if (!existsSync(outputPath)) return true;
+  if (statSync(graphJsonPath).mtimeMs > statSync(outputPath).mtimeMs) return true;
+  return existsSync(summariesPath) && statSync(summariesPath).mtimeMs > statSync(outputPath).mtimeMs;
+}
+
+function buildCommunityGroups(nodes: GraphNode[]): Map<string, string[]> {
+  const groups = new Map<string, string[]>();
+  for (const node of nodes) {
+    const communityId = node.community;
+    if (!communityId) continue;
+    const members = groups.get(communityId) ?? [];
+    members.push(node.id);
+    groups.set(communityId, members);
+  }
+  return groups;
+}
+
+function buildRankedCommunity(
+  id: string,
+  members: string[],
+  nodeMap: Map<string, GraphNode>,
+  degreeMap: Map<string, number>,
+  summaryMap: Map<string, string>,
+): RankedCommunity {
+  const rankedMembers = members
+    .map((nodeId) => nodeMap.get(nodeId))
+    .filter((node): node is GraphNode => node != null)
+    .map((node) => ({
+      label: node.label || node.id,
+      degree: degreeMap.get(node.id) ?? 0,
+      repo: node.repo,
+      type: node.type,
+    }))
+    .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label));
+
+  const repos = Array.from(new Set(rankedMembers.map((member) => member.repo).filter(Boolean) as string[])).sort();
+  const llmSummary = summaryMap.get(String(id));
+  const name = llmSummary
+    ?? (rankedMembers
+      .filter((member) => member.type !== "module" && member.type !== "document")
+      .slice(0, 2)
+      .map((member) => member.label)
+      .join(" / ") || `Community ${id}`);
+
+  return {
+    id,
+    members,
+    name,
+    repos,
+    keyMembers: rankedMembers.slice(0, 5).map((member) => `${member.label} (${member.degree})`),
+  };
+}
+
+function computeDegreeMap(graphData: GraphData): Map<string, number> {
+  const degreeMap = new Map<string, number>();
+  for (const edge of graphData.edges) {
+    degreeMap.set(edge.source, (degreeMap.get(edge.source) ?? 0) + 1);
+    degreeMap.set(edge.target, (degreeMap.get(edge.target) ?? 0) + 1);
+  }
+  return degreeMap;
+}
+
 function renderCountTable(counts: Map<string, number>): string[] {
   return Array.from(counts.entries())
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
@@ -200,14 +236,9 @@ function getFileTypeLabel(sourceFile: string): string {
 }
 
 function escapeMarkdownText(value: string): string {
-  return value
-    .replace(/\|/g, "\\|");
+  return value.replace(/\|/g, "\\|");
 }
 
-/**
- * Load community_summaries.json if it exists (produced by intelligence layer).
- * Returns a map of community id → first sentence of summary (for use as name).
- */
 function loadCommunitySummaries(outputDir: string): Map<string, string> {
   const summaryPath = join(outputDir, "community_summaries.json");
   if (!existsSync(summaryPath)) return new Map();
@@ -217,18 +248,12 @@ function loadCommunitySummaries(outputDir: string): Map<string, string> {
     const summaries = JSON.parse(raw) as LoadedCommunitySummary[];
     const map = new Map<string, string>();
     for (const s of summaries) {
-      // Extract a meaningful name from the summary.
-      // Algorithmic format: "NNN nodes cluster. Centered around X, Y, Z in path. Spans repos."
-      // LLM format: "Community N is a cluster of... focused on..."
-      // Strategy: prefer "Centered around..." clause, else strip redundant "Community N is..." prefix and use first sentence.
       const centeredMatch = s.summary.match(/Centered around ([^.]+)/);
       let name: string;
       if (centeredMatch) {
         name = centeredMatch[1]!.trim();
       } else {
-        // Strip "Community N is/are/,/—" prefix (the report header already shows the ID)
         let cleaned = s.summary.replace(/^Community\s+\d+[\s,—-]+(?:is\s+)?/i, "");
-        // Capitalize first letter after stripping
         cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
         name = cleaned.split(/[.!?\n]/)[0]?.trim() ?? "";
       }
