@@ -6,10 +6,10 @@
  * Gracefully degrades if onnxruntime-node is not available.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { homedir } from "node:os";
+import { join } from "node:path";
 import { log } from "../shared/utils.js";
 import type { EmbeddingsConfig } from "../shared/types.js";
+import { resolveCacheDir } from "./shared/cache-dir.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -373,13 +373,4 @@ export function composeNodeText(node: NodeEmbeddingInput): string {
   }
 
   return text.replace(/\s+/g, " ").trim().slice(0, 512);
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function resolveCacheDir(configPath: string): string {
-  if (configPath.startsWith("~")) {
-    return resolve(homedir(), configPath.slice(2));
-  }
-  return resolve(configPath);
 }

@@ -24,10 +24,11 @@ const saveGraphHashMock = vi.fn();
 
 vi.mock("../src/build/indexer.js", () => ({ runIndexer: runIndexerMock }));
 vi.mock("../src/build/outlines.js", () => ({ runOutlineGeneration: runOutlineGenerationMock }));
-vi.mock("../src/build/intelligence.js", () => ({
-  runEmbeddingsStep: runEmbeddingsStepMock,
-  runCommunitySummariesStep: runCommunitySummariesStepMock,
-  runNodeDescriptionsStep: runNodeDescriptionsStepMock,
+vi.mock("../src/build/embeddings-step.js", () => ({ runEmbeddingsStep: runEmbeddingsStepMock }));
+vi.mock("../src/build/community-summaries-step.js", () => ({ runCommunitySummariesStep: runCommunitySummariesStepMock }));
+vi.mock("../src/build/node-descriptions-step.js", () => ({ runNodeDescriptionsStep: runNodeDescriptionsStepMock }));
+vi.mock("../src/build/llm-engine-pool.js", () => ({
+  LlmEnginePool: vi.fn().mockImplementation(() => ({ disposeAll: vi.fn() })),
 }));
 vi.mock("../src/build/report.ts", () => ({ generateGraphReport: generateGraphReportMock }));
 vi.mock("../src/extract/export-html.js", () => ({ exportHtml: exportHtmlMock, exportCommunityHtml: exportCommunityHtmlMock }));

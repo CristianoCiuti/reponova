@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { runIntelligenceLayer, loadNodeTextCache } from "../src/build/intelligence.js";
+import { runEmbeddingsStep, loadNodeTextCache } from "../src/build/embeddings-step.js";
 import type { Config, GraphData } from "../src/shared/types.js";
 import { DEFAULT_CONFIG } from "../src/shared/types.js";
 
@@ -19,14 +19,14 @@ describe("PROP-I3: incremental embeddings", () => {
     const { config, outputDir, graphJsonPath } = setup();
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
 
-    const first = await runIntelligenceLayer(config, outputDir, graphJsonPath);
+    const firstCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
     const firstVectors = loadVectors(outputDir);
 
-    const second = await runIntelligenceLayer(config, outputDir, graphJsonPath);
+    const secondCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
     const secondVectors = loadVectors(outputDir);
 
-    expect(first.embeddingsGenerated).toBe(2);
-    expect(second.embeddingsGenerated).toBe(0);
+    expect(firstCount).toBe(2);
+    expect(secondCount).toBe(0);
     expect(loadNodeTextCache(outputDir)).toEqual(new Map(Object.entries({
       "node-a": firstVectors.find((record) => record.id === "node-a")!.text,
       "node-b": firstVectors.find((record) => record.id === "node-b")!.text,
@@ -37,14 +37,14 @@ describe("PROP-I3: incremental embeddings", () => {
   it("regenerates only changed node embeddings and preserves unchanged vectors", async () => {
     const { config, outputDir, graphJsonPath } = setup();
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
-    await runIntelligenceLayer(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(config, outputDir, graphJsonPath);
     const firstVectors = loadVectors(outputDir);
 
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha updated"), makeNode("node-b", "Beta")]);
-    const result = await runIntelligenceLayer(config, outputDir, graphJsonPath);
+    const resultCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
     const secondVectors = loadVectors(outputDir);
 
-    expect(result.embeddingsGenerated).toBe(1);
+    expect(resultCount).toBe(1);
     expect(vectorFor(firstVectors, "node-b")).toEqual(vectorFor(secondVectors, "node-b"));
     expect(vectorFor(firstVectors, "node-a")).not.toEqual(vectorFor(secondVectors, "node-a"));
   });
@@ -52,13 +52,13 @@ describe("PROP-I3: incremental embeddings", () => {
   it("adds new nodes and removes deleted nodes from the vector store", async () => {
     const { config, outputDir, graphJsonPath } = setup();
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
-    await runIntelligenceLayer(config, outputDir, graphJsonPath);
+    await runEmbeddingsStep(config, outputDir, graphJsonPath);
 
     writeGraph(graphJsonPath, [makeNode("node-b", "Beta"), makeNode("node-c", "Gamma")]);
-    const result = await runIntelligenceLayer(config, outputDir, graphJsonPath);
+    const resultCount = await runEmbeddingsStep(config, outputDir, graphJsonPath);
     const vectors = loadVectors(outputDir);
 
-    expect(result.embeddingsGenerated).toBe(1);
+    expect(resultCount).toBe(1);
     expect(vectors.map((record) => record.id).sort()).toEqual(["node-b", "node-c"]);
     expect(loadNodeTextCache(outputDir).has("node-a")).toBe(false);
     expect(loadNodeTextCache(outputDir).has("node-c")).toBe(true);

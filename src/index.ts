@@ -22,7 +22,7 @@ export type { RepoMapping, PathContext } from "./core/path-resolver.js";
 export { EmbeddingEngine, composeNodeText } from "./build/embeddings.js";
 export { VectorStore } from "./core/vector-store.js";
 export { LlmEngine } from "./build/llm-engine.js";
-export { SummaryGenerator } from "./build/community-summaries.js";
+export { CommunitySummaryGenerator } from "./build/community-summary-generator.js";
 export { ContextBuilder } from "./core/context-builder.js";
 
 

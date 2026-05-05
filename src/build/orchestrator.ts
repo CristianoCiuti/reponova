@@ -5,7 +5,10 @@ import type { Config, GraphData } from "../shared/types.js";
 import { loadConfig } from "../core/config.js";
 import { runIndexer } from "./indexer.js";
 import { runOutlineGeneration } from "./outlines.js";
-import { runEmbeddingsStep, runCommunitySummariesStep, runNodeDescriptionsStep } from "./intelligence.js";
+import { runEmbeddingsStep } from "./embeddings-step.js";
+import { runCommunitySummariesStep } from "./community-summaries-step.js";
+import { runNodeDescriptionsStep } from "./node-descriptions-step.js";
+import { LlmEnginePool } from "./llm-engine-pool.js";
 import { generateGraphReport } from "./report.js";
 import { exportHtml, exportCommunityHtml, type CommunitySummaryInfo } from "../extract/export-html.js";
 import { log } from "../shared/utils.js";
@@ -199,6 +202,9 @@ export async function runBuild(config: Config, configDir: string, options: Build
       updateStep(outputDir, manifest, "outlines", "skipped", "up to date");
     }
 
+    // ── Intelligence Layer (shared LLM pool for model dedup) ─────────────
+    const llmPool = new LlmEnginePool(config.models);
+
     // ── Step: Embeddings ───────────────────────────────────────────────
     if (plan.stepsToRun.has("embeddings")) {
       updateStep(outputDir, manifest, "embeddings", "running");
@@ -221,7 +227,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
     if (plan.stepsToRun.has("community_summaries")) {
       updateStep(outputDir, manifest, "community_summaries", "running");
       try {
-        const summaryCount = await runCommunitySummariesStep(config, outputDir, mergedPath);
+        const summaryCount = await runCommunitySummariesStep(config, outputDir, mergedPath, llmPool);
         log.info(`Community summaries: ${summaryCount} generated`);
         updateStep(outputDir, manifest, "community_summaries", "completed");
       } catch (err) {
@@ -239,7 +245,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
     if (plan.stepsToRun.has("node_descriptions")) {
       updateStep(outputDir, manifest, "node_descriptions", "running");
       try {
-        const descCount = await runNodeDescriptionsStep(config, outputDir, mergedPath);
+        const descCount = await runNodeDescriptionsStep(config, outputDir, mergedPath, llmPool);
         log.info(`Node descriptions: ${descCount} generated`);
         updateStep(outputDir, manifest, "node_descriptions", "completed");
       } catch (err) {
@@ -252,6 +258,8 @@ export async function runBuild(config: Config, configDir: string, options: Build
     } else {
       updateStep(outputDir, manifest, "node_descriptions", "skipped", "up to date");
     }
+
+    await llmPool.disposeAll();
 
     // ── Step: HTML visualizations ────────────────────────────────────────
     if (plan.stepsToRun.has("html")) {

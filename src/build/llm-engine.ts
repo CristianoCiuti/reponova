@@ -7,8 +7,8 @@
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { homedir } from "node:os";
 import { log } from "../shared/utils.js";
+import { resolveCacheDir } from "./shared/cache-dir.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -259,13 +259,4 @@ export async function areModelsEquivalent(uriA: string, uriB: string, cacheDir: 
   if (pathA && pathB) return pathA === pathB;
 
   return false;
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function resolveCacheDir(configPath: string): string {
-  if (configPath.startsWith("~")) {
-    return resolve(homedir(), configPath.slice(2));
-  }
-  return resolve(configPath);
 }
