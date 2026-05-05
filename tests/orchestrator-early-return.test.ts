@@ -16,6 +16,9 @@ const exportHtmlMock = vi.fn();
 const exportCommunityHtmlMock = vi.fn();
 const loadPreviousBuildConfigMock = vi.fn();
 const cleanStaleArtifactsMock = vi.fn();
+const loadPreviousGraphHashMock = vi.fn();
+const computeSemanticGraphHashMock = vi.fn();
+const saveGraphHashMock = vi.fn();
 
 vi.mock("../src/build/indexer.js", () => ({ runIndexer: runIndexerMock }));
 vi.mock("../src/build/outlines.js", () => ({ runOutlineGeneration: runOutlineGenerationMock }));
@@ -24,6 +27,11 @@ vi.mock("../src/build/report.ts", () => ({ generateGraphReport: generateGraphRep
 vi.mock("../src/extract/export-html.js", () => ({ exportHtml: exportHtmlMock, exportCommunityHtml: exportCommunityHtmlMock }));
 vi.mock("../src/build/config-diff.js", () => ({ loadPreviousBuildConfig: loadPreviousBuildConfigMock }));
 vi.mock("../src/build/artifact-cleanup.js", () => ({ cleanStaleArtifacts: cleanStaleArtifactsMock }));
+vi.mock("../src/build/graph-hash.js", () => ({
+  loadPreviousGraphHash: loadPreviousGraphHashMock,
+  computeSemanticGraphHash: computeSemanticGraphHashMock,
+  saveGraphHash: saveGraphHashMock,
+}));
 vi.mock("../src/core/config.js", async () => {
   const actual = await vi.importActual<typeof import("../src/core/config.js")>("../src/core/config.js");
   return actual;
@@ -105,6 +113,10 @@ describe("PROP-I1: orchestrator early return when no files changed", () => {
       nodeDescriptionsChanged: false,
       previous: null,
     });
+
+    // Same graph hash = no change
+    computeSemanticGraphHashMock.mockReturnValue("same_hash");
+    loadPreviousGraphHashMock.mockReturnValue("same_hash");
 
     buildMonorepoMock.mockResolvedValue({
       builtGraph: {

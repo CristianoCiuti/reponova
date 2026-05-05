@@ -17,10 +17,9 @@ import { computeSemanticGraphHash, loadPreviousGraphHash, saveGraphHash } from "
 import { createPathContext, prepareWorkspace, extractRepoName } from "../core/path-resolver.js";
 import {
   createManifest, loadManifest, updateStep, completeManifest,
-  isManifestComplete,
 } from "./manifest.js";
-import type { BuildManifest, StepName } from "./manifest.js";
-import { openDatabase } from "../core/db.js";
+import type { StepName } from "./manifest.js";
+import { computeBuildPlan } from "./build-planner.js";
 
 export interface BuildOptions {
   force: boolean;
@@ -142,18 +141,26 @@ export async function runBuild(config: Config, configDir: string, options: Build
       log.info(`  Incremental: ${result.incrementalStats.cachedFiles} cached, ${result.incrementalStats.reextractedFiles} re-extracted${removed > 0 ? `, ${removed} removed` : ""}`);
     }
 
-    // ── Early return decision (manifest + artifact aware) ────────────────
-    const noFileChanges = result.incrementalStats?.reextractedFiles === 0
-      && (result.incrementalStats?.removedFiles ?? 0) === 0;
+    // ── Compute build plan (single unified decision) ─────────────────────
+    const currentGraphHash = computeSemanticGraphHash(result.builtGraph.graph);
+    const plan = await computeBuildPlan({
+      previousManifest,
+      configDiff,
+      fileChanges: {
+        reextractedFiles: result.incrementalStats?.reextractedFiles ?? 0,
+        removedFiles: result.incrementalStats?.removedFiles ?? 0,
+      },
+      previousGraphHash: loadPreviousGraphHash(outputDir),
+      currentGraphHash,
+      config,
+      outputDir,
+      force: options.force,
+    });
 
-    const missingArtifacts = await checkExpectedArtifacts(outputDir, config);
-    const previousBuildComplete = previousManifest !== null
-      && isManifestComplete(previousManifest)
-      && missingArtifacts.length === 0;
-
-    if (noFileChanges && !configDiff.hasChanges && !options.force && previousBuildComplete) {
+    // ── Early return if nothing to do ────────────────────────────────────
+    if (plan.isUpToDate) {
       log.info("No changes detected — graph is up to date");
-      completeManifest(outputDir, manifest);
+      completeManifest(outputDir, manifest, currentGraphHash);
       const existingCounts = readExistingGraphCounts(mergedPath);
       return {
         outputDir,
@@ -164,159 +171,82 @@ export async function runBuild(config: Config, configDir: string, options: Build
       };
     }
 
-    if (noFileChanges && !options.force && missingArtifacts.length > 0) {
-      log.info(`Resuming incomplete build — missing: ${missingArtifacts.join(", ")}`);
-    }
-
-    if (noFileChanges && configDiff.hasChanges && !options.force) {
-      log.info("No source changes detected — selectively regenerating changed subsystems");
-
-      if (config.outlines.enabled && configDiff.outlinesChanged) {
-        updateStep(outputDir, manifest, "outlines", "running");
-        log.info("Generating outlines...");
-        const outlineCount = await runOutlineGeneration(config, configDir, outputDir, { force: true, skipDirs });
-        log.info(`  \u2713 ${outlineCount} outlines generated`);
-        updateStep(outputDir, manifest, "outlines", "completed");
-      }
-
-      const shouldRunIntelligence =
-        configDiff.embeddingsChanged ||
-        configDiff.communitySummariesChanged ||
-        configDiff.nodeDescriptionsChanged;
-
-      if (shouldRunIntelligence) {
-        if (configDiff.embeddingsChanged) updateStep(outputDir, manifest, "embeddings", "running");
-        if (configDiff.communitySummariesChanged) updateStep(outputDir, manifest, "community_summaries", "running");
-        if (configDiff.nodeDescriptionsChanged) updateStep(outputDir, manifest, "node_descriptions", "running");
-
-        const intelligenceResult = await runIntelligenceLayer(config, outputDir, mergedPath, {
-          skipEmbeddings: !configDiff.embeddingsChanged,
-          skipSummaries: !configDiff.communitySummariesChanged,
-          skipDescriptions: !configDiff.nodeDescriptionsChanged,
-        });
-        log.info(`Intelligence: ${intelligenceResult.embeddingsGenerated} embeddings, ${intelligenceResult.communitySummaries} community summaries, ${intelligenceResult.nodeDescriptions} node descriptions`);
-
-        if (configDiff.embeddingsChanged) updateStep(outputDir, manifest, "embeddings", "completed");
-        if (configDiff.communitySummariesChanged) updateStep(outputDir, manifest, "community_summaries", "completed");
-        if (configDiff.nodeDescriptionsChanged) updateStep(outputDir, manifest, "node_descriptions", "completed");
-      }
-
-      if (configDiff.communitySummariesChanged) {
-        const communitySummaries = loadCommunitySummaries(outputDir);
-
-        if (config.build.html) {
-          updateStep(outputDir, manifest, "html", "running");
-          const htmlCommunityPath = join(outputDir, "graph_communities.html");
-          log.info("Generating graph_communities.html...");
-          exportCommunityHtml({
-            graph: result.builtGraph.graph,
-            communities: result.communities,
-            outputPath: htmlCommunityPath,
-            communitySummaries,
-          });
-          updateStep(outputDir, manifest, "html", "completed");
-        }
-
-        updateStep(outputDir, manifest, "report", "running");
-        log.info("Generating report.md...");
-        generateGraphReport({
-          graph: result.builtGraph.graph,
-          communities: result.communities,
-          outputDir,
-          outputPath: join(outputDir, "report.md"),
-        });
-        updateStep(outputDir, manifest, "report", "completed");
-      }
-
-      completeManifest(outputDir, manifest);
-      return {
-        outputDir,
-        fileCount: result.fileCount,
-        nodeCount: result.builtGraph.stats.nodeCount,
-        edgeCount: result.builtGraph.stats.edgeCount,
-        communityCount: result.communities.count,
-      };
-    }
-
-    // ── Semantic graph hash (skip downstream only if build was previously complete) ──
-    const previousGraphHash = loadPreviousGraphHash(outputDir);
-    const currentGraphHash = computeSemanticGraphHash(result.builtGraph.graph);
-
-    if (previousGraphHash === currentGraphHash && !configDiff.hasChanges && !options.force && previousBuildComplete) {
-      log.info("Semantic graph unchanged — skipping downstream regeneration");
-      completeManifest(outputDir, manifest, currentGraphHash);
-      return {
-        outputDir,
-        fileCount: result.fileCount,
-        nodeCount: result.builtGraph.stats.nodeCount,
-        edgeCount: result.builtGraph.stats.edgeCount,
-        communityCount: result.communities.count,
-      };
-    }
-
-    // ── Determine which steps need running ───────────────────────────────
-    const stepsToRun = determineStepsToRun(missingArtifacts, config, previousManifest);
+    // ── Log build plan ───────────────────────────────────────────────────
+    logBuildPlan(plan.stepsToRun, plan.reasons);
 
     // ── Step: Search index ───────────────────────────────────────────────
-    if (stepsToRun.has("indexer")) {
+    if (plan.stepsToRun.has("indexer")) {
       updateStep(outputDir, manifest, "indexer", "running");
       await runIndexer(mergedPath, outputDir);
       updateStep(outputDir, manifest, "indexer", "completed");
     } else {
-      updateStep(outputDir, manifest, "indexer", "skipped", "artifact exists");
+      updateStep(outputDir, manifest, "indexer", "skipped", "up to date");
     }
 
     // ── Step: Outlines ───────────────────────────────────────────────────
-    if (config.outlines.enabled && stepsToRun.has("outlines")) {
+    if (plan.stepsToRun.has("outlines")) {
       updateStep(outputDir, manifest, "outlines", "running");
       const outlineForce = options.force || configDiff.outlinesChanged;
       const outlineSkipDirs = buildSkipDirs(config.outlines.exclude_common);
       outlineSkipDirs.add(basename(outputDir));
       log.info("Generating outlines...");
       const outlineCount = await runOutlineGeneration(config, configDir, outputDir, { force: outlineForce, skipDirs: outlineSkipDirs });
-      log.info(`  \u2713 ${outlineCount} outlines generated`);
+      log.info(`  ✓ ${outlineCount} outlines generated`);
       updateStep(outputDir, manifest, "outlines", "completed");
     } else if (!config.outlines.enabled) {
       updateStep(outputDir, manifest, "outlines", "skipped", "disabled in config");
     } else {
-      updateStep(outputDir, manifest, "outlines", "skipped", "artifact exists");
+      updateStep(outputDir, manifest, "outlines", "skipped", "up to date");
     }
 
     // ── Step: Intelligence layer (embeddings + summaries + descriptions) ─
-    if (stepsToRun.has("embeddings") || stepsToRun.has("community_summaries") || stepsToRun.has("node_descriptions")) {
-      updateStep(outputDir, manifest, "embeddings", "running");
-      updateStep(outputDir, manifest, "community_summaries", "running");
-      updateStep(outputDir, manifest, "node_descriptions", "running");
+    const runEmbeddings = plan.stepsToRun.has("embeddings");
+    const runSummaries = plan.stepsToRun.has("community_summaries");
+    const runDescriptions = plan.stepsToRun.has("node_descriptions");
+
+    if (runEmbeddings || runSummaries || runDescriptions) {
+      if (runEmbeddings) updateStep(outputDir, manifest, "embeddings", "running");
+      if (runSummaries) updateStep(outputDir, manifest, "community_summaries", "running");
+      if (runDescriptions) updateStep(outputDir, manifest, "node_descriptions", "running");
 
       try {
         const intelligenceResult = await runIntelligenceLayer(config, outputDir, mergedPath, {
-          skipEmbeddings: !stepsToRun.has("embeddings") && !config.build.embeddings.enabled,
-          skipSummaries: !stepsToRun.has("community_summaries") && !config.build.community_summaries.enabled,
-          skipDescriptions: !stepsToRun.has("node_descriptions") && !config.build.node_descriptions.enabled,
+          skipEmbeddings: !runEmbeddings,
+          skipSummaries: !runSummaries,
+          skipDescriptions: !runDescriptions,
         });
         log.info(`Intelligence: ${intelligenceResult.embeddingsGenerated} embeddings, ${intelligenceResult.communitySummaries} community summaries, ${intelligenceResult.nodeDescriptions} node descriptions`);
 
-        updateStep(outputDir, manifest, "embeddings",
-          config.build.embeddings.enabled ? "completed" : "skipped", !config.build.embeddings.enabled ? "disabled in config" : undefined);
-        updateStep(outputDir, manifest, "community_summaries",
-          config.build.community_summaries.enabled ? "completed" : "skipped", !config.build.community_summaries.enabled ? "disabled in config" : undefined);
-        updateStep(outputDir, manifest, "node_descriptions",
-          config.build.node_descriptions.enabled ? "completed" : "skipped", !config.build.node_descriptions.enabled ? "disabled in config" : undefined);
+        if (runEmbeddings) updateStep(outputDir, manifest, "embeddings", "completed");
+        if (runSummaries) updateStep(outputDir, manifest, "community_summaries", "completed");
+        if (runDescriptions) updateStep(outputDir, manifest, "node_descriptions", "completed");
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         log.warn(`Intelligence layer failed (non-blocking): ${msg}`);
-        updateStep(outputDir, manifest, "embeddings", "failed", msg);
-        updateStep(outputDir, manifest, "community_summaries", "failed", msg);
-        updateStep(outputDir, manifest, "node_descriptions", "failed", msg);
+        if (runEmbeddings) updateStep(outputDir, manifest, "embeddings", "failed", msg);
+        if (runSummaries) updateStep(outputDir, manifest, "community_summaries", "failed", msg);
+        if (runDescriptions) updateStep(outputDir, manifest, "node_descriptions", "failed", msg);
       }
     } else {
-      updateStep(outputDir, manifest, "embeddings", "skipped", "artifact exists");
-      updateStep(outputDir, manifest, "community_summaries", "skipped", "artifact exists");
-      updateStep(outputDir, manifest, "node_descriptions", "skipped", "artifact exists");
+      if (!config.build.embeddings.enabled) {
+        updateStep(outputDir, manifest, "embeddings", "skipped", "disabled in config");
+      } else {
+        updateStep(outputDir, manifest, "embeddings", "skipped", "up to date");
+      }
+      if (!config.build.community_summaries.enabled) {
+        updateStep(outputDir, manifest, "community_summaries", "skipped", "disabled in config");
+      } else {
+        updateStep(outputDir, manifest, "community_summaries", "skipped", "up to date");
+      }
+      if (!config.build.node_descriptions.enabled) {
+        updateStep(outputDir, manifest, "node_descriptions", "skipped", "disabled in config");
+      } else {
+        updateStep(outputDir, manifest, "node_descriptions", "skipped", "up to date");
+      }
     }
 
     // ── Step: HTML visualizations ────────────────────────────────────────
-    if (config.build.html && stepsToRun.has("html")) {
+    if (plan.stepsToRun.has("html")) {
       updateStep(outputDir, manifest, "html", "running");
 
       // Load community summaries (if generated by intelligence layer)
@@ -344,11 +274,11 @@ export async function runBuild(config: Config, configDir: string, options: Build
     } else if (!config.build.html) {
       updateStep(outputDir, manifest, "html", "skipped", "disabled in config");
     } else {
-      updateStep(outputDir, manifest, "html", "skipped", "artifact exists");
+      updateStep(outputDir, manifest, "html", "skipped", "up to date");
     }
 
     // ── Step: Report ─────────────────────────────────────────────────────
-    if (stepsToRun.has("report")) {
+    if (plan.stepsToRun.has("report")) {
       updateStep(outputDir, manifest, "report", "running");
       log.info("Generating report.md...");
       generateGraphReport({
@@ -359,7 +289,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
       });
       updateStep(outputDir, manifest, "report", "completed");
     } else {
-      updateStep(outputDir, manifest, "report", "skipped", "artifact exists");
+      updateStep(outputDir, manifest, "report", "skipped", "up to date");
     }
 
     // ── Save graph hash ONLY after all steps complete ────────────────────
@@ -409,6 +339,16 @@ function readExistingGraphCounts(graphJsonPath: string): { nodeCount: number; ed
     edgeCount: raw.metadata?.edge_count ?? raw.edges.length,
     communityCount: raw.communities?.length ?? 0,
   };
+}
+
+/**
+ * Log the build plan: which steps will run and why.
+ */
+function logBuildPlan(stepsToRun: Set<StepName>, reasons: Map<StepName, string>): void {
+  log.info("Build plan:");
+  for (const step of stepsToRun) {
+    log.info(`  → ${step}: ${reasons.get(step) ?? "unknown"}`);
+  }
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -467,114 +407,3 @@ function tagNodesWithRepo(graphJsonPath: string, repoNames: string[], mode: "sin
 
   writeFileSync(graphJsonPath, JSON.stringify(data, null, 2));
 }
-
-// ─── Artifact Existence Check ────────────────────────────────────────────────
-
-/**
- * Check which expected artifacts are missing or corrupted in the output directory.
- * Used to prevent early-return when a previous build was interrupted.
- * Performs both existence AND integrity checks.
- */
-async function checkExpectedArtifacts(outputDir: string, config: Config): Promise<string[]> {
-  const missing: string[] = [];
-
-  // Search index: check existence + integrity via actual SQLite query
-  const dbPath = join(outputDir, "graph_search.db");
-  if (!existsSync(dbPath)) {
-    missing.push("indexer");
-  } else {
-    try {
-      const db = await openDatabase(dbPath, { readonly: true });
-      const result = db.exec("SELECT COUNT(*) as c FROM nodes");
-      const count = result[0]?.values[0]?.[0] as number ?? 0;
-      db.close();
-      if (count === 0) missing.push("indexer");
-    } catch {
-      missing.push("indexer");
-    }
-  }
-
-  if (config.build.embeddings.enabled) {
-    const hasVectors = existsSync(join(outputDir, "vectors"));
-    const hasVectorsJson = existsSync(join(outputDir, "vectors.json"));
-    const hasTfidf = existsSync(join(outputDir, "tfidf_idf.json"));
-    if (!hasVectors && !hasVectorsJson && !hasTfidf) missing.push("embeddings");
-  }
-
-  if (config.build.community_summaries.enabled) {
-    const summariesPath = join(outputDir, "community_summaries.json");
-    if (!existsSync(summariesPath)) {
-      missing.push("community_summaries");
-    } else {
-      try { JSON.parse(readFileSync(summariesPath, "utf-8")); }
-      catch { missing.push("community_summaries"); }
-    }
-  }
-
-  if (config.build.node_descriptions.enabled) {
-    const descriptionsPath = join(outputDir, "node_descriptions.json");
-    if (!existsSync(descriptionsPath)) {
-      missing.push("node_descriptions");
-    } else {
-      try { JSON.parse(readFileSync(descriptionsPath, "utf-8")); }
-      catch { missing.push("node_descriptions"); }
-    }
-  }
-
-  if (config.build.html && (!existsSync(join(outputDir, "graph.html")) || !existsSync(join(outputDir, "graph_communities.html")))) {
-    missing.push("html");
-  }
-
-  if (config.outlines.enabled) {
-    const outlinesDir = join(outputDir, "outlines");
-    if (!existsSync(outlinesDir)) missing.push("outlines");
-  }
-
-  if (!existsSync(join(outputDir, "report.md"))) missing.push("report");
-
-  return missing;
-}
-
-/**
- * Determine which pipeline steps need to run based on missing artifacts AND manifest state.
- * On a full build (no missing artifacts from early-return skip), runs everything.
- *
- * Manifest-aware: steps marked "running" (interrupted) or "failed" in the previous
- * manifest are ALWAYS re-run, even if their artifact exists on disk — the artifact
- * may be partial/stale from the interrupted execution.
- */
-function determineStepsToRun(missingArtifacts: string[], config: Config, previousManifest: BuildManifest | null): Set<string> {
-  // Start with artifact-based missing steps
-  const steps = new Set<string>(missingArtifacts);
-
-  // Manifest-aware: force re-run for steps that were "running" or "failed" in previous build
-  // even if artifact appears to exist (it might be partial/stale)
-  if (previousManifest !== null && !isManifestComplete(previousManifest)) {
-    const manifestSteps: StepName[] = [
-      "indexer", "outlines", "embeddings", "community_summaries", "node_descriptions", "html", "report",
-    ];
-    for (const step of manifestSteps) {
-      const status = previousManifest.steps[step]?.status;
-      if (status === "running" || status === "failed") {
-        steps.add(step);
-      }
-    }
-  }
-
-  // If no steps to run after manifest check, and no missing artifacts → full build
-  // (this handles normal graph-change rebuild where everything needs regeneration)
-  if (missingArtifacts.length === 0 && steps.size === 0) {
-    const all = new Set<string>(["indexer", "outlines", "embeddings", "community_summaries", "node_descriptions", "html", "report"]);
-    return all;
-  }
-
-  // Selective recovery: add dependents
-  // HTML depends on community_summaries (for names in visualization)
-  if (steps.has("community_summaries") && config.build.html) steps.add("html");
-  // Report depends on community_summaries
-  if (steps.has("community_summaries")) steps.add("report");
-
-  return steps;
-}
-
-

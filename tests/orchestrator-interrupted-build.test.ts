@@ -23,6 +23,9 @@ const exportHtmlMock = vi.fn();
 const exportCommunityHtmlMock = vi.fn();
 const loadPreviousBuildConfigMock = vi.fn();
 const cleanStaleArtifactsMock = vi.fn();
+const loadPreviousGraphHashMock = vi.fn();
+const computeSemanticGraphHashMock = vi.fn();
+const saveGraphHashMock = vi.fn();
 
 vi.mock("../src/build/indexer.js", () => ({ runIndexer: runIndexerMock }));
 vi.mock("../src/build/outlines.js", () => ({ runOutlineGeneration: runOutlineGenerationMock }));
@@ -31,6 +34,11 @@ vi.mock("../src/build/report.ts", () => ({ generateGraphReport: generateGraphRep
 vi.mock("../src/extract/export-html.js", () => ({ exportHtml: exportHtmlMock, exportCommunityHtml: exportCommunityHtmlMock }));
 vi.mock("../src/build/config-diff.js", () => ({ loadPreviousBuildConfig: loadPreviousBuildConfigMock }));
 vi.mock("../src/build/artifact-cleanup.js", () => ({ cleanStaleArtifacts: cleanStaleArtifactsMock }));
+vi.mock("../src/build/graph-hash.js", () => ({
+  loadPreviousGraphHash: loadPreviousGraphHashMock,
+  computeSemanticGraphHash: computeSemanticGraphHashMock,
+  saveGraphHash: saveGraphHashMock,
+}));
 vi.mock("../src/core/config.js", async () => {
   const actual = await vi.importActual<typeof import("../src/core/config.js")>("../src/core/config.js");
   return actual;
@@ -179,6 +187,9 @@ describe("interrupted-build recovery (PROP-I3)", () => {
       extractionCount: 5,
       incrementalStats: { cachedFiles: 5, reextractedFiles: 0 },
     });
+    // Graph hash unchanged so Signal 2 (graph change) doesn't fire
+    computeSemanticGraphHashMock.mockReturnValue("same_hash");
+    loadPreviousGraphHashMock.mockReturnValue("same_hash");
   }
 
   function setupIntelligenceMock(): void {
@@ -254,7 +265,8 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     const { runBuild } = await import("../src/build/orchestrator.js");
     await runBuild(config, configDir, { force: false });
 
-    // Indexer should be SKIPPED (artifact exists), but downstream steps should run
+    // Indexer should be SKIPPED (artifact exists + manifest says pending for it is fine since we
+    // test from the artifact check angle — artifact exists + valid DB), but downstream steps should run
     expect(runIndexerMock).not.toHaveBeenCalled();
     expect(runOutlineGenerationMock).toHaveBeenCalled();
     expect(runIntelligenceLayerMock).toHaveBeenCalled();
@@ -562,5 +574,68 @@ describe("interrupted-build recovery (PROP-I3)", () => {
 
     // openDatabase threw → indexer must be re-run
     expect(runIndexerMock).toHaveBeenCalled();
+  });
+
+  // ── THE CRITICAL BUG FIX: interrupted build + config change ────────────
+
+  it("re-runs interrupted step AND config-changed step when both signals present", async () => {
+    const { config, configDir, outputDir, graphPath } = setupConfig();
+    writeGraphJson(graphPath);
+    setupNoFileChanges();
+    setupIntelligenceMock();
+    setupValidDbMock();
+    runOutlineGenerationMock.mockResolvedValue(3);
+
+    // Config change: embeddings changed
+    loadPreviousBuildConfigMock.mockReturnValue({
+      hasChanges: true,
+      isFirstBuild: false,
+      embeddingsChanged: true,
+      outlinesChanged: false,
+      communitySummariesChanged: false,
+      nodeDescriptionsChanged: false,
+      previous: null,
+    });
+
+    // Previous build interrupted during community_summaries
+    const cacheDir = join(outputDir, ".cache");
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(join(cacheDir, "build-manifest.json"), JSON.stringify({
+      version: 1,
+      started_at: "2025-01-01T00:00:00.000Z",
+      completed_at: null,
+      graph_hash: null,
+      steps: {
+        extraction: { status: "completed" },
+        graph_build: { status: "completed" },
+        indexer: { status: "completed" },
+        outlines: { status: "completed" },
+        embeddings: { status: "completed" },
+        community_summaries: { status: "running" }, // INTERRUPTED HERE
+        node_descriptions: { status: "pending" },
+        html: { status: "pending" },
+        report: { status: "pending" },
+      },
+    }, null, 2));
+    // Artifacts that were completed exist
+    createArtifacts(outputDir, ["indexer", "outlines", "embeddings"]);
+
+    const { runBuild } = await import("../src/build/orchestrator.js");
+    await runBuild(config, configDir, { force: false });
+
+    // BOTH signals must be honored:
+    // 1. Embeddings re-run (config changed)
+    // 2. Community summaries re-run (was interrupted)
+    // 3. node_descriptions re-run (was pending)
+    // 4. HTML + report (dependency on community_summaries)
+    expect(runIntelligenceLayerMock).toHaveBeenCalled();
+    const call = runIntelligenceLayerMock.mock.calls[0];
+    expect(call[3].skipEmbeddings).toBe(false); // embeddings must run (config changed)
+    expect(call[3].skipSummaries).toBe(false); // summaries must run (interrupted)
+    expect(call[3].skipDescriptions).toBe(false); // descriptions must run (was pending)
+    expect(exportHtmlMock).toHaveBeenCalled();
+    expect(generateGraphReportMock).toHaveBeenCalled();
+    // Indexer should be SKIPPED (completed + artifact valid)
+    expect(runIndexerMock).not.toHaveBeenCalled();
   });
 });

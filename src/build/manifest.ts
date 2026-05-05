@@ -67,11 +67,26 @@ const ALL_STEPS: StepName[] = [
 /**
  * Write JSON atomically via write-then-rename.
  * Guarantees file is either the old version or the new version, never partial.
+ * Retries on Windows EPERM (file handle race condition).
  */
 export function atomicWriteJson(filePath: string, data: unknown): void {
   const tmpPath = filePath + ".tmp";
   writeFileSync(tmpPath, JSON.stringify(data, null, 2));
-  renameSync(tmpPath, filePath);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      renameSync(tmpPath, filePath);
+      return;
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if ((code === "EPERM" || code === "EACCES") && attempt < 2) {
+        // Windows file handle race — brief delay then retry
+        const start = Date.now();
+        while (Date.now() - start < 50) { /* spin wait */ }
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 // ─── Manifest Path ───────────────────────────────────────────────────────────
