@@ -4,6 +4,11 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { EmbeddingEngine, composeNodeText, type NodeEmbeddingInput } from "../src/build/intelligence/embeddings.js";
 import { VectorStore, type VectorRecord } from "../src/core/vector-store.js";
+
+// Force VectorStore into fast in-memory fallback (no native lancedb loading)
+vi.mock("@lancedb/lancedb", () => ({
+  connect: async () => { throw new Error("mock: lancedb unavailable"); },
+}));
 import { CommunitySummaryGenerator, type CommunityData } from "../src/build/intelligence/community-summary-generator.js";
 import { NodeDescriptionGenerator } from "../src/build/intelligence/node-description-generator.js";
 import { LlmEngine } from "../src/build/intelligence/llm-engine.js";
@@ -89,9 +94,8 @@ describe("VectorStore (fallback mode)", () => {
     mkdirSync(tmpDir, { recursive: true });
 
     store = new VectorStore(tmpDir);
-    // Force fallback mode (no lancedb)
     await store.initialize();
-  }, 30000);
+  });
 
   it("should store and query vectors", async () => {
     const records: VectorRecord[] = [
@@ -227,6 +231,13 @@ describe("NodeDescriptionGenerator (algorithmic)", () => {
 
 // ─── EmbeddingEngine (graceful degradation) ──────────────────────────────────
 
+// Mock onnxruntime-node so EmbeddingEngine tests don't load the real 86MB ONNX model
+vi.mock("onnxruntime-node", () => ({
+  InferenceSession: {
+    create: async () => { throw new Error("mock: onnx unavailable"); },
+  },
+}));
+
 describe("EmbeddingEngine", () => {
   it("should report unavailable when disabled", async () => {
     const engine = new EmbeddingEngine(
@@ -246,9 +257,7 @@ describe("EmbeddingEngine", () => {
     await engine.dispose();
   });
 
-  it("should gracefully handle missing onnxruntime-node", { timeout: 30000 }, async () => {
-    // This test validates that if onnxruntime-node IS available but model is not downloaded,
-    // the engine handles it without crashing. In CI without the model, it will fail gracefully.
+  it("should gracefully handle unavailable onnxruntime-node", async () => {
     const engine = new EmbeddingEngine(
       {
         enabled: true,
@@ -258,13 +267,13 @@ describe("EmbeddingEngine", () => {
         batch_size: 128,
       },
       join(tmpdir(), `gmt-test-nonexistent-${Date.now()}`),
+      false, // downloadOnFirstUse = false — no network I/O
     );
 
-    // This should not throw — it should return false gracefully
+    // Should not throw — returns false when model not available
     const ready = await engine.initialize();
-    // ready could be true (if onnxruntime is installed and model downloads)
-    // or false (if model download fails in CI)
-    expect(typeof ready).toBe("boolean");
+    expect(ready).toBe(false);
+    expect(engine.isAvailable).toBe(false);
     await engine.dispose();
   });
 });
