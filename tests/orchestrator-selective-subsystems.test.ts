@@ -10,7 +10,9 @@ const tempDirs: string[] = [];
 const runPipelineMock = vi.fn();
 const runIndexerMock = vi.fn();
 const runOutlineGenerationMock = vi.fn();
-const runIntelligenceLayerMock = vi.fn();
+const runEmbeddingsStepMock = vi.fn();
+const runCommunitySummariesStepMock = vi.fn();
+const runNodeDescriptionsStepMock = vi.fn();
 const generateGraphReportMock = vi.fn();
 const exportHtmlMock = vi.fn();
 const exportCommunityHtmlMock = vi.fn();
@@ -23,7 +25,11 @@ const saveGraphHashMock = vi.fn();
 vi.mock("../src/extract/index.js", () => ({ runPipeline: runPipelineMock }));
 vi.mock("../src/build/indexer.js", () => ({ runIndexer: runIndexerMock }));
 vi.mock("../src/build/outlines.js", () => ({ runOutlineGeneration: runOutlineGenerationMock }));
-vi.mock("../src/build/intelligence.js", () => ({ runIntelligenceLayer: runIntelligenceLayerMock }));
+vi.mock("../src/build/intelligence.js", () => ({
+  runEmbeddingsStep: runEmbeddingsStepMock,
+  runCommunitySummariesStep: runCommunitySummariesStepMock,
+  runNodeDescriptionsStep: runNodeDescriptionsStepMock,
+}));
 vi.mock("../src/build/report.ts", () => ({ generateGraphReport: generateGraphReportMock }));
 vi.mock("../src/extract/export-html.js", () => ({ exportHtml: exportHtmlMock, exportCommunityHtml: exportCommunityHtmlMock }));
 vi.mock("../src/build/config-diff.js", () => ({ loadPreviousBuildConfig: loadPreviousBuildConfigMock }));
@@ -161,7 +167,7 @@ describe("PROP-I2: selective subsystem execution", () => {
     computeSemanticGraphHashMock.mockReturnValue("same_hash");
     loadPreviousGraphHashMock.mockReturnValue("same_hash");
 
-    runIntelligenceLayerMock.mockResolvedValue({ embeddingsGenerated: 0, communitySummaries: 2, nodeDescriptions: 0 });
+    runCommunitySummariesStepMock.mockResolvedValue(2);
 
     const { runBuild } = await import("../src/build/orchestrator.js");
     const result = await runBuild(config, configDir, { force: false });
@@ -178,12 +184,10 @@ describe("PROP-I2: selective subsystem execution", () => {
     expect(runIndexerMock).not.toHaveBeenCalled();
     expect(runOutlineGenerationMock).not.toHaveBeenCalled();
 
-    // Intelligence layer called with skip flags
-    expect(runIntelligenceLayerMock).toHaveBeenCalledWith(config, outputDir, graphPath, {
-      skipEmbeddings: true,
-      skipSummaries: false,
-      skipDescriptions: true,
-    });
+    // Only community summaries step called (embeddings + descriptions skipped)
+    expect(runEmbeddingsStepMock).not.toHaveBeenCalled();
+    expect(runCommunitySummariesStepMock).toHaveBeenCalled();
+    expect(runNodeDescriptionsStepMock).not.toHaveBeenCalled();
 
     // HTML + report should run (dependencies of community_summaries)
     expect(exportHtmlMock).toHaveBeenCalled();
@@ -238,7 +242,7 @@ describe("PROP-I2: selective subsystem execution", () => {
     computeSemanticGraphHashMock.mockReturnValue("same_hash");
     loadPreviousGraphHashMock.mockReturnValue("same_hash");
 
-    runIntelligenceLayerMock.mockResolvedValue({ embeddingsGenerated: 5, communitySummaries: 0, nodeDescriptions: 0 });
+    runEmbeddingsStepMock.mockResolvedValue(5);
 
     const { runBuild } = await import("../src/build/orchestrator.js");
     await runBuild(config, configDir, { force: false });
@@ -246,11 +250,9 @@ describe("PROP-I2: selective subsystem execution", () => {
     // Only embeddings should be regenerated
     expect(runIndexerMock).not.toHaveBeenCalled();
     expect(runOutlineGenerationMock).not.toHaveBeenCalled();
-    expect(runIntelligenceLayerMock).toHaveBeenCalledWith(config, outputDir, graphPath, {
-      skipEmbeddings: false,
-      skipSummaries: true,
-      skipDescriptions: true,
-    });
+    expect(runEmbeddingsStepMock).toHaveBeenCalled();
+    expect(runCommunitySummariesStepMock).not.toHaveBeenCalled();
+    expect(runNodeDescriptionsStepMock).not.toHaveBeenCalled();
     // No dependency propagation from embeddings → html/report not triggered
     expect(exportHtmlMock).not.toHaveBeenCalled();
     expect(exportCommunityHtmlMock).not.toHaveBeenCalled();

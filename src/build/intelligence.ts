@@ -470,3 +470,86 @@ function getRemovedNodeIds(currentTexts: Map<string, string>, previousTexts: Map
   }
   return removed;
 }
+
+// ─── Standalone Step Functions ───────────────────────────────────────────────
+// Each step is fully independent with its own manifest lifecycle.
+// The orchestrator calls these individually so that each step's completion
+// is tracked IMMEDIATELY in the manifest — no more all-or-nothing.
+
+/**
+ * Run embeddings step independently.
+ * Returns the number of embeddings generated.
+ */
+export async function runEmbeddingsStep(
+  config: Config,
+  outputDir: string,
+  graphJsonPath: string,
+): Promise<number> {
+  if (!config.build.embeddings.enabled) return 0;
+  const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
+  return runEmbeddings(config, outputDir, graphData);
+}
+
+/**
+ * Run community summaries step independently.
+ * Returns the number of summaries generated.
+ */
+export async function runCommunitySummariesStep(
+  config: Config,
+  outputDir: string,
+  graphJsonPath: string,
+): Promise<number> {
+  if (!config.build.community_summaries.enabled) return 0;
+  const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
+
+  const summariesCfg: CommunitySummariesConfig = {
+    ...config.build.community_summaries,
+    enabled: true,
+  };
+  // Descriptions disabled — only run summaries
+  const descriptionsCfg: NodeDescriptionsConfig = {
+    ...config.build.node_descriptions,
+    enabled: false,
+  };
+
+  const { summaries } = await runSummariesAndDescriptions(
+    summariesCfg,
+    descriptionsCfg,
+    config.models,
+    outputDir,
+    graphData,
+  );
+  return summaries;
+}
+
+/**
+ * Run node descriptions step independently.
+ * Returns the number of descriptions generated.
+ */
+export async function runNodeDescriptionsStep(
+  config: Config,
+  outputDir: string,
+  graphJsonPath: string,
+): Promise<number> {
+  if (!config.build.node_descriptions.enabled) return 0;
+  const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
+
+  // Summaries disabled — only run descriptions
+  const summariesCfg: CommunitySummariesConfig = {
+    ...config.build.community_summaries,
+    enabled: false,
+  };
+  const descriptionsCfg: NodeDescriptionsConfig = {
+    ...config.build.node_descriptions,
+    enabled: true,
+  };
+
+  const { descriptions } = await runSummariesAndDescriptions(
+    summariesCfg,
+    descriptionsCfg,
+    config.models,
+    outputDir,
+    graphData,
+  );
+  return descriptions;
+}

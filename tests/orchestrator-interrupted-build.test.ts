@@ -17,7 +17,9 @@ const tempDirs: string[] = [];
 const buildMonorepoMock = vi.fn();
 const runIndexerMock = vi.fn();
 const runOutlineGenerationMock = vi.fn();
-const runIntelligenceLayerMock = vi.fn();
+const runEmbeddingsStepMock = vi.fn();
+const runCommunitySummariesStepMock = vi.fn();
+const runNodeDescriptionsStepMock = vi.fn();
 const generateGraphReportMock = vi.fn();
 const exportHtmlMock = vi.fn();
 const exportCommunityHtmlMock = vi.fn();
@@ -29,7 +31,11 @@ const saveGraphHashMock = vi.fn();
 
 vi.mock("../src/build/indexer.js", () => ({ runIndexer: runIndexerMock }));
 vi.mock("../src/build/outlines.js", () => ({ runOutlineGeneration: runOutlineGenerationMock }));
-vi.mock("../src/build/intelligence.js", () => ({ runIntelligenceLayer: runIntelligenceLayerMock }));
+vi.mock("../src/build/intelligence.js", () => ({
+  runEmbeddingsStep: runEmbeddingsStepMock,
+  runCommunitySummariesStep: runCommunitySummariesStepMock,
+  runNodeDescriptionsStep: runNodeDescriptionsStepMock,
+}));
 vi.mock("../src/build/report.ts", () => ({ generateGraphReport: generateGraphReportMock }));
 vi.mock("../src/extract/export-html.js", () => ({ exportHtml: exportHtmlMock, exportCommunityHtml: exportCommunityHtmlMock }));
 vi.mock("../src/build/config-diff.js", () => ({ loadPreviousBuildConfig: loadPreviousBuildConfigMock }));
@@ -193,11 +199,9 @@ describe("interrupted-build recovery (PROP-I3)", () => {
   }
 
   function setupIntelligenceMock(): void {
-    runIntelligenceLayerMock.mockResolvedValue({
-      embeddingsGenerated: 10,
-      communitySummaries: 1,
-      nodeDescriptions: 2,
-    });
+    runEmbeddingsStepMock.mockResolvedValue(10);
+    runCommunitySummariesStepMock.mockResolvedValue(1);
+    runNodeDescriptionsStepMock.mockResolvedValue(2);
   }
 
   it("does NOT early-return when previous build manifest is incomplete (interrupted after extraction)", async () => {
@@ -219,7 +223,9 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     // The build MUST NOT early-return — it should run the indexer and other missing steps
     expect(runIndexerMock).toHaveBeenCalled();
     expect(runOutlineGenerationMock).toHaveBeenCalled();
-    expect(runIntelligenceLayerMock).toHaveBeenCalled();
+    expect(runEmbeddingsStepMock).toHaveBeenCalled();
+    expect(runCommunitySummariesStepMock).toHaveBeenCalled();
+    expect(runNodeDescriptionsStepMock).toHaveBeenCalled();
     expect(exportHtmlMock).toHaveBeenCalled();
     expect(generateGraphReportMock).toHaveBeenCalled();
   });
@@ -269,7 +275,9 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     // test from the artifact check angle — artifact exists + valid DB), but downstream steps should run
     expect(runIndexerMock).not.toHaveBeenCalled();
     expect(runOutlineGenerationMock).toHaveBeenCalled();
-    expect(runIntelligenceLayerMock).toHaveBeenCalled();
+    expect(runEmbeddingsStepMock).toHaveBeenCalled();
+    expect(runCommunitySummariesStepMock).toHaveBeenCalled();
+    expect(runNodeDescriptionsStepMock).toHaveBeenCalled();
     expect(exportHtmlMock).toHaveBeenCalled();
     expect(generateGraphReportMock).toHaveBeenCalled();
   });
@@ -318,8 +326,8 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     const { runBuild } = await import("../src/build/orchestrator.js");
     await runBuild(config, configDir, { force: false });
 
-    // community_summaries missing → re-run intelligence layer + dependents (html, report)
-    expect(runIntelligenceLayerMock).toHaveBeenCalled();
+    // community_summaries missing → re-run community summaries step + dependents (html, report)
+    expect(runCommunitySummariesStepMock).toHaveBeenCalled();
     expect(exportHtmlMock).toHaveBeenCalled();
     expect(generateGraphReportMock).toHaveBeenCalled();
     // indexer should be skipped (artifact exists and valid)
@@ -364,7 +372,9 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     // Everything should run on first build
     expect(runIndexerMock).toHaveBeenCalled();
     expect(runOutlineGenerationMock).toHaveBeenCalled();
-    expect(runIntelligenceLayerMock).toHaveBeenCalled();
+    expect(runEmbeddingsStepMock).toHaveBeenCalled();
+    expect(runCommunitySummariesStepMock).toHaveBeenCalled();
+    expect(runNodeDescriptionsStepMock).toHaveBeenCalled();
     expect(exportHtmlMock).toHaveBeenCalled();
     expect(generateGraphReportMock).toHaveBeenCalled();
 
@@ -382,8 +392,10 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     setupDefaultDbMock();
     runOutlineGenerationMock.mockResolvedValue(3);
 
-    // Intelligence layer throws
-    runIntelligenceLayerMock.mockRejectedValue(new Error("Model OOM"));
+    // Intelligence steps throw
+    runEmbeddingsStepMock.mockRejectedValue(new Error("Model OOM"));
+    runCommunitySummariesStepMock.mockRejectedValue(new Error("Model OOM"));
+    runNodeDescriptionsStepMock.mockRejectedValue(new Error("Model OOM"));
 
     // No previous build
     const { runBuild } = await import("../src/build/orchestrator.js");
@@ -485,7 +497,9 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     await runBuild(config, configDir, { force: false });
 
     // Even though artifacts exist, manifest says "failed" → MUST retry intelligence
-    expect(runIntelligenceLayerMock).toHaveBeenCalled();
+    expect(runEmbeddingsStepMock).toHaveBeenCalled();
+    expect(runCommunitySummariesStepMock).toHaveBeenCalled();
+    expect(runNodeDescriptionsStepMock).toHaveBeenCalled();
     // Indexer should be SKIPPED (status "completed" + artifact valid)
     expect(runIndexerMock).not.toHaveBeenCalled();
   });
@@ -628,11 +642,9 @@ describe("interrupted-build recovery (PROP-I3)", () => {
     // 2. Community summaries re-run (was interrupted)
     // 3. node_descriptions re-run (was pending)
     // 4. HTML + report (dependency on community_summaries)
-    expect(runIntelligenceLayerMock).toHaveBeenCalled();
-    const call = runIntelligenceLayerMock.mock.calls[0];
-    expect(call[3].skipEmbeddings).toBe(false); // embeddings must run (config changed)
-    expect(call[3].skipSummaries).toBe(false); // summaries must run (interrupted)
-    expect(call[3].skipDescriptions).toBe(false); // descriptions must run (was pending)
+    expect(runEmbeddingsStepMock).toHaveBeenCalled();
+    expect(runCommunitySummariesStepMock).toHaveBeenCalled();
+    expect(runNodeDescriptionsStepMock).toHaveBeenCalled();
     expect(exportHtmlMock).toHaveBeenCalled();
     expect(generateGraphReportMock).toHaveBeenCalled();
     // Indexer should be SKIPPED (completed + artifact valid)

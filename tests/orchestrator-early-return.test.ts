@@ -10,7 +10,9 @@ const tempDirs: string[] = [];
 const buildMonorepoMock = vi.fn();
 const runIndexerMock = vi.fn();
 const runOutlineGenerationMock = vi.fn();
-const runIntelligenceLayerMock = vi.fn();
+const runEmbeddingsStepMock = vi.fn();
+const runCommunitySummariesStepMock = vi.fn();
+const runNodeDescriptionsStepMock = vi.fn();
 const generateGraphReportMock = vi.fn();
 const exportHtmlMock = vi.fn();
 const exportCommunityHtmlMock = vi.fn();
@@ -22,7 +24,11 @@ const saveGraphHashMock = vi.fn();
 
 vi.mock("../src/build/indexer.js", () => ({ runIndexer: runIndexerMock }));
 vi.mock("../src/build/outlines.js", () => ({ runOutlineGeneration: runOutlineGenerationMock }));
-vi.mock("../src/build/intelligence.js", () => ({ runIntelligenceLayer: runIntelligenceLayerMock }));
+vi.mock("../src/build/intelligence.js", () => ({
+  runEmbeddingsStep: runEmbeddingsStepMock,
+  runCommunitySummariesStep: runCommunitySummariesStepMock,
+  runNodeDescriptionsStep: runNodeDescriptionsStepMock,
+}));
 vi.mock("../src/build/report.ts", () => ({ generateGraphReport: generateGraphReportMock }));
 vi.mock("../src/extract/export-html.js", () => ({ exportHtml: exportHtmlMock, exportCommunityHtml: exportCommunityHtmlMock }));
 vi.mock("../src/build/config-diff.js", () => ({ loadPreviousBuildConfig: loadPreviousBuildConfigMock }));
@@ -146,7 +152,9 @@ describe("PROP-I1: orchestrator early return when no files changed", () => {
     expect(cleanStaleArtifactsMock).toHaveBeenCalledTimes(1);
     expect(runIndexerMock).not.toHaveBeenCalled();
     expect(runOutlineGenerationMock).not.toHaveBeenCalled();
-    expect(runIntelligenceLayerMock).not.toHaveBeenCalled();
+    expect(runEmbeddingsStepMock).not.toHaveBeenCalled();
+    expect(runCommunitySummariesStepMock).not.toHaveBeenCalled();
+    expect(runNodeDescriptionsStepMock).not.toHaveBeenCalled();
     expect(exportHtmlMock).not.toHaveBeenCalled();
     expect(exportCommunityHtmlMock).not.toHaveBeenCalled();
     expect(generateGraphReportMock).not.toHaveBeenCalled();

@@ -5,7 +5,7 @@ import type { Config, GraphData } from "../shared/types.js";
 import { loadConfig } from "../core/config.js";
 import { runIndexer } from "./indexer.js";
 import { runOutlineGeneration } from "./outlines.js";
-import { runIntelligenceLayer } from "./intelligence.js";
+import { runEmbeddingsStep, runCommunitySummariesStep, runNodeDescriptionsStep } from "./intelligence.js";
 import { generateGraphReport } from "./report.js";
 import { exportHtml, exportCommunityHtml, type CommunitySummaryInfo } from "../extract/export-html.js";
 import { log } from "../shared/utils.js";
@@ -199,50 +199,58 @@ export async function runBuild(config: Config, configDir: string, options: Build
       updateStep(outputDir, manifest, "outlines", "skipped", "up to date");
     }
 
-    // ── Step: Intelligence layer (embeddings + summaries + descriptions) ─
-    const runEmbeddings = plan.stepsToRun.has("embeddings");
-    const runSummaries = plan.stepsToRun.has("community_summaries");
-    const runDescriptions = plan.stepsToRun.has("node_descriptions");
-
-    if (runEmbeddings || runSummaries || runDescriptions) {
-      if (runEmbeddings) updateStep(outputDir, manifest, "embeddings", "running");
-      if (runSummaries) updateStep(outputDir, manifest, "community_summaries", "running");
-      if (runDescriptions) updateStep(outputDir, manifest, "node_descriptions", "running");
-
+    // ── Step: Embeddings ───────────────────────────────────────────────
+    if (plan.stepsToRun.has("embeddings")) {
+      updateStep(outputDir, manifest, "embeddings", "running");
       try {
-        const intelligenceResult = await runIntelligenceLayer(config, outputDir, mergedPath, {
-          skipEmbeddings: !runEmbeddings,
-          skipSummaries: !runSummaries,
-          skipDescriptions: !runDescriptions,
-        });
-        log.info(`Intelligence: ${intelligenceResult.embeddingsGenerated} embeddings, ${intelligenceResult.communitySummaries} community summaries, ${intelligenceResult.nodeDescriptions} node descriptions`);
-
-        if (runEmbeddings) updateStep(outputDir, manifest, "embeddings", "completed");
-        if (runSummaries) updateStep(outputDir, manifest, "community_summaries", "completed");
-        if (runDescriptions) updateStep(outputDir, manifest, "node_descriptions", "completed");
+        const embCount = await runEmbeddingsStep(config, outputDir, mergedPath);
+        log.info(`Embeddings: ${embCount} generated`);
+        updateStep(outputDir, manifest, "embeddings", "completed");
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        log.warn(`Intelligence layer failed (non-blocking): ${msg}`);
-        if (runEmbeddings) updateStep(outputDir, manifest, "embeddings", "failed", msg);
-        if (runSummaries) updateStep(outputDir, manifest, "community_summaries", "failed", msg);
-        if (runDescriptions) updateStep(outputDir, manifest, "node_descriptions", "failed", msg);
+        log.warn(`Embeddings failed (non-blocking): ${msg}`);
+        updateStep(outputDir, manifest, "embeddings", "failed", msg);
       }
+    } else if (!config.build.embeddings.enabled) {
+      updateStep(outputDir, manifest, "embeddings", "skipped", "disabled in config");
     } else {
-      if (!config.build.embeddings.enabled) {
-        updateStep(outputDir, manifest, "embeddings", "skipped", "disabled in config");
-      } else {
-        updateStep(outputDir, manifest, "embeddings", "skipped", "up to date");
+      updateStep(outputDir, manifest, "embeddings", "skipped", "up to date");
+    }
+
+    // ── Step: Community Summaries ────────────────────────────────────────
+    if (plan.stepsToRun.has("community_summaries")) {
+      updateStep(outputDir, manifest, "community_summaries", "running");
+      try {
+        const summaryCount = await runCommunitySummariesStep(config, outputDir, mergedPath);
+        log.info(`Community summaries: ${summaryCount} generated`);
+        updateStep(outputDir, manifest, "community_summaries", "completed");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.warn(`Community summaries failed (non-blocking): ${msg}`);
+        updateStep(outputDir, manifest, "community_summaries", "failed", msg);
       }
-      if (!config.build.community_summaries.enabled) {
-        updateStep(outputDir, manifest, "community_summaries", "skipped", "disabled in config");
-      } else {
-        updateStep(outputDir, manifest, "community_summaries", "skipped", "up to date");
+    } else if (!config.build.community_summaries.enabled) {
+      updateStep(outputDir, manifest, "community_summaries", "skipped", "disabled in config");
+    } else {
+      updateStep(outputDir, manifest, "community_summaries", "skipped", "up to date");
+    }
+
+    // ── Step: Node Descriptions ──────────────────────────────────────────
+    if (plan.stepsToRun.has("node_descriptions")) {
+      updateStep(outputDir, manifest, "node_descriptions", "running");
+      try {
+        const descCount = await runNodeDescriptionsStep(config, outputDir, mergedPath);
+        log.info(`Node descriptions: ${descCount} generated`);
+        updateStep(outputDir, manifest, "node_descriptions", "completed");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.warn(`Node descriptions failed (non-blocking): ${msg}`);
+        updateStep(outputDir, manifest, "node_descriptions", "failed", msg);
       }
-      if (!config.build.node_descriptions.enabled) {
-        updateStep(outputDir, manifest, "node_descriptions", "skipped", "disabled in config");
-      } else {
-        updateStep(outputDir, manifest, "node_descriptions", "skipped", "up to date");
-      }
+    } else if (!config.build.node_descriptions.enabled) {
+      updateStep(outputDir, manifest, "node_descriptions", "skipped", "disabled in config");
+    } else {
+      updateStep(outputDir, manifest, "node_descriptions", "skipped", "up to date");
     }
 
     // ── Step: HTML visualizations ────────────────────────────────────────
