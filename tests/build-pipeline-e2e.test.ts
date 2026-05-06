@@ -89,10 +89,10 @@ describe("build pipeline e2e", () => {
     expect(manifest.steps.community_summaries.status).toBe("skipped");
     expect(manifest.steps.node_descriptions.status).toBe("skipped");
     expect(manifest.steps.outlines.status).toBe("skipped");
-    // indexer/html/report run because graph.json is always rewritten (new mtime)
-    expect(manifest.steps.indexer.status).toBe("completed");
-    expect(manifest.steps.html.status).toBe("completed");
-    expect(manifest.steps.report.status).toBe("completed");
+    // graph.json mtime is stable (semantic content unchanged) → mtime-based steps skip
+    expect(manifest.steps.indexer.status).toBe("skipped");
+    expect(manifest.steps.html.status).toBe("skipped");
+    expect(manifest.steps.report.status).toBe("skipped");
 
     writeFileSync(join(repoDir, "utils.py"), [
       "def leaf():",
@@ -226,7 +226,6 @@ function writeInterruptedManifest(outputDir: string, stepName: string): void {
     graph_hash: "broken",
     steps: {
       extraction: { status: "completed" },
-      graph_build: { status: "completed" },
       indexer: { status: "completed" },
       outlines: { status: "completed" },
       embeddings: { status: "completed" },

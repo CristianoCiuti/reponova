@@ -283,7 +283,7 @@ describe("manifest: invalidateManifestStep", () => {
     const outputDir = makeTempDir();
     const manifest = loadOrCreateManifest(outputDir);
     const allSteps: StepName[] = [
-      "extraction", "graph_build", "indexer", "outlines",
+      "extraction", "indexer", "outlines",
       "embeddings", "community_summaries", "node_descriptions", "html", "report",
     ];
     for (const step of allSteps) {
@@ -322,7 +322,7 @@ describe("manifest: validateManifestStep", () => {
     const outputDir = makeTempDir();
     const manifest = loadOrCreateManifest(outputDir);
     const allSteps: StepName[] = [
-      "extraction", "graph_build", "indexer", "outlines",
+      "extraction", "indexer", "outlines",
       "embeddings", "community_summaries", "node_descriptions", "html", "report",
     ];
     for (const step of allSteps) {
@@ -342,9 +342,8 @@ describe("manifest: validateManifestStep", () => {
     const outputDir = makeTempDir();
     const manifest = loadOrCreateManifest(outputDir);
 
-    // Only complete extraction and graph_build
+    // Only complete extraction
     updateStep(outputDir, manifest, "extraction", "completed");
-    updateStep(outputDir, manifest, "graph_build", "completed");
 
     // Validate indexer (marks it completed but others still missing from steps)
     validateManifestStep(outputDir, "indexer");

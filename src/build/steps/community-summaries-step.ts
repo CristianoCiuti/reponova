@@ -53,9 +53,13 @@ export const runCommunitySummariesStep: BuildStep = async (ctx: StepContext): Pr
   }
 
   if (regenCommunities.length === 0) {
-    const cache = buildFingerprintCache(communities, keptSummaries);
-    atomicWriteJson(summariesPath, keptSummaries);
-    atomicWriteJson(cachePath, cache);
+    // IDs may have been remapped — only write if output would differ
+    const existing = loadExistingSummaries(summariesPath);
+    if (!arraysEqual(existing, keptSummaries)) {
+      const cache = buildFingerprintCache(communities, keptSummaries);
+      atomicWriteJson(summariesPath, keptSummaries);
+      atomicWriteJson(cachePath, cache);
+    }
     return { processed: 0, skipped: true, skipReason: "up to date" };
   }
 
@@ -151,4 +155,17 @@ function removeFile(path: string): void {
   if (existsSync(path)) {
     unlinkSync(path);
   }
+}
+
+function loadExistingSummaries(path: string): CommunitySummary[] {
+  if (!existsSync(path)) return [];
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as CommunitySummary[];
+  } catch {
+    return [];
+  }
+}
+
+function arraysEqual(a: CommunitySummary[], b: CommunitySummary[]): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }

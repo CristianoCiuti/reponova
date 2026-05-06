@@ -4,7 +4,7 @@
  * Node fields: id, label, type, source_file, repo, community, start_line, end_line, properties
  * Edge fields: source, target, type/relation, confidence
  */
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { relative } from "node:path";
 import type Graph from "graphology";
 import type { CommunityResult } from "./community.js";
@@ -131,7 +131,7 @@ export function exportJson(options: ExportJsonOptions): void {
     edges,
     metadata: {
       reponova_version: getVersion(),
-      built_at: new Date().toISOString(),
+      built_at: "",  // placeholder — resolved below
       build_config: buildConfig,
       // Path resolution metadata (relative paths for portability)
       ...(config && configDir && outputDir ? {
@@ -141,5 +141,27 @@ export function exportJson(options: ExportJsonOptions): void {
       } : {}),
     },
   };
+
+  // Skip write if graph content hasn't changed (stable mtime for downstream steps).
+  // Compare everything except built_at — if same, don't touch the file.
+  if (existsSync(outputPath)) {
+    try {
+      const existing = readFileSync(outputPath, "utf-8");
+      const parsed = JSON.parse(existing) as { metadata?: { built_at?: string } };
+      const oldBuiltAt = parsed.metadata?.built_at;
+
+      // Temporarily set same built_at for comparison
+      data.metadata.built_at = oldBuiltAt ?? "";
+      const newContent = JSON.stringify(data, null, 2);
+      if (newContent === existing) return;
+
+      // Content changed — use old timestamp only if we couldn't determine otherwise
+      // Fall through to write with new timestamp
+    } catch {
+      // Can't read/parse existing file — proceed with fresh write
+    }
+  }
+
+  data.metadata.built_at = new Date().toISOString();
   writeFileSync(outputPath, JSON.stringify(data, null, 2));
 }

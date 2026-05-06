@@ -159,7 +159,6 @@ function writeManifest(outputDir: string, overrides: Partial<Record<string, stri
   mkdirSync(cacheDir, { recursive: true });
   const steps = {
     extraction: { status: "completed" },
-    graph_build: { status: "completed" },
     ...Object.fromEntries(Object.entries(overrides).map(([key, value]) => [key, { status: value }])),
   };
 

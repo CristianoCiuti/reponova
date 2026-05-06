@@ -15,7 +15,6 @@ import { join } from "node:path";
 
 export type StepName =
   | "extraction"
-  | "graph_build"
   | "indexer"
   | "outlines"
   | "embeddings"

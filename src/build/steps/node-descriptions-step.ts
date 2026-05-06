@@ -60,12 +60,16 @@ export const runNodeDescriptionsStep: BuildStep = async (ctx: StepContext): Prom
   }
 
   if (regenNodes.length === 0) {
+    // Target set may have shrunk — only write if output would differ
     const allDescriptions = targetNodes.map<NodeDescription>((node) => ({
       id: node.id,
       description: kept.get(node.id)!,
     }));
-    atomicWriteJson(descriptionsPath, allDescriptions);
-    atomicWriteJson(cachePath, nextFingerprints);
+    const existing = loadExistingDescriptions(descriptionsPath);
+    if (!descriptionsEqual(existing, allDescriptions)) {
+      atomicWriteJson(descriptionsPath, allDescriptions);
+      atomicWriteJson(cachePath, nextFingerprints);
+    }
     return { processed: 0, skipped: true, skipReason: "up to date" };
   }
 
@@ -148,4 +152,17 @@ function removeFile(path: string): void {
   if (existsSync(path)) {
     unlinkSync(path);
   }
+}
+
+function loadExistingDescriptions(path: string): NodeDescription[] {
+  if (!existsSync(path)) return [];
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as NodeDescription[];
+  } catch {
+    return [];
+  }
+}
+
+function descriptionsEqual(a: NodeDescription[], b: NodeDescription[]): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }

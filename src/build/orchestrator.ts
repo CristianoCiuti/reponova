@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
 import { tmpdir } from "node:os";
-import type { Config, GraphData } from "../shared/types.js";
+import type { Config } from "../shared/types.js";
 import { loadConfig } from "../core/config.js";
 import { runIndexerStep } from "./steps/indexer.js";
 import { runOutlinesStep } from "./steps/outlines.js";
@@ -13,9 +13,9 @@ import { runHtmlStep } from "./steps/html-step.js";
 import { LlmEnginePool } from "./intelligence/llm-engine-pool.js";
 import { log } from "../shared/utils.js";
 import { runPipeline } from "../extract/index.js";
-import { buildSkipDirs, createPathContext, prepareWorkspace, extractRepoName } from "../core/path-resolver.js";
+import { buildSkipDirs, createPathContext, prepareWorkspace } from "../core/path-resolver.js";
 import { loadPreviousBuildConfig } from "./incremental/config-diff.js";
-import { computeSemanticGraphHash, loadPreviousGraphHash, saveGraphHash } from "./incremental/graph-hash.js";
+import { computeSemanticGraphHash, saveGraphHash } from "./incremental/graph-hash.js";
 import {
   loadOrCreateManifest, updateStep, completeManifest,
 } from "./manifest.js";
@@ -98,10 +98,6 @@ export async function runBuild(config: Config, configDir: string, options: Build
       repoNames: pathContext.mode === "multi" ? new Set(repoNames) : undefined,
     });
     updateStep(outputDir, manifest, "extraction", "completed");
-
-    updateStep(outputDir, manifest, "graph_build", "running");
-    tagNodesWithRepo(graphJsonPath, repoNames, pathContext.mode);
-    updateStep(outputDir, manifest, "graph_build", "completed");
 
     log.info(`Graph: ${result.builtGraph.stats.nodeCount} nodes, ${result.builtGraph.stats.edgeCount} edges, ${result.communities.count} communities`);
     if (result.incrementalStats) {
@@ -198,24 +194,4 @@ export async function build(
 ): Promise<BuildResult> {
   const { config, configDir } = loadConfig(configPath);
   return runBuild(config, configDir, { force: options?.force ?? false });
-}
-
-function tagNodesWithRepo(graphJsonPath: string, repoNames: string[], mode: "single" | "multi"): void {
-  const raw = readFileSync(graphJsonPath, "utf-8");
-  const data = JSON.parse(raw) as GraphData;
-
-  const ctx = {
-    mode,
-    repos: repoNames.map((name) => ({ name, absPath: "" })),
-    workspace: "",
-    outputDir: "",
-  };
-
-  for (const node of data.nodes) {
-    if (!node.source_file) continue;
-    const repo = extractRepoName(ctx, node.source_file);
-    if (repo) node.repo = repo;
-  }
-
-  writeFileSync(graphJsonPath, JSON.stringify(data, null, 2));
 }
