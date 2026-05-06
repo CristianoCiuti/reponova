@@ -13,7 +13,7 @@
  *   - File paths: src/config/loader.py → references to files
  *   - Code blocks with imports → parsed for import references
  */
-import type { LanguageExtractor, SyntaxTree, FileExtraction, SymbolNode, ImportDeclaration, SymbolReference } from "../types.js";
+import type { LanguageExtractor, SyntaxTree, FileExtraction, SymbolNode, ImportDeclaration, SymbolReference, FileNodeDeclaration } from "../types.js";
 
 export class MarkdownExtractor implements LanguageExtractor {
   readonly languageId = "markdown";
@@ -27,21 +27,16 @@ export class MarkdownExtractor implements LanguageExtractor {
     const imports: ImportDeclaration[] = [];
     const references: SymbolReference[] = [];
 
-    // Create document-level node
     const docName = filePath.split("/").pop() ?? filePath;
-    const docQualified = `${filePath}/${docName}`;
-    symbols.push({
-      name: docName,
-      qualifiedName: docQualified,
-      kind: "document",
-      decorators: [],
-      docstring: this.extractFirstParagraph(lines),
-      startLine: 1,
-      endLine: lines.length,
-      calls: [],
-    });
 
-    // Extract sections from headings
+    // Declare the file-level node via fileNode (NOT in symbols[])
+    const fileNode: FileNodeDeclaration = {
+      kind: "document",
+      label: docName,
+      docstring: this.extractFirstParagraph(lines),
+    };
+
+    // Extract sections from headings (these are the internal contents)
     const sections = this.extractSections(lines, filePath, docName);
     symbols.push(...sections);
 
@@ -49,7 +44,7 @@ export class MarkdownExtractor implements LanguageExtractor {
     const refs = this.extractCodeReferences(lines, filePath, docName, sections);
     references.push(...refs);
 
-    return { filePath, language: "markdown", symbols, imports, references };
+    return { filePath, language: "markdown", fileNode, symbols, imports, references };
   }
 
   resolveImportPath(_importModule: string, _currentFilePath: string): string[] {

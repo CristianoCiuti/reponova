@@ -29,6 +29,7 @@ function makeExtraction(filePath: string, fnName: string): FileExtraction {
   return {
     filePath,
     language: "python",
+    fileNode: { kind: "module" },
     symbols: [{
       name: fnName,
       qualifiedName: `${filePath}/${fnName}`,

@@ -9,7 +9,7 @@
  * These produce "document"-type nodes in the graph with file_type "diagram".
  * They enable agents to discover visual documentation that's otherwise invisible.
  */
-import type { LanguageExtractor, SyntaxTree, FileExtraction, SymbolNode, ImportDeclaration, SymbolReference } from "../types.js";
+import type { LanguageExtractor, SyntaxTree, FileExtraction, SymbolNode, ImportDeclaration, SymbolReference, FileNodeDeclaration } from "../types.js";
 
 export class DiagramExtractor implements LanguageExtractor {
   readonly languageId = "diagram";
@@ -43,17 +43,13 @@ export class DiagramExtractor implements LanguageExtractor {
 
     const fileName = filePath.split("/").pop() ?? filePath;
 
-    // Document node for the diagram file itself
-    symbols.push({
-      name: fileName,
-      qualifiedName: `${filePath}/${fileName}`,
-      kind: "document",
-      decorators: ["plantuml"],
+    // File-level node declared via fileNode
+    const fileNode: FileNodeDeclaration = {
+      kind: "diagram",
+      label: fileName,
       docstring: this.extractPumlTitle(lines),
-      startLine: 1,
-      endLine: lines.length,
-      calls: [],
-    });
+      tags: ["plantuml"],
+    };
 
     // Extract class/interface/enum definitions
     const classRegex = /^\s*(class|interface|enum|abstract class|abstract)\s+["']?(\w+)["']?/;
@@ -73,7 +69,7 @@ export class DiagramExtractor implements LanguageExtractor {
         symbols.push({
           name,
           qualifiedName: `${filePath}/${name}`,
-          kind: kind.includes("interface") ? "interface" : "class",
+          kind: kind.includes("interface") ? "interface" : "component",
           decorators: [kind.replace("abstract ", "abstract_")],
           startLine: i + 1,
           endLine: i + 1,
@@ -98,7 +94,7 @@ export class DiagramExtractor implements LanguageExtractor {
       }
     }
 
-    return { filePath, language: "diagram", symbols, imports: [], references };
+    return { filePath, language: "diagram", fileNode, symbols, imports: [], references };
   }
 
   // ─── SVG Extraction ──────────────────────────────────────────────────────
@@ -107,17 +103,13 @@ export class DiagramExtractor implements LanguageExtractor {
     const symbols: SymbolNode[] = [];
     const fileName = filePath.split("/").pop() ?? filePath;
 
-    // Document node
-    symbols.push({
-      name: fileName,
-      qualifiedName: `${filePath}/${fileName}`,
-      kind: "document",
-      decorators: ["svg"],
+    // File-level node declared via fileNode
+    const fileNode: FileNodeDeclaration = {
+      kind: "diagram",
+      label: fileName,
       docstring: this.extractSvgTitle(source),
-      startLine: 1,
-      endLine: source.split("\n").length,
-      calls: [],
-    });
+      tags: ["svg"],
+    };
 
     // Extract meaningful text elements from SVG
     const textRegex = /<text[^>]*>([^<]+)<\/text>/g;
@@ -150,7 +142,7 @@ export class DiagramExtractor implements LanguageExtractor {
       });
     }
 
-    return { filePath, language: "diagram", symbols, imports: [], references: [] };
+    return { filePath, language: "diagram", fileNode, symbols, imports: [], references: [] };
   }
 
   // ─── Binary Image Metadata ───────────────────────────────────────────────
@@ -159,18 +151,17 @@ export class DiagramExtractor implements LanguageExtractor {
     const fileName = filePath.split("/").pop() ?? filePath;
     const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
 
+    const fileNode: FileNodeDeclaration = {
+      kind: "diagram",
+      label: fileName,
+      tags: [ext],
+    };
+
     return {
       filePath,
       language: "diagram",
-      symbols: [{
-        name: fileName,
-        qualifiedName: `${filePath}/${fileName}`,
-        kind: "document",
-        decorators: [ext],
-        startLine: 1,
-        endLine: 1,
-        calls: [],
-      }],
+      fileNode,
+      symbols: [],
       imports: [],
       references: [],
     };

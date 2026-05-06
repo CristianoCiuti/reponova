@@ -372,6 +372,7 @@ export function composeNodeText(node: NodeEmbeddingInput): string {
       text = `${node.label} bases:${(node.bases ?? []).join(",")} ${node.docstring ?? ""}`;
       break;
     case "document":
+    case "diagram":
     case "section":
       text = `${node.label} ${node.docstring ?? ""}`;
       break;

@@ -4,8 +4,12 @@
  * Takes FileExtraction[] from any language and produces a graphology directed
  * graph. This is the core of the extraction pipeline.
  *
- * Node types: function, class, method, module, constant
- * Edge types: CALLS, IMPORTS, EXTENDS, MEMBER_OF, CONTAINS
+ * Design principle: The assembler makes ZERO classification decisions.
+ * Each extractor declares `fileNode` with the file's nature (kind, label, docstring).
+ * The assembler mechanically creates nodes and edges from that declaration.
+ *
+ * Node types: function, class, method, module, document, diagram, section, component, constant
+ * Edge types: calls, imports, imports_from, extends, contains, method
  */
 import Graph from "graphology";
 import type { FileExtraction } from "./types.js";
@@ -51,29 +55,31 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
   let crossFileEdges = 0;
   let unresolvedImports = 0;
 
-  // ── 1. Create module nodes (one per file) ──────────────────────────────
+  // ── 1. Create file-level nodes from fileNode declarations ──────────────
 
   for (const extraction of extractions) {
     const filePath = extraction.filePath.replace(/\\/g, "/");
     const moduleId = makeNodeId(filePath, "");
-    const label = filePath.split("/").pop() ?? filePath;
-    const isDoc = extraction.language === "markdown";
+    const fileNode = extraction.fileNode;
+    const label = fileNode.label ?? filePath.split("/").pop() ?? filePath;
 
     if (!graph.hasNode(moduleId)) {
       graph.addNode(moduleId, {
         label,
-        type: isDoc ? "document" : "module",
-        file_type: isDoc ? "doc" : "code",
+        type: fileNode.kind,
+        file_type: fileNode.kind === "module" ? "code" : "doc",
         source_file: filePath,
         repo: repoName ?? inferRepoName(filePath, repoNames),
         start_line: 1,
         end_line: undefined,
         norm_label: label.toLowerCase(),
+        docstring: fileNode.docstring,
+        tags: fileNode.tags,
       });
     }
   }
 
-  // ── 2. Create symbol nodes + MEMBER_OF/CONTAINS edges ─────────────────
+  // ── 2. Create symbol nodes + containment edges ─────────────────────────
 
   // Track: qualifiedName → nodeId for cross-referencing
   const qualifiedToId = new Map<string, string>();
@@ -83,10 +89,10 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
   for (const extraction of extractions) {
     const filePath = extraction.filePath.replace(/\\/g, "/");
     const moduleId = makeNodeId(filePath, "");
-    const isDoc = extraction.language === "markdown";
 
     for (const symbol of extraction.symbols) {
       const nodeId = makeNodeId(filePath, symbol.name);
+
       qualifiedToId.set(symbol.qualifiedName, nodeId);
 
       // Register simple name for call resolution
@@ -101,7 +107,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
         graph.addNode(nodeId, {
           label: symbol.name,
           type: symbol.kind,
-          file_type: isDoc ? "doc" : "code",
+          file_type: extraction.fileNode.kind === "module" ? "code" : "doc",
           source_file: filePath,
           source_location: `L${symbol.startLine}${symbol.endLine ? `-L${symbol.endLine}` : ""}`,
           repo: repoName ?? inferRepoName(filePath, repoNames),
@@ -114,15 +120,22 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
         });
       }
 
-      // MEMBER_OF: symbol → module (contains relationship)
-      addEdgeSafe(graph, moduleId, nodeId, "contains");
-
-      // CONTAINS: class → method (or document → section)
+      // Determine containment edge
       if (symbol.parent) {
         const parentId = makeNodeId(filePath, symbol.parent);
-        if (graph.hasNode(parentId)) {
-          addEdgeSafe(graph, parentId, nodeId, isDoc ? "contains_section" : "method");
+        if (parentId === moduleId || !graph.hasNode(parentId)) {
+          // Parent is the file node → use "contains"
+          addEdgeSafe(graph, moduleId, nodeId, "contains");
+        } else {
+          // Parent is a class or other container → use "method" for methods, "contains" otherwise
+          const edgeType = symbol.kind === "method" ? "method" : "contains";
+          addEdgeSafe(graph, parentId, nodeId, edgeType);
+          // Also add file→symbol edge for discoverability
+          addEdgeSafe(graph, moduleId, nodeId, "contains");
         }
+      } else {
+        // No parent → direct child of file
+        addEdgeSafe(graph, moduleId, nodeId, "contains");
       }
     }
   }
@@ -356,9 +369,8 @@ function addEdgeSafe(graph: Graph, source: string, target: string, edgeType: str
   if (!graph.hasNode(source) || !graph.hasNode(target)) return;
   if (source === target) return;
 
-  // Check for existing edge of same type
+  // Check for existing edge
   if (graph.hasEdge(source, target)) {
-    // Check if this specific edge type already exists
     try {
       const existingType = graph.getEdgeAttribute(graph.edge(source, target)!, "relation");
       if (existingType === edgeType) return;

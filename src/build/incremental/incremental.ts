@@ -128,6 +128,7 @@ export function saveBuildCache(
 
 /**
  * Load a cached extraction by file path.
+ * Returns null if cache is missing or incompatible (e.g., missing fileNode from older schema).
  */
 export function loadCachedExtraction(cache: BuildCache, relPath: string): FileExtraction | null {
   const pathKey = cacheKeyForPath(relPath);
@@ -138,7 +139,10 @@ export function loadCachedExtraction(cache: BuildCache, relPath: string): FileEx
 
   try {
     const raw = readFileSync(cachePath, "utf-8");
-    return JSON.parse(raw) as FileExtraction;
+    const parsed = JSON.parse(raw) as FileExtraction;
+    // Validate schema compatibility — fileNode is required since the pipeline redesign
+    if (!parsed.fileNode) return null;
+    return parsed;
   } catch {
     return null;
   }

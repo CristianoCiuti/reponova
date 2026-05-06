@@ -6,6 +6,30 @@
  * between language-specific extraction and language-agnostic graph building.
  */
 
+// ─── File Node Declaration (extractor declares what the file IS) ─────────────
+
+/**
+ * Declares the file-level graph node.
+ * The extractor produces this — the graph-builder assembles from it mechanically.
+ * This eliminates classification logic from the assembler entirely.
+ */
+export interface FileNodeDeclaration {
+  /** The kind of the file node — determines graph node `type` */
+  kind: FileNodeKind;
+  /** Display label (defaults to filename if omitted) */
+  label?: string;
+  /** First paragraph or summary of the file */
+  docstring?: string;
+  /** Tags/decorators attached to the file node (e.g., ["plantuml"], ["svg"]) */
+  tags?: string[];
+}
+
+/**
+ * Valid kinds for file-level nodes.
+ * Each maps 1:1 to the graph node `type` attribute.
+ */
+export type FileNodeKind = "module" | "document" | "diagram";
+
 // ─── File Extraction (output of each language extractor) ─────────────────────
 
 /**
@@ -17,7 +41,14 @@ export interface FileExtraction {
   filePath: string;
   /** Language identifier (e.g., "python", "javascript") */
   language: string;
-  /** Extracted symbol nodes */
+  /**
+   * Declares the file-level graph node.
+   * The extractor MUST provide this — it tells the graph-builder what kind of
+   * node to create for the file itself (module, document, diagram).
+   * The graph-builder uses this mechanically — zero classification logic.
+   */
+  fileNode: FileNodeDeclaration;
+  /** Extracted symbol nodes (internal contents only — NOT the file itself) */
   symbols: SymbolNode[];
   /** Import/export declarations */
   imports: ImportDeclaration[];
@@ -63,7 +94,9 @@ export type SymbolKind =
   | "enum"
   | "module"
   | "document"
-  | "section";
+  | "diagram"
+  | "section"
+  | "component";
 
 /**
  * An import/export declaration.

@@ -308,6 +308,97 @@ describe("Graph Builder", () => {
       expect(attrs.repo).toBe("test-repo");
     });
   });
+
+  it("should create document file node from fileNode declaration (markdown)", () => {
+    // New architecture: fileNode declares the file-level node; no document symbol in symbols[]
+    const mdExtraction: FileExtraction = {
+      filePath: "docs/README.md",
+      language: "markdown",
+      fileNode: { kind: "document", docstring: "This is the first paragraph." },
+      symbols: [
+        {
+          name: "Installation",
+          qualifiedName: "docs/README.md/Installation",
+          kind: "section",
+          decorators: ["h2"],
+          docstring: "Installation",
+          startLine: 5,
+          endLine: 20,
+          parent: "README.md",
+          calls: [],
+        },
+        {
+          name: "Usage",
+          qualifiedName: "docs/README.md/Usage",
+          kind: "section",
+          decorators: ["h2"],
+          docstring: "Usage",
+          startLine: 21,
+          endLine: 50,
+          parent: "README.md",
+          calls: [],
+        },
+      ],
+      imports: [],
+      references: [],
+    };
+
+    const { graph } = buildGraph({ extractions: [mdExtraction] });
+
+    // Count document-type nodes — should be exactly 1 (from fileNode)
+    let documentNodes = 0;
+    graph.forEachNode((_id, attrs) => {
+      if (attrs.type === "document") documentNodes++;
+    });
+    expect(documentNodes).toBe(1);
+
+    // The single document node should have the docstring from fileNode
+    let moduleNode: { id: string; attrs: Record<string, unknown> } | null = null;
+    graph.forEachNode((id, attrs) => {
+      if (attrs.type === "document") moduleNode = { id, attrs };
+    });
+    expect(moduleNode).not.toBeNull();
+    expect(moduleNode!.attrs.docstring).toBe("This is the first paragraph.");
+    expect(moduleNode!.attrs.source_file).toBe("docs/README.md");
+
+    // Section nodes should exist
+    let sectionCount = 0;
+    graph.forEachNode((_id, attrs) => {
+      if (attrs.type === "section") sectionCount++;
+    });
+    expect(sectionCount).toBe(2);
+
+    // Section nodes should have "contains" edges FROM the document node
+    let containsEdges = 0;
+    graph.forEachEdge((_edge, attrs, source) => {
+      if (attrs.relation === "contains" && source === moduleNode!.id) {
+        containsEdges++;
+      }
+    });
+    expect(containsEdges).toBe(2);
+  });
+
+  it("should create diagram file node from fileNode declaration", () => {
+    // New architecture: fileNode declares diagram type directly
+    const diagramExtraction: FileExtraction = {
+      filePath: "diagrams/arch.puml",
+      language: "diagram",
+      fileNode: { kind: "diagram", docstring: "Architecture diagram", tags: ["plantuml"] },
+      symbols: [],
+      imports: [],
+      references: [],
+    };
+
+    const { graph } = buildGraph({ extractions: [diagramExtraction] });
+
+    // Should have exactly 1 node (the diagram file node)
+    expect(graph.order).toBe(1);
+
+    const attrs = graph.getNodeAttributes(graph.nodes()[0]!);
+    expect(attrs.type).toBe("diagram");
+    expect(attrs.docstring).toBe("Architecture diagram");
+    expect(attrs.tags).toContain("plantuml");
+  });
 });
 
 // ─── Import Resolution ──────────────────────────────────────────────────────

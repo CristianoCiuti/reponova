@@ -14,6 +14,7 @@ import type {
   SyntaxTree,
   SyntaxNode,
   FileExtraction,
+  FileNodeDeclaration,
   SymbolNode,
   ImportDeclaration,
   SymbolReference,
@@ -32,6 +33,14 @@ export class PythonExtractor implements LanguageExtractor {
     const references: SymbolReference[] = [];
 
     const moduleName = this.filePathToModuleName(filePath);
+    const fileName = filePath.split("/").pop() ?? filePath;
+
+    // Declare file-level node
+    const fileNode: FileNodeDeclaration = {
+      kind: "module",
+      label: fileName,
+      docstring: this.extractModuleDocstring(tree),
+    };
 
     // Walk top-level children
     for (const child of tree.rootNode.namedChildren) {
@@ -62,7 +71,7 @@ export class PythonExtractor implements LanguageExtractor {
       }
     }
 
-    return { filePath, language: "python", symbols, imports, references };
+    return { filePath, language: "python", fileNode, symbols, imports, references };
   }
 
   resolveImportPath(importModule: string, currentFilePath: string): string[] {
@@ -322,6 +331,26 @@ export class PythonExtractor implements LanguageExtractor {
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  /**
+   * Extract the module-level docstring (first expression in the file if it's a string).
+   */
+  private extractModuleDocstring(tree: SyntaxTree): string | undefined {
+    const firstChild = tree.rootNode.namedChildren[0];
+    if (!firstChild || firstChild.type !== "expression_statement") return undefined;
+    const expr = firstChild.namedChildren[0];
+    if (!expr || (expr.type !== "string" && expr.type !== "concatenated_string")) return undefined;
+
+    let text = expr.text;
+    if (text.startsWith('"""') || text.startsWith("'''")) {
+      text = text.slice(3, -3).trim();
+    } else if (text.startsWith('"') || text.startsWith("'")) {
+      text = text.slice(1, -1).trim();
+    }
+
+    const firstLine = text.split("\n")[0]?.trim() ?? text;
+    return firstLine.length > 300 ? firstLine.slice(0, 297) + "..." : firstLine;
+  }
 
   private extractDecoratorList(node: SyntaxNode): string[] {
     return node.namedChildren

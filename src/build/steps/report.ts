@@ -73,7 +73,7 @@ export function generateGraphReport(options: {
 
   const topGodNodes = graphData.nodes
     .map((node) => ({
-      label: node.label || node.id,
+      label: godNodeLabel(node),
       type: node.type || "unknown",
       repo: node.repo || "-",
       degree: degreeMap.get(node.id) ?? 0,
@@ -175,6 +175,7 @@ function buildRankedCommunity(
       degree: degreeMap.get(node.id) ?? 0,
       repo: node.repo,
       type: node.type,
+      source_file: node.source_file,
     }))
     .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label));
 
@@ -228,7 +229,15 @@ function toNonEmptyString(value: unknown): string | undefined {
 }
 
 function isFileLevelNode(type: unknown): boolean {
-  return type === "module" || type === "document";
+  return type === "module" || type === "document" || type === "diagram";
+}
+
+/** For file-level nodes (module/document), show source_file for disambiguation; otherwise label */
+function godNodeLabel(node: GraphNode): string {
+  if (isFileLevelNode(node.type) && node.source_file) {
+    return node.source_file;
+  }
+  return node.label || node.id;
 }
 
 function getFileTypeLabel(sourceFile: string): string {

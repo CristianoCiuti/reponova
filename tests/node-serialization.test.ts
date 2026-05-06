@@ -179,6 +179,7 @@ describe("FIX-016: Serialize docstring/signature/bases", () => {
     const extraction: FileExtraction = {
       filePath: "models.py",
       language: "python",
+      fileNode: { kind: "module" },
       symbols: [
         {
           name: "AdminUser",
@@ -218,6 +219,7 @@ describe("FIX-016: Serialize docstring/signature/bases", () => {
     const extraction: FileExtraction = {
       filePath: "service.py",
       language: "python",
+      fileNode: { kind: "module" },
       symbols: [
         {
           name: "UserService",

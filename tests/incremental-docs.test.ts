@@ -68,6 +68,7 @@ describe("Incremental Build", () => {
     const extractions: FileExtraction[] = [{
       filePath: "file1.py",
       language: "python",
+      fileNode: { kind: "module" },
       symbols: [{ name: "hello", qualifiedName: "file1.py/hello", kind: "function", decorators: [], startLine: 1, endLine: 1, calls: [] }],
       imports: [],
       references: [],
@@ -122,9 +123,9 @@ describe("Markdown Extractor", () => {
   });
 
   it("should create a document node for the file", () => {
-    const doc = extraction.symbols.find((s) => s.kind === "document");
-    expect(doc).toBeDefined();
-    expect(doc!.name).toBe("architecture.md");
+    // In new architecture, document info is in fileNode, not symbols[]
+    expect(extraction.fileNode).toBeDefined();
+    expect(extraction.fileNode.kind).toBe("document");
   });
 
   it("should extract heading sections", () => {
@@ -155,14 +156,15 @@ describe("Markdown Extractor", () => {
 
   it("should have sections parented to the document", () => {
     const sections = extraction.symbols.filter((s) => s.kind === "section");
+    // In new architecture, sections parent to the filename (fileNode label)
     for (const section of sections) {
       expect(section.parent).toBe("architecture.md");
     }
   });
 
   it("should extract docstring from first paragraph", () => {
-    const doc = extraction.symbols.find((s) => s.kind === "document");
-    expect(doc!.docstring).toContain("high-level architecture");
+    // In new architecture, file docstring is in fileNode
+    expect(extraction.fileNode.docstring).toContain("high-level architecture");
   });
 
   it("should handle extensions correctly", () => {
@@ -195,15 +197,16 @@ describe("Diagram Extractor", () => {
     });
 
     it("should create a document node for the file", () => {
-      const doc = extraction.symbols.find((s) => s.kind === "document");
-      expect(doc).toBeDefined();
-      expect(doc!.name).toBe("architecture.puml");
-      expect(doc!.decorators).toContain("plantuml");
+      // In new architecture, diagram info is in fileNode
+      expect(extraction.fileNode).toBeDefined();
+      expect(extraction.fileNode.kind).toBe("diagram");
+      expect(extraction.fileNode.tags).toContain("plantuml");
     });
 
     it("should extract class definitions", () => {
-      const classes = extraction.symbols.filter((s) => s.kind === "class");
-      const names = classes.map((s) => s.name);
+      // In new architecture, PlantUML components use kind: "component"
+      const components = extraction.symbols.filter((s) => s.kind === "component");
+      const names = components.map((s) => s.name);
       expect(names).toContain("ConfigLoader");
       expect(names).toContain("DataProcessor");
       expect(names).toContain("FileOutput");
@@ -223,18 +226,18 @@ describe("Diagram Extractor", () => {
     });
 
     it("should extract title as docstring", () => {
-      const doc = extraction.symbols.find((s) => s.kind === "document");
-      expect(doc!.docstring).toBe("System Architecture");
+      // In new architecture, file docstring is in fileNode
+      expect(extraction.fileNode.docstring).toBe("System Architecture");
     });
   });
 
   describe("Binary Images", () => {
     it("should create metadata node for PNG", () => {
       const extraction = extractor.extract(null, "", "images/diagram.png");
-      expect(extraction.symbols.length).toBe(1);
-      expect(extraction.symbols[0]!.kind).toBe("document");
-      expect(extraction.symbols[0]!.name).toBe("diagram.png");
-      expect(extraction.symbols[0]!.decorators).toContain("png");
+      // In new architecture, document info is in fileNode, symbols[] is empty
+      expect(extraction.symbols.length).toBe(0);
+      expect(extraction.fileNode.kind).toBe("diagram");
+      expect(extraction.fileNode.tags).toContain("png");
     });
   });
 
@@ -242,9 +245,8 @@ describe("Diagram Extractor", () => {
     it("should extract text elements from SVG", () => {
       const svgSource = `<svg><title>My Diagram</title><text>ConfigLoader</text><text>DataProcessor</text><text>x</text></svg>`;
       const extraction = extractor.extract(null, svgSource, "docs/flow.svg");
-      expect(extraction.symbols.length).toBeGreaterThan(1);
-      const doc = extraction.symbols.find((s) => s.kind === "document");
-      expect(doc!.docstring).toBe("My Diagram");
+      // In new architecture, file docstring is in fileNode
+      expect(extraction.fileNode.docstring).toBe("My Diagram");
       // "x" should be filtered (too short)
       const sections = extraction.symbols.filter((s) => s.kind === "section");
       const names = sections.map((s) => s.name);

@@ -38,7 +38,7 @@ export function handleDocs(
     params.push(likeTerm, likeTerm, likeTerm);
   }
 
-  let filterSql = " AND type IN ('document', 'section')";
+  let filterSql = " AND type IN ('document', 'diagram', 'section')";
   if (repo) {
     filterSql += " AND repo = ?";
     params.push(repo);
