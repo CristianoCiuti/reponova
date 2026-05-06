@@ -1,6 +1,7 @@
 import { writeFileSync, readFileSync, existsSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
 import type { GraphData, GraphNode } from "../../shared/types.js";
+import { loadGraphData } from "../../core/graph-loader.js";
 import type { BuildStep, StepContext } from "../types.js";
 
 interface RankedCommunity {
@@ -25,7 +26,7 @@ export const runReportStep: BuildStep = async (ctx: StepContext) => {
     return { processed: 0, skipped: true, skipReason: "up to date" };
   }
 
-  const graphData = JSON.parse(readFileSync(ctx.graphJsonPath, "utf-8")) as GraphData;
+  const graphData = loadGraphData(ctx.graphJsonPath);
   generateGraphReport({ graphData, outputDir: ctx.outputDir, outputPath });
   return { processed: graphData.nodes.length, skipped: false };
 };
