@@ -148,13 +148,12 @@ export function updateStep(
   skipReason?: string,
 ): void {
   const now = new Date().toISOString();
+  const existing = manifest.steps[step];
 
   manifest.steps[step] = {
     status,
-    ...(status === "running" ? { started_at: now } : {}),
-    ...(status === "completed" || status === "failed" || status === "skipped"
-      ? { completed_at: now }
-      : {}),
+    started_at: status === "running" ? now : existing?.started_at,
+    completed_at: status !== "running" ? now : existing?.completed_at,
     ...(skipReason ? { skip_reason: skipReason } : {}),
   };
 
