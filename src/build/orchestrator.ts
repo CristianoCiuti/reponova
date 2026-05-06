@@ -17,7 +17,7 @@ import { buildSkipDirs, createPathContext, prepareWorkspace, extractRepoName } f
 import { loadPreviousBuildConfig } from "./incremental/config-diff.js";
 import { computeSemanticGraphHash, loadPreviousGraphHash, saveGraphHash } from "./incremental/graph-hash.js";
 import {
-  createManifest, loadManifest, updateStep, completeManifest,
+  loadOrCreateManifest, updateStep, completeManifest,
 } from "./manifest.js";
 import type { BuildManifest, StepName } from "./manifest.js";
 import type { BuildStep, StepContext } from "./types.js";
@@ -69,10 +69,8 @@ export async function runBuild(config: Config, configDir: string, options: Build
     const pathContext = createPathContext(config, configDir, outputDir);
     log.info(`Build${incremental ? " (incremental)" : ""} [${pathContext.mode}-repo mode]...`);
 
-    const previousManifest = loadManifest(outputDir);
-    const manifest = createManifest(outputDir);
+    const manifest = loadOrCreateManifest(outputDir);
     const previousConfig = loadPreviousBuildConfig(graphJsonPath, config).previous;
-    const previousGraphHash = loadPreviousGraphHash(outputDir);
 
     const workspace = prepareWorkspace(pathContext, tmpDir, skipDirs);
     const repoNames = pathContext.repos.map((repo) => repo.name);
@@ -112,7 +110,6 @@ export async function runBuild(config: Config, configDir: string, options: Build
     }
 
     const currentGraphHash = computeSemanticGraphHash(result.builtGraph.graph);
-    const graphChanged = previousGraphHash !== currentGraphHash;
     const llmPool = new LlmEnginePool(config.models);
 
     try {
@@ -122,20 +119,19 @@ export async function runBuild(config: Config, configDir: string, options: Build
         outputDir,
         graphJsonPath,
         force: options.force,
-        graphChanged,
         previousConfig,
         llmPool,
         graph: result.builtGraph.graph,
         communities: result.communities,
       };
 
-      await executeStep(outputDir, manifest, previousManifest, "embeddings", runEmbeddingsStep, stepContext);
-      await executeStep(outputDir, manifest, previousManifest, "community_summaries", runCommunitySummariesStep, stepContext);
-      await executeStep(outputDir, manifest, previousManifest, "node_descriptions", runNodeDescriptionsStep, stepContext);
-      await executeStep(outputDir, manifest, previousManifest, "outlines", runOutlinesStep, stepContext);
-      await executeStep(outputDir, manifest, previousManifest, "indexer", runIndexerStep, stepContext);
-      await executeStep(outputDir, manifest, previousManifest, "html", runHtmlStep, stepContext);
-      await executeStep(outputDir, manifest, previousManifest, "report", runReportStep, stepContext);
+      await executeStep(outputDir, manifest, "embeddings", runEmbeddingsStep, stepContext);
+      await executeStep(outputDir, manifest, "community_summaries", runCommunitySummariesStep, stepContext);
+      await executeStep(outputDir, manifest, "node_descriptions", runNodeDescriptionsStep, stepContext);
+      await executeStep(outputDir, manifest, "outlines", runOutlinesStep, stepContext);
+      await executeStep(outputDir, manifest, "indexer", runIndexerStep, stepContext);
+      await executeStep(outputDir, manifest, "html", runHtmlStep, stepContext);
+      await executeStep(outputDir, manifest, "report", runReportStep, stepContext);
     } finally {
       await llmPool.disposeAll();
     }
@@ -171,7 +167,6 @@ export async function runBuild(config: Config, configDir: string, options: Build
 async function executeStep(
   outputDir: string,
   manifest: BuildManifest,
-  previousManifest: BuildManifest | null,
   name: StepName,
   stepFn: BuildStep,
   ctx: StepContext,
@@ -182,8 +177,7 @@ async function executeStep(
   updateStep(outputDir, manifest, name, "running");
 
   try {
-    const force = ctx.force || shouldForceStep(previousManifest, name);
-    const result = await stepFn({ ...ctx, force });
+    const result = await stepFn(ctx);
     if (result.skipped) {
       updateStep(outputDir, manifest, name, "skipped", result.skipReason ?? "up to date");
       log.info(`  Skipped: ${result.skipReason ?? "up to date"}`);
@@ -196,12 +190,6 @@ async function executeStep(
     updateStep(outputDir, manifest, name, "failed", message);
     log.warn(`  Failed (non-blocking): ${message}`);
   }
-}
-
-function shouldForceStep(previousManifest: BuildManifest | null, step: StepName): boolean {
-  if (!previousManifest) return false;
-  const status = previousManifest.steps[step]?.status;
-  return status === "running" || status === "failed";
 }
 
 export async function build(

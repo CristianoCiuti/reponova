@@ -26,10 +26,6 @@ export const runNodeDescriptionsStep: BuildStep = async (ctx: StepContext): Prom
   const contextSizeChanged = previous != null && previous.context_size !== config.context_size;
   const effectiveForce = ctx.force || modelChanged || ((config.model ?? null) != null && contextSizeChanged);
 
-  if (!ctx.graphChanged && !effectiveForce) {
-    return { processed: 0, skipped: true, skipReason: "graph unchanged" };
-  }
-
   const graphData = JSON.parse(readFileSync(ctx.graphJsonPath, "utf-8")) as GraphData;
   const edgeCounts = computeEdgeCounts(graphData);
   if (edgeCounts.size === 0) {

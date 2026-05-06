@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { existsSync, statSync, unlinkSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { loadGraphData } from "../../core/graph-loader.js";
 import { openDatabase, initializeSchema, populateDatabase, saveDatabase } from "../../core/db.js";
 import { log } from "../../shared/utils.js";
@@ -15,17 +15,14 @@ export const runIndexerStep: BuildStep = async (ctx: StepContext) => {
   log.info("Generating search index...");
   const graphData = loadGraphData(ctx.graphJsonPath);
 
-  if (existsSync(dbPath)) {
-    unlinkSync(dbPath);
-  }
-
+  // openDatabase creates in-memory, saveDatabase overwrites the file atomically
   const db = await openDatabase(dbPath);
   initializeSchema(db);
   populateDatabase(db, graphData);
   saveDatabase(db, dbPath);
   db.close();
 
-  log.info(`✓ Search index: ${dbPath} (${graphData.nodes.length} nodes, ${graphData.edges.length} edges)`);
+  log.info(`  Search index: ${dbPath} (${graphData.nodes.length} nodes, ${graphData.edges.length} edges)`);
   return { processed: graphData.nodes.length, skipped: false };
 };
 

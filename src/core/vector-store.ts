@@ -4,7 +4,7 @@
  * Provides upsert, query, and lifecycle management.
  * Gracefully degrades to brute-force cosine similarity if LanceDB is not available.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "../shared/utils.js";
 
@@ -261,10 +261,12 @@ export class VectorStore {
     const sidecarPath = this.getSidecarPath();
     const dir = this.getBaseDir();
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(sidecarPath, JSON.stringify(records.map((record) => ({
+    const tmpPath = sidecarPath + ".tmp";
+    writeFileSync(tmpPath, JSON.stringify(records.map((record) => ({
       ...record,
       vector: Array.from(record.vector),
     }))));
+    renameSync(tmpPath, sidecarPath);
   }
 
   private getBaseDir(): string {

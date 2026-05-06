@@ -264,9 +264,9 @@ describe("PROP-I3: incremental embeddings", () => {
     }
   });
 
-  // ─── Case 11: Switching from TF-IDF to ONNX removes tfidf_idf.json ────────
+  // ─── Case 11: Switching from TF-IDF to ONNX preserves tfidf_idf.json when ONNX fails ────
 
-  it("removes tfidf_idf.json when method is onnx (method-exclusive artifacts)", async () => {
+  it("preserves tfidf_idf.json when switching to onnx but engine unavailable (safe fallback)", async () => {
     const { config, outputDir, graphJsonPath, makeContext } = setup();
 
     // Build with TF-IDF first
@@ -274,14 +274,15 @@ describe("PROP-I3: incremental embeddings", () => {
     await runEmbeddingsStep(makeContext());
     expect(existsSync(join(outputDir, "tfidf_idf.json"))).toBe(true);
 
-    // Switch to ONNX — note: ONNX engine won't initialize in test (mocked lancedb), but
-    // the tfidf_idf.json cleanup happens BEFORE embedding generation, unconditionally.
+    // Switch to ONNX — ONNX engine won't initialize in test (mocked lancedb/no model).
+    // tfidf_idf.json is only cleaned up AFTER successful ONNX embedding generation.
+    // When ONNX fails, old artifacts are preserved as a safe fallback.
     config.build.embeddings.method = "onnx";
     writeGraph(graphJsonPath, [makeNode("node-a", "Alpha"), makeNode("node-b", "Beta")]);
-    // ONNX will fail gracefully (no model), but artifact cleanup must still happen
     await runEmbeddingsStep(makeContext());
 
-    expect(existsSync(join(outputDir, "tfidf_idf.json"))).toBe(false);
+    // tfidf_idf.json persists because ONNX didn't complete successfully
+    expect(existsSync(join(outputDir, "tfidf_idf.json"))).toBe(true);
   });
 
   // ─── Case 12: tfidf_idf.json stays when method is tfidf ───────────────────
@@ -334,7 +335,6 @@ function setup(): {
       outputDir,
       graphJsonPath: join(outputDir, "graph.json"),
       force: false,
-      graphChanged: true,
       previousConfig: null,
       ...overrides,
     }),

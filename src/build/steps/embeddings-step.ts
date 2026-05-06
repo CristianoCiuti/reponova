@@ -31,19 +31,6 @@ export const runEmbeddingsStep: BuildStep = async (ctx: StepContext): Promise<St
   const dimensionsChanged = previous != null && previous.dimensions !== config.dimensions;
   const effectiveForce = ctx.force || methodChanged || modelChanged || dimensionsChanged;
 
-  if (config.method === "onnx") {
-    removeFile(tfidfPath);
-  }
-  if (methodChanged || modelChanged || dimensionsChanged) {
-    removeDirectory(vectorsPath);
-  }
-
-  // Node texts derive entirely from graph node attributes, so when the graph
-  // structure is unchanged and no config forces, there can be no delta.
-  if (!effectiveForce && !ctx.graphChanged) {
-    return { processed: 0, skipped: true, skipReason: "graph unchanged" };
-  }
-
   const graphData = JSON.parse(readFileSync(ctx.graphJsonPath, "utf-8")) as GraphData;
   return generateEmbeddings(ctx, graphData, effectiveForce);
 };
@@ -234,6 +221,9 @@ async function storeEmbeddings(options: {
 
   if (vocabulary) {
     atomicWriteJson(join(outputDir, "tfidf_idf.json"), vocabulary);
+  } else {
+    // ONNX method: remove stale tfidf artifact after successful write
+    removeFile(join(outputDir, "tfidf_idf.json"));
   }
 
   log.info(`  ${embeddings.length} embeddings stored`);

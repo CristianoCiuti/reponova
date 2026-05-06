@@ -23,8 +23,6 @@ export interface StepContext {
   graphJsonPath: string;
   /** If true, the step ignores cache and regenerates everything */
   force: boolean;
-  /** True if the graph is structurally different from the previous build */
-  graphChanged: boolean;
   /** Previous build config (for detecting config changes per-step). null = first build. */
   previousConfig: BuildConfigFingerprint | null;
   /** Shared LLM pool (for steps that use LLM) */

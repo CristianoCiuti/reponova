@@ -9,22 +9,22 @@ import { DEFAULT_CONFIG } from "../src/shared/types.js";
 const tempDirs: string[] = [];
 
 const mockedSteps = vi.hoisted(() => ({
-  runIndexerStep: vi.fn(async (ctx: { outputDir: string; graphChanged: boolean; force: boolean }) => {
+  runIndexerStep: vi.fn(async (ctx: { outputDir: string; graphJsonPath: string; force: boolean }) => {
     const outputPath = join(ctx.outputDir, "graph_search.db");
-    if (!ctx.force && !ctx.graphChanged) {
+    if (!ctx.force && statExists(outputPath) && statSync(outputPath).mtimeMs >= statSync(ctx.graphJsonPath).mtimeMs) {
       return { processed: 0, skipped: true, skipReason: "up to date" };
     }
     writeFileSync(outputPath, "db");
     return { processed: 1, skipped: false };
   }),
-  runHtmlStep: vi.fn(async (ctx: { outputDir: string; graphChanged: boolean; force: boolean }) => {
+  runHtmlStep: vi.fn(async (ctx: { outputDir: string; graphJsonPath: string; force: boolean }) => {
     const htmlPath = join(ctx.outputDir, "graph.html");
     const communitiesPath = join(ctx.outputDir, "graph_communities.html");
     const summariesPath = join(ctx.outputDir, "community_summaries.json");
     const shouldRun = ctx.force
       || !statExists(htmlPath)
       || !statExists(communitiesPath)
-      || ctx.graphChanged
+      || statSync(ctx.graphJsonPath).mtimeMs > statSync(htmlPath).mtimeMs
       || (statExists(summariesPath) && statSync(summariesPath).mtimeMs > statSync(communitiesPath).mtimeMs);
     if (!shouldRun) {
       return { processed: 0, skipped: true, skipReason: "up to date" };
@@ -33,12 +33,12 @@ const mockedSteps = vi.hoisted(() => ({
     writeFileSync(communitiesPath, "<html></html>");
     return { processed: 2, skipped: false };
   }),
-  runReportStep: vi.fn(async (ctx: { outputDir: string; graphChanged: boolean; force: boolean }) => {
+  runReportStep: vi.fn(async (ctx: { outputDir: string; graphJsonPath: string; force: boolean }) => {
     const reportPath = join(ctx.outputDir, "report.md");
     const summariesPath = join(ctx.outputDir, "community_summaries.json");
     const shouldRun = ctx.force
       || !statExists(reportPath)
-      || ctx.graphChanged
+      || statSync(ctx.graphJsonPath).mtimeMs > statSync(reportPath).mtimeMs
       || (statExists(summariesPath) && statSync(summariesPath).mtimeMs > statSync(reportPath).mtimeMs);
     if (!shouldRun) {
       return { processed: 0, skipped: true, skipReason: "up to date" };
@@ -89,9 +89,10 @@ describe("build pipeline e2e", () => {
     expect(manifest.steps.community_summaries.status).toBe("skipped");
     expect(manifest.steps.node_descriptions.status).toBe("skipped");
     expect(manifest.steps.outlines.status).toBe("skipped");
-    expect(manifest.steps.indexer.status).toBe("skipped");
-    expect(manifest.steps.html.status).toBe("skipped");
-    expect(manifest.steps.report.status).toBe("skipped");
+    // indexer/html/report run because graph.json is always rewritten (new mtime)
+    expect(manifest.steps.indexer.status).toBe("completed");
+    expect(manifest.steps.html.status).toBe("completed");
+    expect(manifest.steps.report.status).toBe("completed");
 
     writeFileSync(join(repoDir, "utils.py"), [
       "def leaf():",

@@ -100,16 +100,6 @@ describe("incremental community summaries", () => {
     expect(existsSync(join(outputDir, ".cache", "community-summary-fingerprints.json"))).toBe(false);
   });
 
-  it("skips immediately when graphChanged=false and force=false", async () => {
-    const { graphJsonPath, makeContext } = setup();
-    writeGraph(graphJsonPath, makeGraph({ 1: ["a", "b", "c"] }));
-
-    const result = await runCommunitySummariesStep(makeContext({ graphChanged: false }));
-
-    expect(result.skipped).toBe(true);
-    expect(result.skipReason).toBe("graph unchanged");
-    expect(generateMock).not.toHaveBeenCalled();
-  });
 
   it("applies max_number filtering before generation", async () => {
     const { config, graphJsonPath, makeContext, outputDir } = setup();
@@ -151,7 +141,6 @@ function setup(): {
       outputDir,
       graphJsonPath,
       force: false,
-      graphChanged: true,
       previousConfig: null,
       ...overrides,
     }),

@@ -25,7 +25,6 @@ export const runOutlinesStep: BuildStep = async (ctx: StepContext): Promise<Step
   const config = ctx.config.outlines;
   const outlinesDir = join(ctx.outputDir, "outlines");
   const cachePath = join(ctx.outputDir, ".cache", "outline-hashes.json");
-  const effectiveForce = ctx.force;
 
   if (!config.enabled) {
     removeDirectory(outlinesDir);
@@ -33,9 +32,7 @@ export const runOutlinesStep: BuildStep = async (ctx: StepContext): Promise<Step
     return { processed: 0, skipped: true, skipReason: "disabled in config" };
   }
 
-  if (!ctx.graphChanged && !effectiveForce) {
-    return { processed: 0, skipped: true, skipReason: "graph unchanged" };
-  }
+  const effectiveForce = ctx.force;
 
   const configDir = ctx.configDir;
   if (!configDir) {

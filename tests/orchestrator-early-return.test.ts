@@ -9,10 +9,10 @@ const tempDirs: string[] = [];
 
 const mocks = vi.hoisted(() => ({
   runIndexerStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
-  runOutlinesStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "graph unchanged" })),
-  runEmbeddingsStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "graph unchanged" })),
-  runCommunitySummariesStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "graph unchanged" })),
-  runNodeDescriptionsStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "graph unchanged" })),
+  runOutlinesStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
+  runEmbeddingsStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
+  runCommunitySummariesStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
+  runNodeDescriptionsStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
   runHtmlStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
   runReportStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
   runPipeline: vi.fn(),
@@ -55,7 +55,7 @@ describe("orchestrator skipped-step flow", () => {
     }
   });
 
-  it("marks all autonomous steps as skipped when graphChanged=false", async () => {
+  it("marks steps as skipped when they autonomously determine no work needed", async () => {
     const { config, configDir, outputDir } = setupConfig();
 
     mocks.loadPreviousBuildConfig.mockReturnValue({
@@ -87,11 +87,16 @@ describe("orchestrator skipped-step flow", () => {
       steps: Record<string, { status: string }>;
     };
 
-    expect(mocks.runEmbeddingsStep).toHaveBeenCalledWith(expect.objectContaining({ graphChanged: false, force: false }));
-    expect(mocks.runCommunitySummariesStep).toHaveBeenCalledWith(expect.objectContaining({ graphChanged: false, force: false }));
-    expect(mocks.runNodeDescriptionsStep).toHaveBeenCalledWith(expect.objectContaining({ graphChanged: false, force: false }));
-    expect(mocks.runOutlinesStep).toHaveBeenCalledWith(expect.objectContaining({ graphChanged: false, force: false }));
+    // Steps receive force=false and decide autonomously to skip
+    expect(mocks.runEmbeddingsStep).toHaveBeenCalledWith(expect.objectContaining({ force: false }));
+    expect(mocks.runCommunitySummariesStep).toHaveBeenCalledWith(expect.objectContaining({ force: false }));
+    expect(mocks.runNodeDescriptionsStep).toHaveBeenCalledWith(expect.objectContaining({ force: false }));
+    expect(mocks.runOutlinesStep).toHaveBeenCalledWith(expect.objectContaining({ force: false }));
 
+    // No graphChanged in context
+    expect(mocks.runEmbeddingsStep).toHaveBeenCalledWith(expect.not.objectContaining({ graphChanged: expect.anything() }));
+
+    // Manifest reflects skipped state
     expect(manifest.steps.embeddings.status).toBe("skipped");
     expect(manifest.steps.community_summaries.status).toBe("skipped");
     expect(manifest.steps.node_descriptions.status).toBe("skipped");

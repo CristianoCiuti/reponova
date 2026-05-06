@@ -1,8 +1,9 @@
 /**
- * Build manifest — tracks pipeline step completion state.
+ * Build manifest — historical record of pipeline step states.
  *
- * Solves the "interrupted build" problem: if a build is killed mid-way,
- * the next incremental build can detect incomplete steps and resume.
+ * The manifest tracks what happened to each step across builds.
+ * It is write-only from the orchestrator's perspective — steps never
+ * read it to make decisions. Each step is autonomous.
  *
  * Storage: `<output>/.cache/build-manifest.json`
  * All writes are atomic (write-then-rename) to prevent corruption on crash.
@@ -23,7 +24,7 @@ export type StepName =
   | "html"
   | "report";
 
-export type StepStatus = "pending" | "running" | "completed" | "skipped" | "failed";
+export type StepStatus = "running" | "completed" | "skipped" | "failed";
 
 export interface StepState {
   status: StepStatus;
@@ -36,31 +37,19 @@ export interface StepState {
 export interface BuildManifest {
   /** Schema version for future migrations */
   version: 1;
-  /** Timestamp when build started */
+  /** Timestamp when the latest build started */
   started_at: string;
-  /** Timestamp when build completed (null = interrupted) */
+  /** Timestamp when the latest build completed (null = in-progress or interrupted) */
   completed_at: string | null;
-  /** Semantic graph hash at time of build */
+  /** Semantic graph hash at time of last successful build */
   graph_hash: string | null;
-  /** Step completion state */
-  steps: Record<StepName, StepState>;
+  /** Step state — only populated when a step actually executes */
+  steps: Partial<Record<StepName, StepState>>;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MANIFEST_FILENAME = "build-manifest.json";
-
-const ALL_STEPS: StepName[] = [
-  "extraction",
-  "graph_build",
-  "indexer",
-  "outlines",
-  "embeddings",
-  "community_summaries",
-  "node_descriptions",
-  "html",
-  "report",
-];
 
 // ─── Atomic Write ────────────────────────────────────────────────────────────
 
@@ -95,24 +84,31 @@ export function getManifestPath(outputDir: string): string {
   return join(outputDir, ".cache", MANIFEST_FILENAME);
 }
 
-// ─── Create ──────────────────────────────────────────────────────────────────
+// ─── Load or Create ──────────────────────────────────────────────────────────
 
 /**
- * Create a fresh manifest with all steps pending.
+ * Load existing manifest or create a new one.
+ * Preserves previous step states — only updates build-level metadata.
  * Called at the start of every build.
  */
-export function createManifest(outputDir: string): BuildManifest {
+export function loadOrCreateManifest(outputDir: string): BuildManifest {
   const cacheDir = join(outputDir, ".cache");
   mkdirSync(cacheDir, { recursive: true });
+
+  const existing = loadManifest(outputDir);
+  if (existing) {
+    existing.started_at = new Date().toISOString();
+    existing.completed_at = null;
+    atomicWriteJson(getManifestPath(outputDir), existing);
+    return existing;
+  }
 
   const manifest: BuildManifest = {
     version: 1,
     started_at: new Date().toISOString(),
     completed_at: null,
     graph_hash: null,
-    steps: Object.fromEntries(
-      ALL_STEPS.map((step) => [step, { status: "pending" as StepStatus }]),
-    ) as Record<StepName, StepState>,
+    steps: {},
   };
 
   atomicWriteJson(getManifestPath(outputDir), manifest);
@@ -132,7 +128,7 @@ export function loadManifest(outputDir: string): BuildManifest | null {
     const raw = readFileSync(path, "utf-8");
     const data = JSON.parse(raw) as BuildManifest;
     // Basic validation
-    if (data.version !== 1 || !data.steps || !data.started_at) return null;
+    if (data.version !== 1 || !data.started_at) return null;
     return data;
   } catch {
     return null;
@@ -184,17 +180,6 @@ export function completeManifest(
 // ─── Query Helpers ───────────────────────────────────────────────────────────
 
 /**
- * Get list of steps that need to be (re-)executed.
- * Returns steps with status "pending", "running", or "failed".
- */
-export function getIncompleteSteps(manifest: BuildManifest): StepName[] {
-  return ALL_STEPS.filter((step) => {
-    const s = manifest.steps[step]?.status;
-    return s === "pending" || s === "running" || s === "failed";
-  });
-}
-
-/**
  * Check if the manifest indicates a fully completed build.
  */
 export function isManifestComplete(manifest: BuildManifest): boolean {
@@ -205,14 +190,13 @@ export function isManifestComplete(manifest: BuildManifest): boolean {
 
 /**
  * Invalidate a manifest step (called by standalone commands at START).
- * Marks step as "running" so next build knows it's in-flight.
+ * Marks step as "running" so the manifest reflects in-flight work.
  * No-op if manifest doesn't exist.
  */
 export function invalidateManifestStep(outputDir: string, step: StepName): void {
   const manifest = loadManifest(outputDir);
   if (!manifest) return;
 
-  // Mark step as running and clear completed_at (build is no longer fully complete)
   manifest.completed_at = null;
   updateStep(outputDir, manifest, step, "running");
 }
@@ -228,9 +212,9 @@ export function validateManifestStep(outputDir: string, step: StepName): void {
 
   updateStep(outputDir, manifest, step, "completed");
 
-  // If all steps are now completed/skipped, restore completed_at
-  const incomplete = getIncompleteSteps(manifest);
-  if (incomplete.length === 0) {
+  // If no step is "running", mark build complete
+  const hasRunning = Object.values(manifest.steps).some((s) => s?.status === "running");
+  if (!hasRunning) {
     manifest.completed_at = new Date().toISOString();
     atomicWriteJson(getManifestPath(outputDir), manifest);
   }

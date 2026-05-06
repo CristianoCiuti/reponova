@@ -60,7 +60,7 @@ describe("step-level config-change forcing", () => {
       embeddings: { enabled: true, method: "onnx", model: "all-MiniLM-L6-v2", dimensions: 384 },
     });
 
-    const result = await runEmbeddingsStep(makeContext({ config, outputDir, graphJsonPath, previousConfig, graphChanged: false }));
+    const result = await runEmbeddingsStep(makeContext({ config, outputDir, graphJsonPath, previousConfig }));
 
     expect(result.skipped).toBe(false);
     expect(result.processed).toBe(3);
@@ -75,7 +75,7 @@ describe("step-level config-change forcing", () => {
       community_summaries: { enabled: true, max_number: 0, model: "hf:old/model", context_size: 512 },
     });
 
-    const result = await runCommunitySummariesStep(makeContext({ config, outputDir, graphJsonPath, previousConfig, graphChanged: false }));
+    const result = await runCommunitySummariesStep(makeContext({ config, outputDir, graphJsonPath, previousConfig }));
 
     expect(result.skipped).toBe(false);
     expect(result.processed).toBe(1);
@@ -91,7 +91,7 @@ describe("step-level config-change forcing", () => {
       node_descriptions: { enabled: true, threshold: 0, model: "hf:old/model", context_size: 512 },
     });
 
-    const result = await runNodeDescriptionsStep(makeContext({ config, outputDir, graphJsonPath, previousConfig, graphChanged: false }));
+    const result = await runNodeDescriptionsStep(makeContext({ config, outputDir, graphJsonPath, previousConfig }));
 
     expect(result.skipped).toBe(false);
     expect(result.processed).toBe(3);
@@ -121,7 +121,6 @@ function makeContext(overrides: Partial<StepContext>): StepContext {
     outputDir: overrides.outputDir!,
     graphJsonPath: overrides.graphJsonPath!,
     force: false,
-    graphChanged: true,
     previousConfig: null,
     ...overrides,
   };

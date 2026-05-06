@@ -118,16 +118,7 @@ describe("incremental node descriptions", () => {
     expect(existsSync(join(outputDir, ".cache", "node-description-fingerprints.json"))).toBe(false);
   });
 
-  it("skips immediately when graphChanged=false and force=false", async () => {
-    const { graphJsonPath, makeContext } = setup();
-    writeGraph(graphJsonPath, makeGraph(["a", "b", "c"]));
 
-    const result = await runNodeDescriptionsStep(makeContext({ graphChanged: false }));
-
-    expect(result.skipped).toBe(true);
-    expect(result.skipReason).toBe("graph unchanged");
-    expect(generateMock).not.toHaveBeenCalled();
-  });
 });
 
 function setup(): {
@@ -157,7 +148,6 @@ function setup(): {
       outputDir,
       graphJsonPath,
       force: false,
-      graphChanged: true,
       previousConfig: null,
       ...overrides,
     }),

@@ -10,8 +10,12 @@ const tempDirs: string[] = [];
 const mocks = vi.hoisted(() => ({
   runIndexerStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
   runOutlinesStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
-  runEmbeddingsStep: vi.fn(async ({ force }: { force: boolean }) => ({ processed: force ? 2 : 0, skipped: !force, skipReason: force ? undefined : "up to date" })),
-  runCommunitySummariesStep: vi.fn(async ({ force }: { force: boolean }) => ({ processed: force ? 1 : 0, skipped: !force, skipReason: force ? undefined : "up to date" })),
+  runEmbeddingsStep: vi.fn(async ({ force }: { force: boolean }) => {
+    return { processed: force ? 2 : 0, skipped: !force, skipReason: force ? undefined : "up to date" };
+  }),
+  runCommunitySummariesStep: vi.fn(async ({ force }: { force: boolean }) => {
+    return { processed: force ? 1 : 0, skipped: !force, skipReason: force ? undefined : "up to date" };
+  }),
   runNodeDescriptionsStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
   runHtmlStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
   runReportStep: vi.fn(async () => ({ processed: 0, skipped: true, skipReason: "up to date" })),
@@ -47,7 +51,7 @@ vi.mock("../src/build/incremental/graph-hash.js", () => ({
 
 import { runBuild } from "../src/build/orchestrator.js";
 
-describe("orchestrator interrupted-step recovery", () => {
+describe("orchestrator manifest state after builds", () => {
   afterEach(() => {
     vi.clearAllMocks();
     for (const dir of tempDirs.splice(0)) {
@@ -55,33 +59,52 @@ describe("orchestrator interrupted-step recovery", () => {
     }
   });
 
-  it("forces a previously running step", async () => {
+  it("preserves previous manifest steps that are not re-executed in current build", async () => {
     const { config, configDir, outputDir } = setupConfig();
     setupStableBuild();
-    writeManifest(outputDir, { embeddings: "running" });
+    // Pre-write a manifest with some steps completed from a prior build
+    writeManifest(outputDir, { embeddings: "completed", community_summaries: "completed" });
 
     await runBuild(config, configDir, { force: false });
 
-    expect(mocks.runEmbeddingsStep).toHaveBeenCalledWith(expect.objectContaining({ force: true }));
     const manifest = readManifest(outputDir);
-    expect(manifest.steps.embeddings.status).toBe("completed");
+    // Steps that ran (even if skipped) get recorded
+    expect(manifest.steps.embeddings).toBeDefined();
+    expect(manifest.steps.community_summaries).toBeDefined();
+    expect(manifest.completed_at).toBeTruthy();
   });
 
-  it("forces a previously failed step without forcing completed steps", async () => {
-    const { config, configDir, outputDir } = setupConfig();
+  it("does not pass graphChanged to steps — steps receive only force", async () => {
+    const { config, configDir } = setupConfig();
     setupStableBuild();
-    writeManifest(outputDir, {
-      community_summaries: "failed",
-      embeddings: "completed",
-    });
 
     await runBuild(config, configDir, { force: false });
 
-    expect(mocks.runCommunitySummariesStep).toHaveBeenCalledWith(expect.objectContaining({ force: true }));
-    expect(mocks.runEmbeddingsStep).toHaveBeenCalledWith(expect.objectContaining({ force: false }));
+    // Verify steps were called with force:false and no graphChanged property
+    const embeddingsCall = mocks.runEmbeddingsStep.mock.calls[0]?.[0];
+    expect(embeddingsCall).toHaveProperty("force", false);
+    expect(embeddingsCall).not.toHaveProperty("graphChanged");
+
+    const communitiesCall = mocks.runCommunitySummariesStep.mock.calls[0]?.[0];
+    expect(communitiesCall).toHaveProperty("force", false);
+    expect(communitiesCall).not.toHaveProperty("graphChanged");
+  });
+
+  it("records all step results in manifest on completion", async () => {
+    const { config, configDir, outputDir } = setupConfig();
+    setupStableBuild();
+
+    await runBuild(config, configDir, { force: false });
 
     const manifest = readManifest(outputDir);
-    expect(manifest.steps.community_summaries.status).toBe("completed");
+    // All steps should have recorded status
+    expect(manifest.steps.embeddings.status).toBe("skipped");
+    expect(manifest.steps.community_summaries.status).toBe("skipped");
+    expect(manifest.steps.node_descriptions.status).toBe("skipped");
+    expect(manifest.steps.outlines.status).toBe("skipped");
+    expect(manifest.steps.indexer.status).toBe("skipped");
+    expect(manifest.steps.html.status).toBe("skipped");
+    expect(manifest.steps.report.status).toBe("skipped");
     expect(manifest.completed_at).toBeTruthy();
   });
 });
@@ -137,13 +160,6 @@ function writeManifest(outputDir: string, overrides: Partial<Record<string, stri
   const steps = {
     extraction: { status: "completed" },
     graph_build: { status: "completed" },
-    indexer: { status: "completed" },
-    outlines: { status: "completed" },
-    embeddings: { status: "completed" },
-    community_summaries: { status: "completed" },
-    node_descriptions: { status: "completed" },
-    html: { status: "completed" },
-    report: { status: "completed" },
     ...Object.fromEntries(Object.entries(overrides).map(([key, value]) => [key, { status: value }])),
   };
 

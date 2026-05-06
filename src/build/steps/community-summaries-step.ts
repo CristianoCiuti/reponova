@@ -30,10 +30,6 @@ export const runCommunitySummariesStep: BuildStep = async (ctx: StepContext): Pr
   const contextSizeChanged = previous != null && previous.context_size !== config.context_size;
   const effectiveForce = ctx.force || modelChanged || ((config.model ?? null) != null && contextSizeChanged);
 
-  if (!ctx.graphChanged && !effectiveForce) {
-    return { processed: 0, skipped: true, skipReason: "graph unchanged" };
-  }
-
   const graphData = JSON.parse(readFileSync(ctx.graphJsonPath, "utf-8")) as GraphData;
   const communities = buildCommunityData(graphData, config.max_number);
   if (communities.length === 0) {
