@@ -64,7 +64,7 @@ export function exportHtml(options: ExportHtmlOptions): void {
     const degree = graph.degree(nodeId);
     if (minDegree != null && degree < minDegree) return;
 
-    const community = (attrs.community as number) ?? 0;
+    const community = Number(attrs.community) || 0;
     const color = COLORS[community % COLORS.length]!;
     const size = Math.max(5, Math.min(30, 5 + degree * 2));
     const nodeType = (attrs.type as string) ?? "unknown";
@@ -150,7 +150,7 @@ export function exportCommunityHtml(options: ExportHtmlOptions): void {
     visNodes.push({
       id: String(communityId),
       label: displayLabel,
-      color: COLORS[communityId % COLORS.length]!,
+      color: COLORS[Number(communityId) % COLORS.length]!,
       size: Math.max(18, Math.min(70, 18 + Math.sqrt(members.length) * 8)),
       title: [
         `Community ${communityId}`,
@@ -163,8 +163,8 @@ export function exportCommunityHtml(options: ExportHtmlOptions): void {
   }
 
   graph.forEachEdge((_edge, _attrs, source, target) => {
-    const sourceCommunity = graph.getNodeAttribute(source, "community") as number | undefined;
-    const targetCommunity = graph.getNodeAttribute(target, "community") as number | undefined;
+    const sourceCommunity = graph.getNodeAttribute(source, "community") as string | undefined;
+    const targetCommunity = graph.getNodeAttribute(target, "community") as string | undefined;
     if (sourceCommunity == null || targetCommunity == null || sourceCommunity === targetCommunity) return;
 
     const key = `${sourceCommunity}->${targetCommunity}`;

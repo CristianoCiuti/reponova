@@ -150,8 +150,8 @@ function shouldRunReport(graphJsonPath: string, outputPath: string, summariesPat
 function buildCommunityGroups(nodes: GraphNode[]): Map<string, string[]> {
   const groups = new Map<string, string[]>();
   for (const node of nodes) {
-    const communityId = node.community;
-    if (!communityId) continue;
+    if (node.community == null) continue;
+    const communityId = String(node.community);
     const members = groups.get(communityId) ?? [];
     members.push(node.id);
     groups.set(communityId, members);

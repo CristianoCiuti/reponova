@@ -34,7 +34,7 @@ interface JsonNode {
   source_file: string;
   source_location?: string;
   repo?: string;
-  community: number;
+  community: string;
   norm_label: string;
   start_line?: number;
   end_line?: number;
@@ -69,7 +69,7 @@ export function exportJson(options: ExportJsonOptions): void {
       type: (attrs.type as string) ?? "unknown",
       file_type: (attrs.file_type as string) ?? "code",
       source_file: (attrs.source_file as string) ?? "",
-      community: (attrs.community as number) ?? 0,
+      community: String(attrs.community ?? "0"),
       norm_label: (attrs.norm_label as string) ?? ((attrs.label as string) ?? nodeId).toLowerCase(),
     };
 

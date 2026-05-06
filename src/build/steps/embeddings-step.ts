@@ -210,7 +210,7 @@ async function storeEmbeddings(options: {
       type: node.type,
       repo: node.repo ?? "",
       source_file: node.source_file ?? "",
-      community: node.community ?? "",
+      community: String(node.community ?? ""),
       text: currentTexts.get(node.id) ?? "",
       vector,
     };

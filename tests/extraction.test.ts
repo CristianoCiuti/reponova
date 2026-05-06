@@ -399,7 +399,7 @@ describe("JSON Export", () => {
       const node = data.nodes[0];
       expect(node.id).toBeDefined();
       expect(node.label).toBeDefined();
-      expect(typeof node.community).toBe("number");
+      expect(typeof node.community).toBe("string");
 
       // Check edge structure
       if (data.edges.length > 0) {

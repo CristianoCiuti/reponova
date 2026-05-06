@@ -1,6 +1,7 @@
 import type { CommandModule } from "yargs";
 import { loadConfig } from "../core/config.js";
 import { runBuild } from "../build/orchestrator.js";
+import { log } from "../shared/utils.js";
 
 export const buildCommand: CommandModule = {
   command: "build",
@@ -17,7 +18,12 @@ export const buildCommand: CommandModule = {
         default: false,
       }),
   handler: async (argv) => {
-    const { config, configDir } = loadConfig(argv.config as string | undefined);
-    await runBuild(config, configDir, { force: argv.force as boolean });
+    try {
+      const { config, configDir } = loadConfig(argv.config as string | undefined);
+      await runBuild(config, configDir, { force: argv.force as boolean });
+    } catch (err) {
+      log.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
   },
 };

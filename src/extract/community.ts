@@ -8,8 +8,8 @@ import louvain from "graphology-communities-louvain";
 import Graph, { UndirectedGraph } from "graphology";
 
 export interface CommunityResult {
-  /** community_id → list of node IDs */
-  communities: Map<number, string[]>;
+  /** community_id (string) → list of node IDs */
+  communities: Map<string, string[]>;
   /** Total number of communities detected */
   count: number;
   /** Modularity score */
@@ -58,10 +58,10 @@ export function detectCommunities(graph: Graph): CommunityResult {
     // modularity calculation might fail on some edge cases
   }
 
-  // Collect into communities map
-  const communities = new Map<number, string[]>();
+  // Collect into communities map (string keys for consistency across pipeline)
+  const communities = new Map<string, string[]>();
   for (const [nodeId, communityId] of Object.entries(assignments)) {
-    const cid = communityId as number;
+    const cid = String(communityId as number);
     const existing = communities.get(cid);
     if (existing) {
       existing.push(nodeId);
@@ -69,7 +69,7 @@ export function detectCommunities(graph: Graph): CommunityResult {
       communities.set(cid, [nodeId]);
     }
 
-    // Set community attribute on the ORIGINAL directed graph
+    // Set community attribute on the ORIGINAL directed graph (string)
     if (graph.hasNode(nodeId)) {
       graph.setNodeAttribute(nodeId, "community", cid);
     }

@@ -32,7 +32,7 @@ export interface GraphEdge {
 
 /** Community detected by community detection */
 export interface GraphCommunity {
-  id: string | number;
+  id: string;
   name: string;
   members: string[];
   size: number;
