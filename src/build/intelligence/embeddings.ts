@@ -209,14 +209,24 @@ export class EmbeddingEngine {
 
     const results: EmbeddingResult[] = [];
     const batchSize = this.config.batch_size;
+    const total = items.length;
+    const startTime = Date.now();
+    // Log progress every ~10% or at least every 10 batches
+    const progressInterval = Math.max(batchSize * 10, Math.floor(total / 10));
 
-    for (let i = 0; i < items.length; i += batchSize) {
+    for (let i = 0; i < total; i += batchSize) {
       const batch = items.slice(i, i + batchSize);
       const batchResults = await this.embedBatchInternal(batch);
       results.push(...batchResults);
 
-      if (i > 0 && i % (batchSize * 10) === 0) {
-        log.info(`  Embedded ${i}/${items.length} nodes...`);
+      const processed = Math.min(i + batchSize, total);
+      if (processed >= total || (i > 0 && i % progressInterval < batchSize)) {
+        const elapsed = (Date.now() - startTime) / 1000;
+        const rate = processed / elapsed;
+        const remaining = Math.ceil((total - processed) / rate);
+        if (processed < total) {
+          log.info(`  Embedded ${processed}/${total} nodes (${rate.toFixed(1)}/s, ~${formatEta(remaining)} remaining)`);
+        }
       }
     }
 
@@ -373,4 +383,11 @@ export function composeNodeText(node: NodeEmbeddingInput): string {
   }
 
   return text.replace(/\s+/g, " ").trim().slice(0, 512);
+}
+
+function formatEta(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s > 0 ? `${m}m${s}s` : `${m}m`;
 }

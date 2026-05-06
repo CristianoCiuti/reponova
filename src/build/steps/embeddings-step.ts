@@ -129,7 +129,7 @@ async function generateTfidf(
   const engine = new TfidfEmbeddingEngine(ctx.config.build.embeddings);
 
   try {
-    log.info("Generating TF-IDF embeddings...");
+    log.info(`Generating TF-IDF embeddings (${itemsToEmbed.length} nodes)...`);
     engine.buildVocabulary(allItems.map((item) => item.text));
     const embeddings = itemsToEmbed.length > 0 ? engine.embedBatch(itemsToEmbed) : [];
 
@@ -170,7 +170,7 @@ async function generateOnnx(
       return { processed: 0, skipped: true, skipReason: "embedding engine unavailable" };
     }
 
-    log.info("Generating ONNX embeddings...");
+    log.info(`Generating ONNX embeddings (${items.length} nodes)...`);
     const embeddings = await engine.embedBatch(items);
     await storeEmbeddings({
       graphData,
@@ -236,7 +236,7 @@ async function storeEmbeddings(options: {
     atomicWriteJson(join(outputDir, "tfidf_idf.json"), vocabulary);
   }
 
-  log.info(`  ✓ ${embeddings.length} embeddings generated and indexed`);
+  log.info(`  ${embeddings.length} embeddings stored`);
 }
 
 export function loadNodeTextCache(outputDir: string): Map<string, string> {
