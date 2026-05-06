@@ -22,6 +22,16 @@ import {
 import type { BuildManifest, StepName } from "./manifest.js";
 import type { BuildStep, StepContext } from "./types.js";
 
+const STEP_LABELS: Record<string, string> = {
+  embeddings: "Embeddings",
+  community_summaries: "Community Summaries",
+  node_descriptions: "Node Descriptions",
+  outlines: "Outlines",
+  indexer: "Search Index",
+  html: "HTML Visualizations",
+  report: "Report",
+};
+
 export interface BuildOptions {
   force: boolean;
 }
@@ -166,6 +176,9 @@ async function executeStep(
   stepFn: BuildStep,
   ctx: StepContext,
 ): Promise<void> {
+  const label = STEP_LABELS[name] ?? name;
+  log.info("");
+  log.info(`── ${label} ──`);
   updateStep(outputDir, manifest, name, "running");
 
   try {
@@ -173,14 +186,15 @@ async function executeStep(
     const result = await stepFn({ ...ctx, force });
     if (result.skipped) {
       updateStep(outputDir, manifest, name, "skipped", result.skipReason ?? "up to date");
+      log.info(`  Skipped: ${result.skipReason ?? "up to date"}`);
     } else {
       updateStep(outputDir, manifest, name, "completed");
-      log.info(`${name}: ${result.processed} processed`);
+      log.info(`  Done: ${result.processed} processed`);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     updateStep(outputDir, manifest, name, "failed", message);
-    log.warn(`${name} failed (non-blocking): ${message}`);
+    log.warn(`  Failed (non-blocking): ${message}`);
   }
 }
 

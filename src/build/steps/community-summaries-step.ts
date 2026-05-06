@@ -92,7 +92,7 @@ function buildCommunityData(graphData: GraphData, maxNumber: number): CommunityD
   const communityMap = new Map<string, GraphNode[]>();
 
   for (const node of graphData.nodes) {
-    const communityId = node.community ?? "unclustered";
+    const communityId = node.community != null ? String(node.community) : "unclustered";
     if (!communityMap.has(communityId)) {
       communityMap.set(communityId, []);
     }
@@ -105,7 +105,7 @@ function buildCommunityData(graphData: GraphData, maxNumber: number): CommunityD
     communities.push({ id, nodes });
   }
 
-  communities.sort((a, b) => b.nodes.length - a.nodes.length || a.id.localeCompare(b.id));
+  communities.sort((a, b) => b.nodes.length - a.nodes.length || String(a.id).localeCompare(String(b.id)));
   return maxNumber > 0 ? communities.slice(0, maxNumber) : communities;
 }
 

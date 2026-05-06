@@ -46,12 +46,13 @@ export function detectCommunities(graph: Graph): CommunityResult {
     workGraph = undirected;
   }
 
-  // Run Louvain
-  const assignments = louvain(workGraph, { resolution: 1.0 });
+  // Run Louvain — randomWalk:false ensures deterministic results across builds
+  // (same graph → same communities → stable fingerprint cache)
+  const assignments = louvain(workGraph, { resolution: 1.0, randomWalk: false });
   let modularity = 0;
   try {
     // louvain.assign mutates the graph and returns modularity
-    const result = louvain.assign(workGraph, { resolution: 1.0 });
+    const result = louvain.assign(workGraph, { resolution: 1.0, randomWalk: false });
     if (typeof result === "number") modularity = result;
   } catch {
     // modularity calculation might fail on some edge cases
