@@ -338,7 +338,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     // Write empty graph
     const emptyGraph = buildGraph({ extractions: [] });
     const emptyCommunities = detectCommunities(emptyGraph.graph);
-    exportJson({ graph: emptyGraph.graph, communities: emptyCommunities, outputPath: graphJsonPath, config, configDir, outputDir });
+    exportJson({ graph: emptyGraph.graph, outputPath: graphJsonPath, config, configDir, outputDir });
     return {
       builtGraph: emptyGraph,
       communities: emptyCommunities,
@@ -353,7 +353,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
   if (outputDir) {
     // Lazy-import to avoid circular dependencies
-    const { computeHashes, loadBuildCache, diffFiles, saveBuildCache, cleanStaleCacheEntries } = await import("../build/incremental/incremental.js");
+    const { computeHashes, loadBuildCache, diffFiles, saveBuildCache, cleanStaleCacheEntries } = await import("./incremental.js");
 
     log.info("Computing file hashes...");
     const currentHashes = computeHashes(workspace, files);
@@ -403,7 +403,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
   // 5. Export JSON
   log.info("Exporting graph.json...");
-  exportJson({ graph: builtGraph.graph, communities, outputPath: graphJsonPath, config, configDir, outputDir });
+  exportJson({ graph: builtGraph.graph, outputPath: graphJsonPath, config, configDir, outputDir });
 
   // Note: HTML generation is done in the orchestrator AFTER the intelligence
   // layer, so that community summaries can be injected as community names.

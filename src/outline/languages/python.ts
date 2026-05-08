@@ -89,7 +89,7 @@ function tsExtractFunction(node: SyntaxNode, decorators: string[] = []): Functio
   };
 }
 
-function tsExtractClass(node: SyntaxNode, decorators: string[] = []): ClassEntry {
+function tsExtractClass(node: SyntaxNode, _decorators: string[] = []): ClassEntry {
   const nameNode = node.childForFieldName("name");
   const name = nameNode?.text ?? "<anonymous>";
 

@@ -2,16 +2,16 @@
  * Phase 2 tests: Intelligence Layer (Embeddings + LLM)
  */
 import { describe, it, expect, beforeAll, vi } from "vitest";
-import { EmbeddingEngine, composeNodeText, type NodeEmbeddingInput } from "../src/build/intelligence/embeddings.js";
+import { EmbeddingEngine, composeNodeText, type NodeEmbeddingInput } from "../src/intelligence/embeddings.js";
 import { VectorStore, type VectorRecord } from "../src/core/vector-store.js";
 
 // Force VectorStore into fast in-memory fallback (no native lancedb loading)
 vi.mock("@lancedb/lancedb", () => ({
   connect: async () => { throw new Error("mock: lancedb unavailable"); },
 }));
-import { CommunitySummaryGenerator, type CommunityData } from "../src/build/intelligence/community-summary-generator.js";
-import { NodeDescriptionGenerator } from "../src/build/intelligence/node-description-generator.js";
-import { LlmEngine } from "../src/build/intelligence/llm-engine.js";
+import { CommunitySummaryGenerator, type CommunityData } from "../src/intelligence/community-summary-generator.js";
+import { NodeDescriptionGenerator } from "../src/intelligence/node-description-generator.js";
+import { LlmEngine } from "../src/intelligence/llm-engine.js";
 import type { GraphNode, CommunitySummariesConfig, NodeDescriptionsConfig } from "../src/shared/types.js";
 import { join } from "node:path";
 import { tmpdir } from "node:os";

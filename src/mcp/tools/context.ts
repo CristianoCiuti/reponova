@@ -79,6 +79,7 @@ export async function handleContext(
   if (format === "structured" && result.structured) {
     if (resolvePaths) {
       for (const candidate of result.structured.candidates) {
+        if (!candidate.source_file) continue;
         const paths = resolvePaths(candidate.source_file);
         candidate.graph_rel_path = paths.graph_rel_path;
         candidate.absolute_path = paths.absolute_path;

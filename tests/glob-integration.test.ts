@@ -4,53 +4,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { detectFiles, detectDocFiles, detectDiagramFiles } from "../src/extract/index.js";
 import { buildSkipDirs, COMMON_SKIP_DIRS } from "../src/shared/glob.js";
-import { diffFiles, type BuildCache } from "../src/build/incremental/incremental.js";
-import { loadPreviousBuildConfig } from "../src/build/incremental/config-diff.js";
-import type { Config, BuildConfigFingerprint } from "../src/shared/types.js";
-import { DEFAULT_CONFIG } from "../src/shared/types.js";
+import { diffFiles, type BuildCache } from "../src/extract/incremental.js";
 
 function normalizePaths(paths: string[]): string[] {
   return paths.map((path) => path.replace(/\\/g, "/")).sort();
 }
 
-function makeConfig(): Config {
-  return JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as Config;
-}
-
-function makeBuildConfigFingerprint(overrides?: Partial<BuildConfigFingerprint>): BuildConfigFingerprint {
-  return {
-    embeddings: {
-      enabled: true,
-      method: "tfidf",
-      model: "all-MiniLM-L6-v2",
-      dimensions: 384,
-      ...overrides?.embeddings,
-    },
-    outlines: {
-      enabled: true,
-      paths: ["src/**/*.ts", "src/**/*.py", "src/**/*.js"],
-      exclude: ["**/node_modules/**", "**/.git/**", "**/dist/**"],
-      exclude_common: true,
-      ...overrides?.outlines,
-    },
-    community_summaries: {
-      enabled: true,
-      max_number: 0,
-      model: null,
-      context_size: 512,
-      ...overrides?.community_summaries,
-    },
-    node_descriptions: {
-      enabled: true,
-      threshold: 0.8,
-      model: null,
-      context_size: 512,
-      ...overrides?.node_descriptions,
-    },
-  };
-}
-
-describe("FIX-017 glob integration", () => {
+describe("Glob integration", () => {
   let testRoot: string;
 
   beforeEach(() => {
@@ -210,47 +170,5 @@ describe("FIX-017 glob integration", () => {
     const diff = diffFiles(currentHashes, null);
 
     expect(diff.removedFiles).toEqual([]);
-  });
-
-  it("config diff detects exclude_common changes", () => {
-    const graphPath = join(testRoot, "graph.json");
-    const config = makeConfig();
-    config.build.exclude_common = false;
-
-    writeFileSync(graphPath, JSON.stringify({
-      nodes: [],
-      edges: [],
-      metadata: {
-        build_config: makeBuildConfigFingerprint({
-          outlines: { exclude_common: true },
-        }),
-      },
-    }));
-
-    const diff = loadPreviousBuildConfig(graphPath, config);
-
-    expect(diff.outlinesChanged).toBe(true);
-    expect(diff.hasChanges).toBe(true);
-  });
-
-  it("config diff detects context_size changes", () => {
-    const graphPath = join(testRoot, "graph.json");
-    const config = makeConfig();
-    config.build.community_summaries.context_size = 1024;
-
-    writeFileSync(graphPath, JSON.stringify({
-      nodes: [],
-      edges: [],
-      metadata: {
-        build_config: makeBuildConfigFingerprint({
-          community_summaries: { context_size: 512 },
-        }),
-      },
-    }));
-
-    const diff = loadPreviousBuildConfig(graphPath, config);
-
-    expect(diff.communitySummariesChanged).toBe(true);
-    expect(diff.hasChanges).toBe(true);
   });
 });

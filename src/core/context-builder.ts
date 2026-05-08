@@ -12,8 +12,8 @@ import type { Database } from "./db.js";
 import { queryAll, queryOne } from "./db.js";
 import { searchNodes } from "./search.js";
 import { VectorStore } from "./vector-store.js";
-import { EmbeddingEngine } from "../build/intelligence/embeddings.js";
-import { TfidfEmbeddingEngine } from "../build/intelligence/tfidf-embeddings.js";
+import { EmbeddingEngine } from "../intelligence/embeddings.js";
+import { TfidfEmbeddingEngine } from "../intelligence/tfidf-embeddings.js";
 import type {
   CommunitySummaryEntry,
   ContextCandidate,

@@ -7,18 +7,15 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { relative } from "node:path";
 import type Graph from "graphology";
-import type { CommunityResult } from "./community.js";
 import type { Config } from "../shared/types.js";
 import { getVersion } from "../shared/utils.js";
 
 export interface ExportJsonOptions {
   /** The graphology graph with community attributes */
   graph: Graph;
-  /** Community detection results */
-  communities: CommunityResult;
   /** Output file path */
   outputPath: string;
-  /** Build config (required for build_config fingerprint in metadata) */
+  /** Config (for metadata: repos, mode) */
   config?: Config;
   /** Config directory (for config_dir relative path in metadata) */
   configDir?: string;
@@ -98,46 +95,31 @@ export function exportJson(options: ExportJsonOptions): void {
     });
   });
 
-  // Build config fingerprint from config
-  const buildConfig = config ? {
-    embeddings: {
-      enabled: config.build.embeddings.enabled,
-      method: config.build.embeddings.method,
-      model: config.build.embeddings.model,
-      dimensions: config.build.embeddings.dimensions,
-    },
-    outlines: {
-      enabled: config.outlines.enabled,
-      patterns: config.outlines.patterns,
-      exclude: config.outlines.exclude,
-      exclude_common: config.outlines.exclude_common,
-    },
-    community_summaries: {
-      enabled: config.build.community_summaries.enabled,
-      max_number: config.build.community_summaries.max_number,
-      model: config.build.community_summaries.model ?? null,
-      context_size: config.build.community_summaries.context_size,
-    },
-    node_descriptions: {
-      enabled: config.build.node_descriptions.enabled,
-      threshold: config.build.node_descriptions.threshold,
-      model: config.build.node_descriptions.model ?? null,
-      context_size: config.build.node_descriptions.context_size,
-    },
-  } : undefined;
-
-  const data = {
+    const data = {
     nodes,
     edges,
     metadata: {
       reponova_version: getVersion(),
       built_at: "",  // placeholder — resolved below
-      build_config: buildConfig,
       // Path resolution metadata (relative paths for portability)
       ...(config && configDir && outputDir ? {
         config_dir: relative(outputDir, configDir).replace(/\\/g, "/"),
         repos: config.repos.map((r) => ({ name: r.name, path: r.path })),
         mode: config.repos.length === 1 ? "single" as const : "multi" as const,
+      } : {}),
+      // Runtime build config summary (used by MCP server, check, status)
+      ...(config ? {
+        build_config: {
+          embeddings: {
+            enabled: config.embeddings.enabled,
+            method: config.embeddings.method,
+            model: config.embeddings.model,
+            dimensions: config.embeddings.dimensions,
+          },
+          outlines: { enabled: config.outlines.enabled },
+          community_summaries: { enabled: config.community_summaries.enabled },
+          node_descriptions: { enabled: config.node_descriptions.enabled },
+        },
       } : {}),
     },
   };

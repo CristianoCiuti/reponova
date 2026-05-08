@@ -5,8 +5,8 @@ import type { CommandModule } from "yargs";
 import { existsSync, readdirSync, statSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { EmbeddingEngine } from "../build/intelligence/embeddings.js";
-import { LlmEngine, resolveModelPath } from "../build/intelligence/llm-engine.js";
+import { EmbeddingEngine } from "../intelligence/embeddings.js";
+import { LlmEngine, resolveModelPath } from "../intelligence/llm-engine.js";
 import { loadConfig } from "../core/config.js";
 import type { Config, ModelsConfig } from "../shared/types.js";
 import { log } from "../shared/utils.js";
@@ -195,9 +195,9 @@ async function getConfiguredModels(config: Config, cacheDir: string): Promise<{
   sharedNodeDescriptionsModel: string | null;
 }> {
   const models: ConfiguredModelStatus[] = [];
-  const embeddings = config.build.embeddings;
-  const communitySummaries = config.build.community_summaries;
-  const nodeDescriptions = config.build.node_descriptions;
+  const embeddings = config.embeddings;
+  const communitySummaries = config.community_summaries;
+  const nodeDescriptions = config.node_descriptions;
 
   if (embeddings.enabled && embeddings.method === "onnx") {
     const modelDir = join(cacheDir, embeddings.model);
@@ -208,7 +208,7 @@ async function getConfiguredModels(config: Config, cacheDir: string): Promise<{
       downloaded: existsSync(modelPath),
       sizeBytes: existsSync(modelPath) ? getDirSize(modelDir) : 0,
       path: existsSync(modelPath) ? modelDir : null,
-      usedBy: "build.embeddings.model",
+      usedBy: "embeddings.model",
     });
   }
 
@@ -216,13 +216,13 @@ async function getConfiguredModels(config: Config, cacheDir: string): Promise<{
   const nodeModel = nodeDescriptions.enabled ? (nodeDescriptions.model ?? null) : null;
 
   if (communityModel) {
-    models.push(await getConfiguredLlmStatus(communityModel, cacheDir, "build.community_summaries.model"));
+    models.push(await getConfiguredLlmStatus(communityModel, cacheDir, "community_summaries.model"));
   }
 
   const sharedNodeDescriptionsModel = communityModel && nodeModel && communityModel === nodeModel ? nodeModel : null;
 
   if (nodeModel && nodeModel !== communityModel) {
-    models.push(await getConfiguredLlmStatus(nodeModel, cacheDir, "build.node_descriptions.model"));
+    models.push(await getConfiguredLlmStatus(nodeModel, cacheDir, "node_descriptions.model"));
   }
 
   return { models, sharedNodeDescriptionsModel };
@@ -296,9 +296,9 @@ async function statusAction(context: CliContext): Promise<void> {
 }
 
 async function downloadEmbeddingModel(config: Config, cacheDir: string): Promise<void> {
-  const engine = new EmbeddingEngine(config.build.embeddings, cacheDir, true);
+  const engine = new EmbeddingEngine(config.embeddings, cacheDir, true);
   try {
-    log.info(`Downloading embedding model: ${config.build.embeddings.model}`);
+    log.info(`Downloading embedding model: ${config.embeddings.model}`);
     const ready = await engine.initialize();
     if (ready) {
       log.info("  ✓ Embedding model ready");
@@ -335,9 +335,9 @@ async function downloadLlmModel(modelUri: string, contextSize: number, cacheDir:
 
 async function downloadAction(context: CliContext): Promise<void> {
   const { config, cacheDir } = context;
-  const embeddings = config.build.embeddings;
-  const communitySummaries = config.build.community_summaries;
-  const nodeDescriptions = config.build.node_descriptions;
+  const embeddings = config.embeddings;
+  const communitySummaries = config.community_summaries;
+  const nodeDescriptions = config.node_descriptions;
   let requiredModels = 0;
 
   log.info(`Downloading configured models to: ${cacheDir}`);

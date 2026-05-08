@@ -90,7 +90,6 @@ export class MarkdownExtractor implements LanguageExtractor {
     const sections: SymbolNode[] = [];
     let currentStart = -1;
     let currentName = "";
-    let currentLevel = 0;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
@@ -127,7 +126,6 @@ export class MarkdownExtractor implements LanguageExtractor {
 
         currentStart = i + 1;
         currentName = sectionName;
-        currentLevel = level;
       }
     }
 
@@ -136,7 +134,7 @@ export class MarkdownExtractor implements LanguageExtractor {
 
   private extractCodeReferences(
     lines: string[],
-    filePath: string,
+    _filePath: string,
     docName: string,
     sections: SymbolNode[],
   ): SymbolReference[] {

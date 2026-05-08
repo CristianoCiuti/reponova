@@ -9,7 +9,7 @@
  * These produce "document"-type nodes in the graph with file_type "diagram".
  * They enable agents to discover visual documentation that's otherwise invisible.
  */
-import type { LanguageExtractor, SyntaxTree, FileExtraction, SymbolNode, ImportDeclaration, SymbolReference, FileNodeDeclaration } from "../types.js";
+import type { LanguageExtractor, SyntaxTree, FileExtraction, SymbolNode, SymbolReference, FileNodeDeclaration } from "../types.js";
 
 export class DiagramExtractor implements LanguageExtractor {
   readonly languageId = "diagram";

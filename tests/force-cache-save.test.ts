@@ -20,7 +20,7 @@ import {
   loadBuildCache,
   saveBuildCache,
   cleanStaleCacheEntries,
-} from "../src/build/incremental/incremental.js";
+} from "../src/extract/incremental.js";
 import type { FileExtraction } from "../src/extract/types.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

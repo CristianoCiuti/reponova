@@ -19,12 +19,11 @@ export { resolveAbsolutePath, reconstructRepos, resolveOutlinePath, createPatter
 export type { RepoMapping, PathContext } from "./core/path-resolver.js";
 
 // Intelligence layer exports
-export { EmbeddingEngine, composeNodeText } from "./build/intelligence/embeddings.js";
+export { EmbeddingEngine, composeNodeText } from "./intelligence/embeddings.js";
 export { VectorStore } from "./core/vector-store.js";
-export { LlmEngine } from "./build/intelligence/llm-engine.js";
-export { CommunitySummaryGenerator } from "./build/intelligence/community-summary-generator.js";
+export { LlmEngine } from "./intelligence/llm-engine.js";
+export { CommunitySummaryGenerator } from "./intelligence/community-summary-generator.js";
 export { ContextBuilder } from "./core/context-builder.js";
-
 
 // Extraction layer exports
 export { registerExtractor } from "./extract/languages/registry.js";
@@ -35,8 +34,8 @@ export { registerOutlineLanguage } from "./outline/languages/registry.js";
 export type { LanguageSupport } from "./outline/languages/types.js";
 
 // Build API
-export { build } from "./build/orchestrator.js";
-export type { BuildResult } from "./build/orchestrator.js";
+export { build } from "./pipeline/build.js";
+export type { BuildResult } from "./pipeline/engine/orchestrator.js";
 
 export type {
   GraphNode,

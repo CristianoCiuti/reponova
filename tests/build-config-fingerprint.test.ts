@@ -1,5 +1,5 @@
 /**
- * Tests for FIX-013: BuildConfigFingerprint in graph.json metadata.
+ * Tests for BuildConfigFingerprint in graph.json metadata.
  *
  * Verifies that build_config is correctly written to graph.json
  * and correctly parsed back by graph-loader.
@@ -16,10 +16,10 @@ import { DEFAULT_CONFIG } from "../src/shared/types.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeTmpPath(): string {
+function makeTmpDir(): string {
   const dir = join(tmpdir(), `rn-test-fix013-${Date.now()}`);
   mkdirSync(dir, { recursive: true });
-  return join(dir, "graph.json");
+  return dir;
 }
 
 function makeGraph(): Graph {
@@ -59,28 +59,27 @@ function makeConfig(overrides?: Partial<Config>): Config {
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe("FIX-013: BuildConfigFingerprint", () => {
-  const tmpPaths: string[] = [];
+describe("BuildConfigFingerprint", () => {
+  const tmpDirs: string[] = [];
 
   afterEach(() => {
-    for (const p of tmpPaths) {
-      try { if (existsSync(p)) unlinkSync(p); } catch { /* ignore */ }
+    for (const d of tmpDirs) {
+      try { if (existsSync(d)) unlinkSync(join(d, "graph.json")); } catch { /* ignore */ }
     }
-    tmpPaths.length = 0;
+    tmpDirs.length = 0;
   });
 
   it("should write build_config to graph.json when config is provided", () => {
-    const tmpPath = makeTmpPath();
-    tmpPaths.push(tmpPath);
-
-    const graph = makeGraph();
-    const config = makeConfig();
+    const tmpDir = makeTmpDir();
+    tmpDirs.push(tmpDir);
+    const tmpPath = join(tmpDir, "graph.json");
 
     exportJson({
-      graph,
-      communities: { count: 1, assignments: new Map([["mod_main", 0], ["fn_hello", 0]]) },
+      graph: makeGraph(),
       outputPath: tmpPath,
-      config,
+      config: makeConfig(),
+      configDir: tmpDir,
+      outputDir: tmpDir,
     });
 
     const raw = JSON.parse(readFileSync(tmpPath, "utf-8"));
@@ -92,25 +91,18 @@ describe("FIX-013: BuildConfigFingerprint", () => {
     expect(bc.embeddings.method).toBe("tfidf");
     expect(bc.embeddings.model).toBe("all-MiniLM-L6-v2");
     expect(bc.embeddings.dimensions).toBe(384);
-
     expect(bc.outlines.enabled).toBe(true);
-    expect(bc.outlines.patterns).toEqual([]);
-
     expect(bc.community_summaries.enabled).toBe(true);
-    expect(bc.community_summaries.max_number).toBe(0);
-    expect(bc.community_summaries.model).toBeNull();
-
     expect(bc.node_descriptions.enabled).toBe(true);
-    expect(bc.node_descriptions.threshold).toBe(0.8);
-    expect(bc.node_descriptions.model).toBeNull();
   });
 
   it("should write build_config with custom embeddings config", () => {
-    const tmpPath = makeTmpPath();
-    tmpPaths.push(tmpPath);
+    const tmpDir = makeTmpDir();
+    tmpDirs.push(tmpDir);
+    const tmpPath = join(tmpDir, "graph.json");
 
     const config = makeConfig();
-    config.build.embeddings = {
+    config.embeddings = {
       enabled: true,
       method: "onnx",
       model: "multi-qa-MiniLM-L6-cos-v1",
@@ -120,9 +112,10 @@ describe("FIX-013: BuildConfigFingerprint", () => {
 
     exportJson({
       graph: makeGraph(),
-      communities: { count: 1, assignments: new Map() },
       outputPath: tmpPath,
       config,
+      configDir: tmpDir,
+      outputDir: tmpDir,
     });
 
     const raw = JSON.parse(readFileSync(tmpPath, "utf-8"));
@@ -132,17 +125,18 @@ describe("FIX-013: BuildConfigFingerprint", () => {
   });
 
   it("should write build_config with LLM model URIs", () => {
-    const tmpPath = makeTmpPath();
-    tmpPaths.push(tmpPath);
+    const tmpDir = makeTmpDir();
+    tmpDirs.push(tmpDir);
+    const tmpPath = join(tmpDir, "graph.json");
 
     const config = makeConfig();
-    config.build.community_summaries = {
+    config.community_summaries = {
       enabled: true,
       max_number: 10,
       model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M",
       context_size: 1024,
     };
-    config.build.node_descriptions = {
+    config.node_descriptions = {
       enabled: true,
       threshold: 0.5,
       model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M",
@@ -151,46 +145,46 @@ describe("FIX-013: BuildConfigFingerprint", () => {
 
     exportJson({
       graph: makeGraph(),
-      communities: { count: 1, assignments: new Map() },
       outputPath: tmpPath,
       config,
+      configDir: tmpDir,
+      outputDir: tmpDir,
     });
 
     const raw = JSON.parse(readFileSync(tmpPath, "utf-8"));
     const bc = raw.metadata.build_config;
-    expect(bc.community_summaries.model).toBe("hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M");
-    expect(bc.community_summaries.max_number).toBe(10);
-    expect(bc.node_descriptions.model).toBe("hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M");
-    expect(bc.node_descriptions.threshold).toBe(0.5);
+    // Fingerprint only stores enabled flag — not model/max_number/threshold
+    expect(bc.community_summaries.enabled).toBe(true);
+    expect(bc.node_descriptions.enabled).toBe(true);
   });
 
-  it("should write undefined build_config when no config provided (backward compat)", () => {
-    const tmpPath = makeTmpPath();
-    tmpPaths.push(tmpPath);
+  it("should write undefined build_config when no config provided", () => {
+    const tmpDir = makeTmpDir();
+    tmpDirs.push(tmpDir);
+    const tmpPath = join(tmpDir, "graph.json");
 
     exportJson({
       graph: makeGraph(),
-      communities: { count: 1, assignments: new Map() },
       outputPath: tmpPath,
     });
 
     const raw = JSON.parse(readFileSync(tmpPath, "utf-8"));
     expect(raw.metadata.reponova_version).toBeDefined();
     expect(raw.metadata.built_at).toBeDefined();
-    // build_config should not appear in JSON when config is not provided
     expect(raw.metadata.build_config).toBeUndefined();
   });
 
-  it("should not include runtime-only params (batch_size, gpu, threads)", () => {
-    const tmpPath = makeTmpPath();
-    tmpPaths.push(tmpPath);
+  it("should not include runtime-only params (batch_size)", () => {
+    const tmpDir = makeTmpDir();
+    tmpDirs.push(tmpDir);
+    const tmpPath = join(tmpDir, "graph.json");
 
-    const config = makeConfig();
     exportJson({
       graph: makeGraph(),
-      communities: { count: 1, assignments: new Map() },
       outputPath: tmpPath,
-      config,
+      config: makeConfig(),
+      configDir: tmpDir,
+      outputDir: tmpDir,
     });
 
     const raw = JSON.parse(readFileSync(tmpPath, "utf-8"));
@@ -198,33 +192,29 @@ describe("FIX-013: BuildConfigFingerprint", () => {
 
     // embeddings should NOT have batch_size
     expect(bc.embeddings.batch_size).toBeUndefined();
-    // context_size IS now tracked (FIX-017 — needed for change detection)
-    expect(bc.community_summaries.context_size).toBe(512);
-    expect(bc.node_descriptions.context_size).toBe(512);
-    // exclude_common IS now tracked in outlines fingerprint
-    expect(bc.outlines.exclude_common).toBe(true);
   });
 
   it("graph-loader should parse build_config from graph.json", () => {
-    const tmpPath = makeTmpPath();
-    tmpPaths.push(tmpPath);
+    const tmpDir = makeTmpDir();
+    tmpDirs.push(tmpDir);
+    const tmpPath = join(tmpDir, "graph.json");
 
-    const config = makeConfig();
     exportJson({
       graph: makeGraph(),
-      communities: { count: 1, assignments: new Map() },
       outputPath: tmpPath,
-      config,
+      config: makeConfig(),
+      configDir: tmpDir,
+      outputDir: tmpDir,
     });
 
     const graphData = loadGraphData(tmpPath);
     expect(graphData.metadata).toBeDefined();
     expect(graphData.metadata!.build_config).toBeDefined();
 
-    const bc = graphData.metadata!.build_config;
+    const bc = graphData.metadata!.build_config!;
     expect(bc.embeddings.method).toBe("tfidf");
     expect(bc.outlines.enabled).toBe(true);
-    expect(bc.community_summaries.model).toBeNull();
-    expect(bc.node_descriptions.threshold).toBe(0.8);
+    expect(bc.community_summaries.enabled).toBe(true);
+    expect(bc.node_descriptions.enabled).toBe(true);
   });
 });

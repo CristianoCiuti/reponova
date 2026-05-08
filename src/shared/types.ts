@@ -58,11 +58,15 @@ export interface GraphMetadata {
   mode?: "single" | "multi";
   node_count?: number;
   edge_count?: number;
-  /** Build configuration fingerprint — tracks what config was used */
-  build_config: BuildConfigFingerprint;
+  /** Runtime build config summary — used by MCP server, check, and status */
+  build_config?: BuildConfigFingerprint;
 }
 
-/** Snapshot of the build config used, for config-change detection on incremental builds */
+/**
+ * Minimal build config fingerprint stored in graph.json metadata.
+ * Contains only what the MCP runtime needs (embeddings config,
+ * feature enabled flags).
+ */
 export interface BuildConfigFingerprint {
   embeddings: {
     enabled: boolean;
@@ -70,24 +74,9 @@ export interface BuildConfigFingerprint {
     model: string;
     dimensions: number;
   };
-  outlines: {
-    enabled: boolean;
-    patterns: string[];
-    exclude: string[];
-    exclude_common: boolean;
-  };
-  community_summaries: {
-    enabled: boolean;
-    max_number: number;
-    model: string | null;
-    context_size: number;
-  };
-  node_descriptions: {
-    enabled: boolean;
-    threshold: number;
-    model: string | null;
-    context_size: number;
-  };
+  outlines: { enabled: boolean };
+  community_summaries: { enabled: boolean };
+  node_descriptions: { enabled: boolean };
 }
 
 /** Adjacency map for BFS/Dijkstra */
@@ -104,12 +93,31 @@ export interface AdjacencyEntry {
   weight: number;
 }
 
-/** Configuration file schema */
+/**
+ * Configuration file schema — flat, no more BuildConfig wrapper.
+ * All build-related fields are at the root level.
+ */
 export interface Config {
   output: string;
   repos: RepoConfig[];
   models: ModelsConfig;
-  build: BuildConfig;
+  /** Glob patterns for source code files (empty = auto-detect) */
+  patterns: string[];
+  /** Glob patterns to exclude from source code detection */
+  exclude: string[];
+  /** Exclude common non-source directories (node_modules, venv, .git, etc.) */
+  exclude_common: boolean;
+  /** Enable incremental builds */
+  incremental: boolean;
+  docs: DocsConfig;
+  images: ImagesConfig;
+  embeddings: EmbeddingsConfig;
+  community_summaries: CommunitySummariesConfig;
+  node_descriptions: NodeDescriptionsConfig;
+  /** Generate interactive HTML visualizations */
+  html: boolean;
+  /** Minimum node degree to include in HTML visualization */
+  html_min_degree?: number;
   outlines: OutlineConfig;
   server: ServerConfig;
 }
@@ -125,23 +133,6 @@ export interface ModelsConfig {
   gpu: "auto" | "cpu" | "cuda" | "metal" | "vulkan";
   threads: number;
   download_on_first_use: boolean;
-}
-
-export interface BuildConfig {
-  html: boolean;
-  html_min_degree?: number;
-  /** Exclude common non-source directories (node_modules, venv, .git, etc.) */
-  exclude_common: boolean;
-  /** Glob patterns for source code files to include */
-  patterns: string[];
-  /** Glob patterns to exclude from source code detection */
-  exclude: string[];
-  incremental: boolean;
-  docs: DocsConfig;
-  images: ImagesConfig;
-  embeddings: EmbeddingsConfig;
-  community_summaries: CommunitySummariesConfig;
-  node_descriptions: NodeDescriptionsConfig;
 }
 
 export interface DocsConfig {
@@ -186,12 +177,9 @@ export interface NodeDescriptionsConfig {
   context_size: number;
 }
 
+/** Outline config — simplified. File selection comes from top-level patterns. */
 export interface OutlineConfig {
   enabled: boolean;
-  patterns: string[];
-  exclude: string[];
-  /** Exclude common non-source directories (node_modules, venv, .git, etc.) */
-  exclude_common: boolean;
 }
 
 export interface ServerConfig {
@@ -380,48 +368,43 @@ export const DEFAULT_CONFIG: Config = {
     threads: 0,
     download_on_first_use: true,
   },
-  build: {
-    html: true,
-    exclude_common: true,
-    patterns: [],
-    exclude: [],
-    incremental: true,
-    docs: {
-      enabled: true,
-      patterns: [],
-      exclude: [],
-      max_file_size_kb: 500,
-    },
-    images: {
-      enabled: true,
-      patterns: [],
-      exclude: [],
-      parse_puml: true,
-      parse_svg_text: true,
-    },
-    embeddings: {
-      enabled: true,
-      method: "tfidf",
-      model: "all-MiniLM-L6-v2",
-      dimensions: 384,
-      batch_size: 128,
-    },
-    community_summaries: {
-      enabled: true,
-      max_number: 0,
-      context_size: 512,
-    },
-    node_descriptions: {
-      enabled: true,
-      threshold: 0.8,
-      context_size: 512,
-    },
-  },
-  outlines: {
+  patterns: [],
+  exclude: [],
+  exclude_common: true,
+  incremental: true,
+  html: true,
+  docs: {
     enabled: true,
     patterns: [],
     exclude: [],
-    exclude_common: true,
+    max_file_size_kb: 500,
+  },
+  images: {
+    enabled: true,
+    patterns: [],
+    exclude: [],
+    parse_puml: true,
+    parse_svg_text: true,
+  },
+  embeddings: {
+    enabled: true,
+    method: "tfidf",
+    model: "all-MiniLM-L6-v2",
+    dimensions: 384,
+    batch_size: 128,
+  },
+  community_summaries: {
+    enabled: true,
+    max_number: 0,
+    context_size: 512,
+  },
+  node_descriptions: {
+    enabled: true,
+    threshold: 0.8,
+    context_size: 512,
+  },
+  outlines: {
+    enabled: true,
   },
   server: {},
 };
