@@ -4,9 +4,10 @@
  * Node fields: id, label, type, source_file, repo, community, start_line, end_line, properties
  * Edge fields: source, target, type/relation, confidence
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { relative } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { atomicWriteText } from "../shared/atomic-write.js";
 import type Graph from "graphology";
+import { relativePosix } from "../shared/paths.js";
 import type { Config } from "../shared/types.js";
 import { getVersion } from "../shared/utils.js";
 
@@ -103,7 +104,7 @@ export function exportJson(options: ExportJsonOptions): void {
       built_at: "",  // placeholder — resolved below
       // Path resolution metadata (relative paths for portability)
       ...(config && configDir && outputDir ? {
-        config_dir: relative(outputDir, configDir).replace(/\\/g, "/"),
+        config_dir: relativePosix(outputDir, configDir),
         repos: config.repos.map((r) => ({ name: r.name, path: r.path })),
         mode: config.repos.length === 1 ? "single" as const : "multi" as const,
       } : {}),
@@ -145,5 +146,5 @@ export function exportJson(options: ExportJsonOptions): void {
   }
 
   data.metadata.built_at = new Date().toISOString();
-  writeFileSync(outputPath, JSON.stringify(data, null, 2));
+  atomicWriteText(outputPath, JSON.stringify(data, null, 2));
 }

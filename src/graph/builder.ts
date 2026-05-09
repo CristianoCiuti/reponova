@@ -14,6 +14,7 @@
 import Graph from "graphology";
 import type { FileExtraction } from "../extract/types.js";
 import { resolveImports } from "../extract/import-resolver.js";
+import { posixBasename, toPosix } from "../shared/paths.js";
 
 export interface BuildGraphOptions {
   /** All file extractions (can be from mixed languages) */
@@ -49,10 +50,10 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
   // ── 1. Create file-level nodes from fileNode declarations ──────────────
 
   for (const extraction of extractions) {
-    const filePath = extraction.filePath.replace(/\\/g, "/");
+    const filePath = toPosix(extraction.filePath);
     const moduleId = filePath;
     const fileNode = extraction.fileNode;
-    const label = fileNode.label ?? filePath.split("/").pop() ?? filePath;
+    const label = fileNode.label ?? posixBasename(filePath);
 
     if (!graph.hasNode(moduleId)) {
       graph.addNode(moduleId, {
@@ -73,7 +74,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
   // ── 2. Create symbol nodes + containment edges ─────────────────────────
 
   for (const extraction of extractions) {
-    const filePath = extraction.filePath.replace(/\\/g, "/");
+    const filePath = toPosix(extraction.filePath);
     const moduleId = filePath;
 
     for (const symbol of extraction.symbols) {
@@ -127,7 +128,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
 
     if (!ri.targetFile) continue;
 
-    const sourceModuleId = ri.sourceFile.replace(/\\/g, "/");
+    const sourceModuleId = toPosix(ri.sourceFile);
 
     for (const rn of ri.resolvedNames) {
       if (rn.targetSymbol) {
@@ -138,7 +139,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
         }
       } else {
         // Import of the module itself
-        const targetModuleId = ri.targetFile.replace(/\\/g, "/");
+        const targetModuleId = toPosix(ri.targetFile);
         if (graph.hasNode(targetModuleId)) {
           addEdgeSafe(graph, sourceModuleId, targetModuleId, "imports");
           crossFileEdges++;
@@ -148,7 +149,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
 
     // If no specific names resolved but we have a target file
     if (ri.resolvedNames.length === 0 && ri.targetFile) {
-      const targetModuleId = ri.targetFile.replace(/\\/g, "/");
+      const targetModuleId = toPosix(ri.targetFile);
       if (graph.hasNode(targetModuleId)) {
         addEdgeSafe(graph, sourceModuleId, targetModuleId, "imports");
         crossFileEdges++;
@@ -164,7 +165,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
   for (const ri of resolvedImports) {
     if (ri.isExternal || !ri.targetFile) continue;
 
-    const key = ri.sourceFile.replace(/\\/g, "/");
+    const key = toPosix(ri.sourceFile);
     if (!importedNames.has(key)) {
       importedNames.set(key, new Map());
     }
@@ -181,7 +182,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
   }
 
   for (const extraction of extractions) {
-    const filePath = extraction.filePath.replace(/\\/g, "/");
+    const filePath = toPosix(extraction.filePath);
     const fileImports = importedNames.get(filePath) ?? new Map<string, string>();
 
     for (const symbol of extraction.symbols) {
@@ -210,7 +211,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
   // ── 5. Resolve inheritance → EXTENDS edges ────────────────────────────
 
   for (const extraction of extractions) {
-    const filePath = extraction.filePath.replace(/\\/g, "/");
+    const filePath = toPosix(extraction.filePath);
     const fileImports = importedNames.get(filePath) ?? new Map<string, string>();
 
     for (const symbol of extraction.symbols) {

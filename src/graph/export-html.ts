@@ -4,7 +4,7 @@
  * Generates node-level and community-level HTML visualizations with
  * community-based coloring and a stabilized fixed layout.
  */
-import { writeFileSync } from "node:fs";
+import { atomicWriteText } from "../shared/atomic-write.js";
 import type Graph from "graphology";
 import type { CommunityResult } from "./community.js";
 
@@ -97,7 +97,7 @@ export function exportHtml(options: ExportHtmlOptions): void {
     nodes: visNodes,
     edges: visEdges,
   });
-  writeFileSync(outputPath, html);
+  atomicWriteText(outputPath, html);
 }
 
 /**
@@ -188,7 +188,7 @@ export function exportCommunityHtml(options: ExportHtmlOptions): void {
     nodes: visNodes,
     edges: visEdges,
   });
-  writeFileSync(outputPath, html);
+  atomicWriteText(outputPath, html);
 }
 
 function getEdgeColor(relation: string): string {
