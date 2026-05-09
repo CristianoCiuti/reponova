@@ -2,8 +2,10 @@
  * Build manifest — shared phase execution tracker.
  *
  * Each phase writes its own entry via `record()`.
- * The manifest file is read-modify-write with an in-memory mutex
- * to prevent lost updates when phases within the same level run in parallel.
+ * The manifest file uses synchronous read-modify-write via readJsonSafe
+ * and atomicWriteJson. Since JS is single-threaded, parallel phases
+ * (Promise.allSettled) cannot interleave within a synchronous block,
+ * preventing lost updates without an explicit mutex.
  *
  * File: `<outputDir>/build-manifest.json`
  */

@@ -466,6 +466,69 @@ describe("Orchestrator + Manifest integration", () => {
     expect(raw["failing"]!.status).toBe("failed");
   });
 
+  it("preserves real startedAt when collectResults catches an uncaught phase error (BUG-1)", async () => {
+    const knownStart = "2026-01-01T10:00:00.000Z";
+    const { phase: crashing } = createPhase({
+      id: "crashing",
+      implementation: async (ctx: PhaseContext) => {
+        // Phase records "running" with a known timestamp, then crashes
+        // without catching (simulates a bug bypassing the phase's try/catch)
+        ctx.manifest.record("crashing", {
+          status: "running",
+          startedAt: knownStart,
+          finishedAt: null,
+          durationMs: null,
+        });
+        throw new Error("uncaught crash");
+      },
+    });
+
+    const ctx = createContext();
+    await orchestrate(createRegistry([crashing]), ctx, { force: false });
+
+    const raw = JSON.parse(readFileSync(join(testDir, "build-manifest.json"), "utf-8")) as ManifestData;
+    const entry = raw["crashing"]!;
+
+    // collectResults must preserve the real startedAt from readEntry(), not use a new Date()
+    expect(entry.status).toBe("failed");
+    expect(entry.startedAt).toBe(knownStart);
+    expect(entry.finishedAt).toBeTypeOf("string");
+    // durationMs is computed from the real startedAt to the time collectResults finishes
+    expect(entry.durationMs).toBeTypeOf("number");
+    expect(entry.durationMs).toBeGreaterThan(0);
+  });
+
+  it("does not overwrite manifest when phase already recorded non-running status (BUG-2)", async () => {
+    const phaseStart = "2026-01-01T12:00:00.000Z";
+    const phaseFinish = "2026-01-01T12:00:05.000Z";
+    const { phase: selfHandled } = createPhase({
+      id: "self-handled",
+      implementation: async (ctx: PhaseContext) => {
+        // Phase records "failed" via its own try/catch, then re-throws
+        // (simulates a phase that catches/records but forgets to return)
+        ctx.manifest.record("self-handled", {
+          status: "failed",
+          startedAt: phaseStart,
+          finishedAt: phaseFinish,
+          durationMs: 5000,
+        });
+        throw new Error("re-thrown after recording failed");
+      },
+    });
+
+    const ctx = createContext();
+    await orchestrate(createRegistry([selfHandled]), ctx, { force: false });
+
+    const raw = JSON.parse(readFileSync(join(testDir, "build-manifest.json"), "utf-8")) as ManifestData;
+    const entry = raw["self-handled"]!;
+
+    // collectResults must NOT overwrite because status is "failed", not "running"
+    expect(entry.status).toBe("failed");
+    expect(entry.startedAt).toBe(phaseStart);
+    expect(entry.finishedAt).toBe(phaseFinish);
+    expect(entry.durationMs).toBe(5000);
+  });
+
   it("skipped phases are recorded as skipped in the manifest", async () => {
     const { phase } = createPhase({
       id: "cached",
