@@ -11,6 +11,7 @@ import type { Database } from "../../query/db.js";
 import { existsSync, readFileSync } from "node:fs";
 import { OutlineCache } from "../../outline/cache.js";
 import { generateOutline, formatOutlineMarkdown, formatOutlineJson } from "../../outline/index.js";
+import { readJsonSafe } from "../../shared/fs.js";
 import { resolveOutlinePath, type PathResolver } from "../../shared/path-resolver.js";
 import type { FileOutline } from "../../shared/types.js";
 
@@ -36,12 +37,12 @@ export function handleOutline(
   // 2. Pre-computed outline
   const preComputed = resolveOutlinePath(graphDir, filePath);
   if (existsSync(preComputed)) {
-    try {
-      const outline = JSON.parse(readFileSync(preComputed, "utf-8")) as FileOutline;
+    const outline = readJsonSafe<FileOutline>(preComputed);
+    if (outline) {
       outlineCache.set(filePath, outline);
       const text = format === "json" ? formatOutlineJson(outline) : formatOutlineMarkdown(outline);
       return { content: [{ type: "text" as const, text }] };
-    } catch { /* fall through to on-the-fly */ }
+    }
   }
 
   // 3. On-the-fly generation — resolve absolute path via path resolver

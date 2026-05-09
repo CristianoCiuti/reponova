@@ -4,9 +4,11 @@
  * Provides upsert, query, and lifecycle management.
  * Gracefully degrades to brute-force cosine similarity if LanceDB is not available.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
+import { atomicWriteJson } from "../shared/atomic-write.js";
 import { join } from "node:path";
-import { log } from "../shared/utils.js";
+import { readJsonSafe } from "../shared/fs.js";
+import { log, errorMessage } from "../shared/utils.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -119,7 +121,7 @@ export class VectorStore {
       this.table = await this.db.createTable("embeddings", data, { mode: "overwrite" });
       log.info(`  Vector store: indexed ${records.length} records`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       log.warn(`LanceDB upsert failed, using fallback: ${msg}`);
       this.useFallback = true;
       this.fallbackData = records;
@@ -170,7 +172,7 @@ export class VectorStore {
         score: 1 - (r._distance as number ?? 0), // cosine distance → similarity
       }));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       log.warn(`LanceDB query failed: ${msg}`);
       return this.bruteForceSearch(vector, topK, options);
     }
@@ -195,14 +197,13 @@ export class VectorStore {
     // Try loading fallback file
     const fallbackPath = join(this.dbPath.replace("/vectors", ""), "vectors.json");
     if (existsSync(fallbackPath)) {
-      try {
-        const data = JSON.parse(readFileSync(fallbackPath, "utf-8"));
+      const data = readJsonSafe<VectorRecord[]>(fallbackPath);
+      if (data) {
         this.fallbackData = data;
         this.useFallback = true;
         return true;
-      } catch {
-        return false;
       }
+      return false;
     }
 
     return false;
@@ -210,13 +211,8 @@ export class VectorStore {
 
   async loadAllRecords(): Promise<VectorRecord[]> {
     const sidecarPath = this.getSidecarPath();
-    if (existsSync(sidecarPath)) {
-      try {
-        return JSON.parse(readFileSync(sidecarPath, "utf-8")) as VectorRecord[];
-      } catch {
-        return [];
-      }
-    }
+    const records = readJsonSafe<VectorRecord[]>(sidecarPath);
+    if (records) return records;
 
     return [...this.fallbackData];
   }
@@ -258,15 +254,10 @@ export class VectorStore {
   }
 
   private persistSidecar(records: VectorRecord[]): void {
-    const sidecarPath = this.getSidecarPath();
-    const dir = this.getBaseDir();
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    const tmpPath = sidecarPath + ".tmp";
-    writeFileSync(tmpPath, JSON.stringify(records.map((record) => ({
+    atomicWriteJson(this.getSidecarPath(), records.map((record) => ({
       ...record,
       vector: Array.from(record.vector),
-    }))));
-    renameSync(tmpPath, sidecarPath);
+    })));
   }
 
   private getBaseDir(): string {

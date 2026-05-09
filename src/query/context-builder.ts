@@ -22,9 +22,10 @@ import type {
   SourceSnippet,
   StructuredContext,
 } from "../shared/types.js";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { resolveOutlinePath } from "../shared/path-resolver.js";
+import { readJsonSafe } from "../shared/fs.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -110,23 +111,23 @@ export class ContextBuilder {
     // Load community summaries if available
     const summariesPath = join(this.graphDir, "community_summaries.json");
     if (existsSync(summariesPath)) {
-      try {
-        const raw = JSON.parse(readFileSync(summariesPath, "utf-8")) as Array<{ id: string; summary: string }>;
+      const raw = readJsonSafe<Array<{ id: string; summary: string }>>(summariesPath);
+      if (raw) {
         for (const s of raw) {
           this.communitySummaries.set(String(s.id), s.summary);
         }
-      } catch { /* ignore */ }
+      }
     }
 
     // Load node descriptions if available
     const descriptionsPath = join(this.graphDir, "node_descriptions.json");
     if (existsSync(descriptionsPath)) {
-      try {
-        const raw = JSON.parse(readFileSync(descriptionsPath, "utf-8")) as Array<{ id: string; description: string }>;
+      const raw = readJsonSafe<Array<{ id: string; description: string }>>(descriptionsPath);
+      if (raw) {
         for (const d of raw) {
           this.nodeDescriptions.set(d.id, d.description);
         }
-      } catch { /* ignore */ }
+      }
     }
 
     // Initialize vector store
@@ -491,8 +492,8 @@ export class ContextBuilder {
     const outlinePath = resolveOutlinePath(this.graphDir, candidate.source_file);
 
     if (existsSync(outlinePath)) {
-      try {
-        const outline = JSON.parse(readFileSync(outlinePath, "utf-8"));
+      const outline = readJsonSafe<{ functions?: Array<{ name: string; signature?: string; docstring?: string }>; classes?: Array<{ name: string; signature?: string; docstring?: string }> }>(outlinePath);
+      if (outline) {
         // Find the function/class matching this node
         const allEntries = [...(outline.functions ?? []), ...(outline.classes ?? [])];
         const entry = allEntries.find((e: { name: string }) => candidate.label.includes(e.name));
@@ -504,7 +505,7 @@ export class ContextBuilder {
             content: entry.signature + (entry.docstring ? `\n  """${entry.docstring}"""` : ""),
           };
         }
-      } catch { /* ignore */ }
+      }
     }
 
     return {
