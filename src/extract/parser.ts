@@ -9,6 +9,12 @@
  * - Load web-tree-sitter runtime (once, lazily)
  * - Load WASM grammar files from grammars/ directory (per-language, cached)
  * - Provide parse(source, wasmFile) → SyntaxTree
+ *
+ * Concurrency safety:
+ * - ensureRuntime() uses a memoized Promise so only one Parser.init() runs
+ * - getParser() uses an in-flight Promise map so only one Language.load()
+ *   runs per grammar, even when multiple phases call parse() concurrently
+ *   (e.g. graph + outlines at DAG Level 1). See BUG-E2E-005.
  */
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -25,6 +31,15 @@ interface ParserInstance {
 
 /** Cache: wasmFile → initialized parser (or null if not available) */
 const parsers = new Map<string, ParserInstance | null>();
+
+/**
+ * In-flight parser loading promises. Prevents concurrent Language.load()
+ * calls for the same grammar when multiple phases run in parallel.
+ */
+const inFlightParsers = new Map<string, Promise<ParserInstance | null>>();
+
+/** Memoized runtime initialization promise (null = not started) */
+let runtimeInitPromise: Promise<boolean> | null = null;
 
 /** Whether the tree-sitter WASM runtime has been initialized */
 let runtimeReady = false;
@@ -60,30 +75,39 @@ export function hasGrammar(wasmFile: string): boolean {
 async function ensureRuntime(): Promise<boolean> {
   if (runtimeReady) return true;
 
-  try {
-    const mod = await import("web-tree-sitter");
-    ParserClass = (mod as Record<string, unknown>).Parser ?? (mod as Record<string, unknown>).default;
+  // Memoize the init promise so concurrent callers await the same one
+  if (!runtimeInitPromise) {
+    runtimeInitPromise = (async () => {
+      try {
+        const mod = await import("web-tree-sitter");
+        ParserClass = (mod as Record<string, unknown>).Parser ?? (mod as Record<string, unknown>).default;
 
-    if (!ParserClass || typeof ParserClass !== "function") {
-      throw new Error("web-tree-sitter: no Parser export found");
-    }
+        if (!ParserClass || typeof ParserClass !== "function") {
+          throw new Error("web-tree-sitter: no Parser export found");
+        }
 
-    if (typeof ParserClass.init === "function") {
-      await (ParserClass as { init: () => Promise<void> }).init();
-    }
+        if (typeof ParserClass.init === "function") {
+          await (ParserClass as { init: () => Promise<void> }).init();
+        }
 
-    LanguageClass = (mod as Record<string, unknown>).Language ?? ParserClass.Language;
+        LanguageClass = (mod as Record<string, unknown>).Language ?? ParserClass.Language;
 
-    if (!LanguageClass || typeof LanguageClass.load !== "function") {
-      throw new Error("web-tree-sitter: no Language.load() found");
-    }
+        if (!LanguageClass || typeof LanguageClass.load !== "function") {
+          throw new Error("web-tree-sitter: no Language.load() found");
+        }
 
-    runtimeReady = true;
-    return true;
-  } catch (err) {
-    log.warn(`Tree-sitter runtime init failed: ${err}`);
-    return false;
+        runtimeReady = true;
+        return true;
+      } catch (err) {
+        log.warn(`Tree-sitter runtime init failed: ${err}`);
+        // Allow retry on next call
+        runtimeInitPromise = null;
+        return false;
+      }
+    })();
   }
+
+  return runtimeInitPromise;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -115,12 +139,18 @@ export async function parse(source: string, wasmFile: string): Promise<SyntaxTre
 /**
  * Get or create a cached parser for a specific WASM grammar.
  * Returns null if grammar not available or init fails.
+ *
+ * Uses in-flight Promise memoization to prevent concurrent Language.load()
+ * calls for the same grammar (fixes BUG-E2E-005 race condition).
  */
 async function getParser(wasmFile: string): Promise<ParserInstance | null> {
   // Return cached result (including null = not available)
   if (parsers.has(wasmFile)) return parsers.get(wasmFile)!;
 
-  // Check WASM file exists
+  // Await in-flight load if another caller is already loading this grammar
+  if (inFlightParsers.has(wasmFile)) return inFlightParsers.get(wasmFile)!;
+
+  // Check WASM file exists (sync, no race concern)
   const wasmPath = resolve(grammarsDir, wasmFile);
   if (!existsSync(wasmPath)) {
     log.debug(`Grammar not found: ${wasmPath}`);
@@ -128,25 +158,33 @@ async function getParser(wasmFile: string): Promise<ParserInstance | null> {
     return null;
   }
 
-  // Ensure runtime is initialized
-  if (!await ensureRuntime()) {
-    parsers.set(wasmFile, null);
-    return null;
-  }
+  // Create and memoize the loading promise
+  const loadPromise = (async (): Promise<ParserInstance | null> => {
+    // Ensure runtime is initialized (also memoized)
+    if (!await ensureRuntime()) {
+      parsers.set(wasmFile, null);
+      return null;
+    }
 
-  try {
-    const language = await LanguageClass.load(wasmPath);
-    const parser = new ParserClass() as ParserInstance;
-    parser.setLanguage(language);
+    try {
+      const language = await LanguageClass.load(wasmPath);
+      const parser = new ParserClass() as ParserInstance;
+      parser.setLanguage(language);
 
-    log.info(`Tree-sitter parser initialized: ${wasmFile}`);
-    parsers.set(wasmFile, parser);
-    return parser;
-  } catch (err) {
-    log.warn(`Tree-sitter parser init failed for ${wasmFile}: ${err}`);
-    parsers.set(wasmFile, null);
-    return null;
-  }
+      log.info(`Tree-sitter parser initialized: ${wasmFile}`);
+      parsers.set(wasmFile, parser);
+      return parser;
+    } catch (err) {
+      log.warn(`Tree-sitter parser init failed for ${wasmFile}: ${err}`);
+      parsers.set(wasmFile, null);
+      return null;
+    } finally {
+      inFlightParsers.delete(wasmFile);
+    }
+  })();
+
+  inFlightParsers.set(wasmFile, loadPromise);
+  return loadPromise;
 }
 
 /**
@@ -154,7 +192,9 @@ async function getParser(wasmFile: string): Promise<ParserInstance | null> {
  */
 export function clearParserCache(): void {
   parsers.clear();
+  inFlightParsers.clear();
   runtimeReady = false;
+  runtimeInitPromise = null;
   ParserClass = null;
   LanguageClass = null;
 }
