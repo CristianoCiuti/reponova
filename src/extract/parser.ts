@@ -12,6 +12,7 @@
  */
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { SyntaxTree, SyntaxNode } from "./types.js";
 import { log } from "../shared/utils.js";
 
@@ -40,7 +41,7 @@ let LanguageClass: any = null;
 
 /** Resolved path to the grammars/ directory */
 const grammarsDir = resolve(
-  new URL(".", import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1"),
+  fileURLToPath(new URL(".", import.meta.url)),
   "../../grammars",
 );
 

@@ -12,9 +12,10 @@
  *       <sha256>.json               # cached FileExtraction per file
  */
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import type { FileExtraction } from "../extract/types.js";
+import { atomicWriteJson } from "../shared/atomic-write.js";
 import { log } from "../shared/utils.js";
 
 export interface BuildCache {
@@ -89,14 +90,14 @@ export function saveBuildCache(
   for (const [k, v] of hashes) {
     hashObj[k] = v;
   }
-  writeFileSync(join(baseDir, "hashes.json"), JSON.stringify(hashObj, null, 2));
+  atomicWriteJson(join(baseDir, "hashes.json"), hashObj);
 
   // Save extractions keyed by path hash (not content hash)
   // This avoids collisions for files with identical content but different paths
   for (const extraction of extractions) {
     const pathKey = cacheKeyForPath(extraction.filePath);
     const cachePath = join(extractionsDir, `${pathKey}.json`);
-    writeFileSync(cachePath, JSON.stringify(extraction));
+    atomicWriteJson(cachePath, extraction);
   }
 }
 

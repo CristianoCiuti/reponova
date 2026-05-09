@@ -14,7 +14,7 @@
 import type { Phase, PhaseContext, PhaseResult } from "./phase.js";
 import type { PhaseRegistry } from "./registry.js";
 import { buildDAG, validate, topologicalLevels, resolveTransitiveDeps, pruneDAG } from "./dag.js";
-import { log } from "../../shared/utils.js";
+import { errorMessage, log } from "../../shared/utils.js";
 
 export interface OrchestratorOptions {
   /** Run only this phase + its transitive deps (null = full DAG) */
@@ -147,9 +147,7 @@ function collectResults(
     if (outcome.status === "fulfilled") {
       results.set(phase.id, outcome.value);
     } else {
-      const message = outcome.reason instanceof Error
-        ? outcome.reason.message
-        : String(outcome.reason);
+      const message = errorMessage(outcome.reason);
       log.warn(`  [${phase.id}] Failed (non-blocking): ${message}`);
       results.set(phase.id, {
         processed: 0,

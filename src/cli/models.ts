@@ -10,7 +10,7 @@ import { LlmEngine, resolveModelPath } from "../intelligence/llm-engine.js";
 import { loadConfig } from "../shared/config.js";
 import { posixBasename } from "../shared/paths.js";
 import type { Config, ModelsConfig } from "../shared/types.js";
-import { log } from "../shared/utils.js";
+import { errorMessage, log } from "../shared/utils.js";
 
 const DEFAULT_CACHE_DIR = join(homedir(), ".cache", "reponova", "models");
 
@@ -454,8 +454,7 @@ export const modelsCommand: CommandModule = {
           throw new Error(`Unknown action: ${action}. Use: status, download, remove, or clear`);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(message);
+      console.error(errorMessage(error));
       process.exit(1);
     }
   },

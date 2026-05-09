@@ -7,22 +7,18 @@
  */
 import {
   existsSync,
-  mkdirSync,
   readFileSync,
-  writeFileSync,
   readdirSync,
   unlinkSync,
   rmSync,
-  copyFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, dirname, extname } from "node:path";
+import { join, extname } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { readDetectedFiles } from "./file-detection.js";
 import { generateOutline, formatOutlineJson } from "../../outline/index.js";
 import { getOutlineSupportedExtensions } from "../../outline/languages/registry.js";
 import { hashFile } from "../../shared/hash.js";
-import { atomicWriteJson } from "../../shared/atomic-write.js";
+import { atomicWriteJson, atomicWriteText } from "../../shared/atomic-write.js";
 import { readJsonSafe } from "../../shared/fs.js";
 import { log } from "../../shared/utils.js";
 
@@ -53,73 +49,56 @@ export const outlinesPhase: Phase = {
 
     const previousHashes = force ? new Map<string, string>() : loadOutlineHashes(outputDir);
     const nextHashes = new Map<string, string>();
-    const pendingWrites = new Map<string, string>();
-    const tmpRoot = join(tmpdir(), `rn-outlines-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
     let count = 0;
-    mkdirSync(tmpRoot, { recursive: true });
 
-    try {
-      for (const relPath of codeFiles) {
-        const absPath = join(workspace, relPath);
-        if (!existsSync(absPath)) continue;
+    for (const relPath of codeFiles) {
+      const absPath = join(workspace, relPath);
+      if (!existsSync(absPath)) continue;
 
-        const outPath = join(outlinesDir, relPath + ".outline.json");
-        const fileHash = hashFile(absPath);
-        nextHashes.set(relPath, fileHash);
+      const outPath = join(outlinesDir, relPath + ".outline.json");
+      const fileHash = hashFile(absPath);
+      nextHashes.set(relPath, fileHash);
 
-        if (!force && existsSync(outPath) && previousHashes.get(relPath) === fileHash) {
-          continue;
-        }
-
-        try {
-          const source = readFileSync(absPath, "utf-8");
-          const outline = await generateOutline(relPath, source);
-          if (!outline) continue;
-
-          const tmpPath = join(tmpRoot, relPath + ".outline.json");
-          mkdirSync(dirname(tmpPath), { recursive: true });
-          writeFileSync(tmpPath, formatOutlineJson(outline));
-          pendingWrites.set(relPath, tmpPath);
-          count++;
-        } catch (error) {
-          log.warn(`Failed to process ${absPath}: ${error}`);
-        }
+      if (!force && existsSync(outPath) && previousHashes.get(relPath) === fileHash) {
+        continue;
       }
 
-      // Commit pending writes
-      for (const [relPath, tmpPath] of pendingWrites) {
-        const finalPath = join(outlinesDir, relPath + ".outline.json");
-        mkdirSync(dirname(finalPath), { recursive: true });
-        copyFileSync(tmpPath, finalPath);
+      try {
+        const source = readFileSync(absPath, "utf-8");
+        const outline = await generateOutline(relPath, source);
+        if (!outline) continue;
+
+        atomicWriteText(outPath, formatOutlineJson(outline));
+        count++;
+      } catch (error) {
+        log.warn(`Failed to process ${absPath}: ${error}`);
       }
-
-      // Clean stale outlines
-      let staleCount = 0;
-      for (const [relPath] of previousHashes) {
-        if (!nextHashes.has(relPath)) {
-          const stalePath = join(outlinesDir, relPath + ".outline.json");
-          try {
-            if (existsSync(stalePath)) {
-              unlinkSync(stalePath);
-              staleCount++;
-            }
-          } catch { /* ignore */ }
-        }
-      }
-
-      if (staleCount > 0) log.info(`  Removed ${staleCount} stale outline(s)`);
-      removeEmptyDirs(outlinesDir);
-      saveOutlineHashes(outputDir, nextHashes);
-
-      if (count === 0 && staleCount === 0) {
-        return { processed: 0, skipped: true, skipReason: "up to date" };
-      }
-
-      return { processed: count, skipped: false };
-    } finally {
-      removeDirectory(tmpRoot);
     }
+
+    // Clean stale outlines
+    let staleCount = 0;
+    for (const [relPath] of previousHashes) {
+      if (!nextHashes.has(relPath)) {
+        const stalePath = join(outlinesDir, relPath + ".outline.json");
+        try {
+          if (existsSync(stalePath)) {
+            unlinkSync(stalePath);
+            staleCount++;
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
+    if (staleCount > 0) log.info(`  Removed ${staleCount} stale outline(s)`);
+    removeEmptyDirs(outlinesDir);
+    saveOutlineHashes(outputDir, nextHashes);
+
+    if (count === 0 && staleCount === 0) {
+      return { processed: 0, skipped: true, skipReason: "up to date" };
+    }
+
+    return { processed: count, skipped: false };
   },
 };
 

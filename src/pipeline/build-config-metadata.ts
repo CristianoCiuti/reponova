@@ -1,13 +1,11 @@
-import { readFileSync } from "node:fs";
 import type { BuildConfigFingerprint, EmbeddingsConfig } from "../shared/types.js";
+import { readJsonSafe } from "../shared/fs.js";
 
 const MISSING_BUILD_CONFIG_ERROR = "graph.json missing build_config — rebuild with: reponova build --force";
 
 export function loadBuildConfigFingerprint(graphJsonPath: string): BuildConfigFingerprint | null {
-  const raw = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as {
-    metadata?: { build_config?: BuildConfigFingerprint };
-  };
-  return raw.metadata?.build_config ?? null;
+  const raw = readJsonSafe<{ metadata?: { build_config?: BuildConfigFingerprint } }>(graphJsonPath);
+  return raw?.metadata?.build_config ?? null;
 }
 
 export function requireBuildConfigFingerprint(graphJsonPath: string): BuildConfigFingerprint {

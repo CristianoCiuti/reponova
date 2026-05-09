@@ -22,7 +22,7 @@ import { handleHotspots } from "./tools/hotspots.js";
 import { handleSimilar, initSimilaritySearch, disposeSimilaritySearch } from "./tools/similar.js";
 import { handleContext, initContextBuilder, disposeContextBuilder } from "./tools/context.js";
 import { handleDocs } from "./tools/docs.js";
-import { log } from "../shared/utils.js";
+import { errorMessage, log } from "../shared/utils.js";
 import type { EmbeddingsConfig } from "../shared/types.js";
 
 export interface McpServerOptions {
@@ -123,7 +123,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
         default: return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
       }
     } catch (error) {
-      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+      return { content: [{ type: "text", text: `Error: ${errorMessage(error)}` }], isError: true };
     }
   });
 

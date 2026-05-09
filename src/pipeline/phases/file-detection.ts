@@ -4,12 +4,12 @@
  * Always runs (cost of a directory walk ≈ cost of checking whether to skip).
  * Produces detected-files.json consumed by graph and outlines phases.
  */
-import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { detectFiles, detectDocFiles, detectDiagramFiles } from "../../extract/index.js";
 import { buildSkipDirs } from "../../shared/path-resolver.js";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
+import { readJsonSafe } from "../../shared/fs.js";
 import { log } from "../../shared/utils.js";
 
 export interface DetectedFiles {
@@ -20,8 +20,10 @@ export interface DetectedFiles {
 }
 
 export function readDetectedFiles(outputDir: string): DetectedFiles {
-  const raw = readFileSync(join(outputDir, "detected-files.json"), "utf-8");
-  return JSON.parse(raw) as DetectedFiles;
+  const path = join(outputDir, "detected-files.json");
+  const raw = readJsonSafe<DetectedFiles>(path);
+  if (!raw) throw new Error(`detected-files.json not found in ${outputDir} — run file-detection phase first`);
+  return raw;
 }
 
 export const fileDetectionPhase: Phase = {
