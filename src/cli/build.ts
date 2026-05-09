@@ -1,7 +1,7 @@
 import type { CommandModule } from "yargs";
 import { loadConfig } from "../shared/config.js";
 import { runBuild } from "../pipeline/build.js";
-import { log } from "../shared/utils.js";
+import { log, errorMessage } from "../shared/utils.js";
 
 export const buildCommand: CommandModule = {
   command: "build",
@@ -29,7 +29,7 @@ export const buildCommand: CommandModule = {
         target: argv.target as string | undefined,
       });
     } catch (err) {
-      log.error(err instanceof Error ? err.message : String(err));
+      log.error(errorMessage(err));
       process.exit(1);
     }
   },

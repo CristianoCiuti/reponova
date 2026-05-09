@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { EmbeddingEngine } from "../intelligence/embeddings.js";
 import { LlmEngine, resolveModelPath } from "../intelligence/llm-engine.js";
 import { loadConfig } from "../shared/config.js";
+import { posixBasename } from "../shared/paths.js";
 import type { Config, ModelsConfig } from "../shared/types.js";
 import { log } from "../shared/utils.js";
 
@@ -133,7 +134,7 @@ function findFallbackLlmModel(modelUri: string, cacheDir: string): CachedModel |
 
   const uriBody = modelUri.slice(3);
   const [repoPart = "", quantPart = ""] = uriBody.split(":");
-  const repoName = repoPart.split("/").pop() ?? repoPart;
+  const repoName = posixBasename(repoPart);
   const repoWithoutSuffix = repoName.replace(/-gguf$/i, "");
   const repoToken = normalizeModelToken(repoWithoutSuffix);
   const quantToken = normalizeModelToken(quantPart);
