@@ -4,11 +4,12 @@
  * Build-time: creates PathContext, prepares workspace, converts paths.
  * Query-time: resolves source_file → absolute path using metadata.repos.
  */
-import { resolve, relative, join } from "node:path";
+import { resolve, join } from "node:path";
 import { existsSync, symlinkSync, mkdirSync, readdirSync, statSync, copyFileSync } from "node:fs";
 import type { Config } from "../shared/types.js";
 import { createMatcher } from "../shared/glob.js";
-import { log } from "../shared/utils.js";
+import { relativePosix, toPosix } from "./paths.js";
+import { log, errorMessage } from "./utils.js";
 
 export { buildSkipDirs } from "../shared/glob.js";
 
@@ -52,7 +53,7 @@ export function createPathContext(
   const mode = resolveMode(config);
   const repos: RepoMapping[] = config.repos.map((r) => ({
     name: r.name,
-    absPath: resolve(configDir, r.path).replace(/\\/g, "/"),
+    absPath: toPosix(resolve(configDir, r.path)),
   }));
 
   return {
@@ -93,7 +94,7 @@ export function prepareWorkspace(
       symlinkSync(repo.absPath, linkPath, "junction");
       log.info(`  Linked: ${repo.name} \u2192 ${repo.absPath}`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       log.warn(`  Symlink failed for ${repo.name}: ${msg}, falling back to copy...`);
       copyDirRecursive(repo.absPath, linkPath, skipDirs);
     }
@@ -105,22 +106,22 @@ export function prepareWorkspace(
 
 /** Convert an absolute fullPath to the canonical source_file string. */
 export function toSourceFile(ctx: PathContext, fullPath: string): string {
-  const normalized = fullPath.replace(/\\/g, "/");
+  const normalized = toPosix(fullPath);
 
   if (ctx.mode === "single") {
-    return relative(ctx.repos[0]!.absPath, normalized).replace(/\\/g, "/");
+    return relativePosix(ctx.repos[0]!.absPath, normalized);
   }
 
   // Multi: find which repo this belongs to and prefix
   for (const repo of ctx.repos) {
     if (normalized.startsWith(repo.absPath + "/") || normalized === repo.absPath) {
-      const repoRel = relative(repo.absPath, normalized).replace(/\\/g, "/");
+      const repoRel = relativePosix(repo.absPath, normalized);
       return `${repo.name}/${repoRel}`;
     }
   }
 
   // Fallback: relative to workspace
-  return relative(ctx.workspace, normalized).replace(/\\/g, "/");
+  return relativePosix(ctx.workspace, normalized);
 }
 
 /** Extract repo name from a source_file string. */
@@ -183,7 +184,7 @@ export function reconstructRepos(
   const configDir = resolve(graphDir, metadataConfigDir);
   return metadataRepos.map((r) => ({
     name: r.name,
-    absPath: resolve(configDir, r.path).replace(/\\/g, "/"),
+    absPath: toPosix(resolve(configDir, r.path)),
   }));
 }
 
@@ -222,7 +223,7 @@ export function resolveFilePaths(
   const abs = resolveAbsolutePath(repos, sourceFile, mode);
   if (!abs) return { graph_rel_path: null, absolute_path: null };
 
-  const graphRel = relative(graphDir, abs).replace(/\\/g, "/");
+  const graphRel = relativePosix(graphDir, abs);
   return { graph_rel_path: graphRel, absolute_path: abs };
 }
 

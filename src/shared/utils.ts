@@ -1,4 +1,4 @@
-import { resolve, relative, sep, dirname } from "node:path";
+import { resolve, dirname } from "node:path";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -26,14 +26,10 @@ export function getVersion(): string {
 }
 
 /**
- * Normalize a path to forward slashes, relative form.
+ * Extract a human-readable message from an unknown catch value.
  */
-export function normalizePath(filePath: string, basePath?: string): string {
-  let normalized = filePath;
-  if (basePath && resolve(filePath).startsWith(resolve(basePath))) {
-    normalized = relative(basePath, filePath);
-  }
-  return normalized.split(sep).join("/");
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 /**
@@ -90,4 +86,30 @@ export function formatNumber(n: number): string {
 export function truncate(s: string, maxLen: number): string {
   if (s.length <= maxLen) return s;
   return s.slice(0, maxLen - 3) + "...";
+}
+
+/**
+ * Lightweight progress timer for long-running loops.
+ *
+ * Replaces repeated inline Date.now() arithmetic across intelligence modules.
+ */
+export class ProgressTimer {
+  private start = Date.now();
+  constructor(private total: number) {}
+
+  /** Compute elapsed, average and ETA strings after processing item at index `i` (0-based). */
+  tick(i: number): { elapsed: string; avgMs: string; remaining: string } {
+    const ms = Date.now() - this.start;
+    const done = i + 1;
+    return {
+      elapsed: (ms / 1000).toFixed(1),
+      avgMs: (ms / done).toFixed(0),
+      remaining: ((ms / done) * (this.total - done) / 1000).toFixed(0),
+    };
+  }
+
+  /** Elapsed seconds formatted as a string. */
+  elapsedSec(): string {
+    return ((Date.now() - this.start) / 1000).toFixed(1);
+  }
 }

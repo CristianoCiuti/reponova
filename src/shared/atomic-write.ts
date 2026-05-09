@@ -43,3 +43,15 @@ export function atomicWriteText(filePath: string, content: string): void {
   copyFileSync(tmpPath, filePath);
   try { unlinkSync(tmpPath); } catch { /* ignore cleanup errors */ }
 }
+
+/**
+ * Write a binary buffer atomically via os.tmpdir() staging.
+ * Parent directories of filePath are created automatically.
+ */
+export function atomicWriteBuffer(filePath: string, buffer: Buffer | Uint8Array): void {
+  const tmpPath = makeTmpPath(".bin");
+  writeFileSync(tmpPath, buffer);
+  mkdirSync(dirname(filePath), { recursive: true });
+  copyFileSync(tmpPath, filePath);
+  try { unlinkSync(tmpPath); } catch { /* ignore cleanup errors */ }
+}
