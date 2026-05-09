@@ -1,6 +1,7 @@
 import initSqlJs from "sql.js";
 import type { Database as SqlJsDatabase } from "sql.js";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { atomicWriteBuffer } from "../shared/atomic-write.js";
 import type { GraphData } from "../shared/types.js";
 import { log } from "../shared/utils.js";
 
@@ -85,7 +86,7 @@ export function saveDatabase(db: Database, dbPath: string): void {
   if (dbPath === ":memory:") return;
   const data = db.export();
   const buffer = Buffer.from(data);
-  writeFileSync(dbPath, buffer);
+  atomicWriteBuffer(dbPath, buffer);
 }
 
 /**
@@ -205,4 +206,25 @@ export function queryAll(db: Database, sql: string, params: unknown[] = []): Rec
 export function queryOne(db: Database, sql: string, params: unknown[] = []): Record<string, unknown> | null {
   const rows = queryAll(db, sql, params);
   return rows[0] ?? null;
+}
+
+/**
+ * Query edges adjacent to a node.
+ *
+ * Centralizes the SQL neighbor enumeration used by BFS, DFS, Dijkstra,
+ * and impact analysis — each module previously inlined its own query string.
+ */
+export function getNeighborEdges(
+  db: Database,
+  nodeId: string,
+  direction: "outgoing" | "incoming" | "both",
+): Array<{ source_id: string; target_id: string; type: string }> {
+  const sql =
+    direction === "outgoing"
+      ? "SELECT source_id, target_id, type FROM edges WHERE source_id = ?"
+      : direction === "incoming"
+        ? "SELECT source_id, target_id, type FROM edges WHERE target_id = ?"
+        : "SELECT source_id, target_id, type FROM edges WHERE source_id = ? OR target_id = ?";
+  const params = direction === "both" ? [nodeId, nodeId] : [nodeId];
+  return queryAll(db, sql, params) as Array<{ source_id: string; target_id: string; type: string }>;
 }

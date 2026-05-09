@@ -1,5 +1,5 @@
 import type { Database } from "./db.js";
-import { queryAll, queryOne } from "./db.js";
+import { queryOne, getNeighborEdges } from "./db.js";
 import type { ImpactResult, ImpactLayer, ImpactNode, GraphNode } from "../shared/types.js";
 import type { ResolvedPaths } from "../shared/path-resolver.js";
 
@@ -58,16 +58,12 @@ function bfs(db: Database, startId: string, direction: "upstream" | "downstream"
   const visited = new Set<string>([startId]);
   let frontier = [startId];
 
-  const edgeSql = direction === "upstream"
-    ? "SELECT source_id, target_id, type FROM edges WHERE target_id = ?"
-    : "SELECT source_id, target_id, type FROM edges WHERE source_id = ?";
-
   for (let depth = 1; depth <= maxDepth && frontier.length > 0; depth++) {
     const nextFrontier: string[] = [];
     const layerNodes: ImpactNode[] = [];
 
     for (const currentId of frontier) {
-      const edges = queryAll(db, edgeSql, [currentId]);
+      const edges = getNeighborEdges(db, currentId, direction === "upstream" ? "incoming" : "outgoing");
       for (const edge of edges) {
         const neighborId = (direction === "upstream" ? edge.source_id : edge.target_id) as string;
         if (visited.has(neighborId)) continue;
