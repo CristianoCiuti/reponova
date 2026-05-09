@@ -23,6 +23,7 @@ import { generateOutline, formatOutlineJson } from "../../outline/index.js";
 import { getOutlineSupportedExtensions } from "../../outline/languages/registry.js";
 import { hashFile } from "../../shared/hash.js";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
+import { readJsonSafe } from "../../shared/fs.js";
 import { log } from "../../shared/utils.js";
 
 export const outlinesPhase: Phase = {
@@ -124,13 +125,8 @@ export const outlinesPhase: Phase = {
 
 function loadOutlineHashes(outputDir: string): Map<string, string> {
   const hashesPath = join(outputDir, ".cache", "outline-hashes.json");
-  if (!existsSync(hashesPath)) return new Map();
-  try {
-    const raw = JSON.parse(readFileSync(hashesPath, "utf-8")) as Record<string, string>;
-    return new Map(Object.entries(raw));
-  } catch {
-    return new Map();
-  }
+  const raw = readJsonSafe<Record<string, string>>(hashesPath);
+  return raw ? new Map(Object.entries(raw)) : new Map();
 }
 
 function saveOutlineHashes(outputDir: string, hashes: Map<string, string>): void {

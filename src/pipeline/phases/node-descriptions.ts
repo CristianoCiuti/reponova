@@ -10,6 +10,7 @@ import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import type { GraphData, GraphNode } from "../../shared/types.js";
 import { atomicWriteJson, atomicWriteText } from "../../shared/atomic-write.js";
+import { readJsonSafe, readJsonOr } from "../../shared/fs.js";
 import { log } from "../../shared/utils.js";
 import { NodeDescriptionGenerator, type NodeDescription } from "../../intelligence/node-description-generator.js";
 import { LlmEnginePool } from "../../intelligence/llm-engine-pool.js";
@@ -155,23 +156,16 @@ function checkConfigChanged(hashPath: string, currentHash: string): boolean {
 }
 
 function loadFingerprints(path: string): Record<string, string> {
-  if (!existsSync(path)) return {};
-  try { return JSON.parse(readFileSync(path, "utf-8")) as Record<string, string>; }
-  catch { return {}; }
+  return readJsonOr<Record<string, string>>(path, {});
 }
 
 function loadDescriptions(path: string): Map<string, string> {
-  if (!existsSync(path)) return new Map();
-  try {
-    const raw = JSON.parse(readFileSync(path, "utf-8")) as NodeDescription[];
-    return new Map(raw.map((e) => [e.id, e.description]));
-  } catch { return new Map(); }
+  const raw = readJsonSafe<NodeDescription[]>(path);
+  return raw ? new Map(raw.map((e) => [e.id, e.description])) : new Map();
 }
 
 function loadExistingDescriptions(path: string): NodeDescription[] {
-  if (!existsSync(path)) return [];
-  try { return JSON.parse(readFileSync(path, "utf-8")) as NodeDescription[]; }
-  catch { return []; }
+  return readJsonOr<NodeDescription[]>(path, []);
 }
 
 function descriptionsEqual(a: NodeDescription[], b: NodeDescription[]): boolean {

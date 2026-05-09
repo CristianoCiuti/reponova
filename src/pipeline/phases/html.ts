@@ -6,12 +6,12 @@
  * Config invalidation: html toggle and html_min_degree.
  */
 import { existsSync, statSync, unlinkSync } from "node:fs";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { loadGraphAsGraphology } from "../../graph/graphology.js";
 import { detectCommunities } from "../../graph/community.js";
 import { exportHtml, exportCommunityHtml, type CommunitySummaryInfo } from "../../graph/export-html.js";
+import { readJsonSafe } from "../../shared/fs.js";
 
 export const htmlPhase: Phase = {
   id: "html",
@@ -84,12 +84,7 @@ function shouldRun(
 
 function loadCommunitySummaries(outputDir: string): CommunitySummaryInfo[] | undefined {
   const summariesPath = join(outputDir, "community_summaries.json");
-  if (!existsSync(summariesPath)) return undefined;
-  try {
-    return JSON.parse(readFileSync(summariesPath, "utf-8")) as CommunitySummaryInfo[];
-  } catch {
-    return undefined;
-  }
+  return readJsonSafe<CommunitySummaryInfo[]>(summariesPath);
 }
 
 function removeFile(path: string): void {

@@ -4,7 +4,8 @@
  * Reads graph.json and community_summaries.json.
  * Skip logic: mtime comparison of inputs vs report.md.
  */
-import { writeFileSync, readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
+import { atomicWriteText } from "../../shared/atomic-write.js";
 import { extname, join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import type { GraphData, GraphNode } from "../../shared/types.js";
@@ -150,7 +151,7 @@ export function generateGraphReport(options: {
     ...renderCountTable(fileTypeCounts), "",
   ];
 
-  writeFileSync(outputPath, lines.join("\n"));
+  atomicWriteText(outputPath, lines.join("\n"));
 }
 
 function computeDegreeMap(g: GraphData): Map<string, number> {

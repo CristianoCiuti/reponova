@@ -11,7 +11,8 @@ import { createHash } from "node:crypto";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import type { GraphData } from "../../shared/types.js";
 import { atomicWriteJson, atomicWriteText } from "../../shared/atomic-write.js";
-import { log } from "../../shared/utils.js";
+import { readJsonSafe } from "../../shared/fs.js";
+import { log, errorMessage } from "../../shared/utils.js";
 import { EmbeddingEngine, composeNodeText } from "../../intelligence/embeddings.js";
 import { TfidfEmbeddingEngine } from "../../intelligence/tfidf-embeddings.js";
 import { VectorStore, type VectorRecord } from "../../query/vector-store.js";
@@ -148,7 +149,7 @@ async function generateTfidf(
     await storeEmbeddings({ graphData, embeddings, existingRecords, currentTexts, vectorStore, outputDir: ctx.outputDir, vocabulary: engine.serializeVocabulary() });
     return { processed: embeddings.length, skipped: false };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorMessage(err);
     log.warn(`TF-IDF embeddings failed (non-blocking): ${msg}`);
     return { processed: 0, skipped: true, skipReason: msg };
   } finally {
@@ -175,7 +176,7 @@ async function generateOnnx(
     await storeEmbeddings({ graphData, embeddings, existingRecords, currentTexts, vectorStore, outputDir: ctx.outputDir });
     return { processed: embeddings.length, skipped: false };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorMessage(err);
     log.warn(`ONNX embeddings failed (non-blocking): ${msg}`);
     return { processed: 0, skipped: true, skipReason: msg };
   } finally {
@@ -226,9 +227,8 @@ async function storeEmbeddings(options: {
 
 function loadNodeTextCache(outputDir: string): Map<string, string> {
   const path = getNodeTextCachePath(outputDir);
-  if (!existsSync(path)) return new Map();
-  try { return new Map(Object.entries(JSON.parse(readFileSync(path, "utf-8")) as Record<string, string>)); }
-  catch { return new Map(); }
+  const raw = readJsonSafe<Record<string, string>>(path);
+  return raw ? new Map(Object.entries(raw)) : new Map();
 }
 
 function getNodeTextCachePath(outputDir: string): string {
@@ -253,20 +253,14 @@ function getRemovedNodeIds(currentTexts: Map<string, string>, previousTexts: Map
 
 function loadCommunitySummaries(outputDir: string): Map<string, string> {
   const path = join(outputDir, "community_summaries.json");
-  if (!existsSync(path)) return new Map();
-  try {
-    const summaries = JSON.parse(readFileSync(path, "utf-8")) as Array<{ id: string; summary: string }>;
-    return new Map(summaries.map((s) => [String(s.id), s.summary]));
-  } catch { return new Map(); }
+  const summaries = readJsonSafe<Array<{ id: string; summary: string }>>(path);
+  return summaries ? new Map(summaries.map((s) => [String(s.id), s.summary])) : new Map();
 }
 
 function loadNodeDescriptions(outputDir: string): Map<string, string> {
   const path = join(outputDir, "node_descriptions.json");
-  if (!existsSync(path)) return new Map();
-  try {
-    const descs = JSON.parse(readFileSync(path, "utf-8")) as Array<{ id: string; description: string }>;
-    return new Map(descs.map((d) => [d.id, d.description]));
-  } catch { return new Map(); }
+  const descs = readJsonSafe<Array<{ id: string; description: string }>>(path);
+  return descs ? new Map(descs.map((d) => [d.id, d.description])) : new Map();
 }
 
 function hashConfigFields(method: string, model: string, dimensions: number): string {

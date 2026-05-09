@@ -10,6 +10,7 @@ import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import type { GraphData, GraphNode } from "../../shared/types.js";
 import { atomicWriteJson, atomicWriteText } from "../../shared/atomic-write.js";
+import { readJsonOr } from "../../shared/fs.js";
 import { log } from "../../shared/utils.js";
 import {
   CommunitySummaryGenerator,
@@ -151,9 +152,7 @@ function checkConfigChanged(hashPath: string, currentHash: string): boolean {
 }
 
 function loadFingerprintCache(path: string): Record<string, CommunitySummary> {
-  if (!existsSync(path)) return {};
-  try { return JSON.parse(readFileSync(path, "utf-8")) as Record<string, CommunitySummary>; }
-  catch { return {}; }
+  return readJsonOr<Record<string, CommunitySummary>>(path, {});
 }
 
 function buildFingerprintCache(communities: CommunityData[], summaries: CommunitySummary[]): Record<string, CommunitySummary> {
@@ -167,9 +166,7 @@ function buildFingerprintCache(communities: CommunityData[], summaries: Communit
 }
 
 function loadExistingSummaries(path: string): CommunitySummary[] {
-  if (!existsSync(path)) return [];
-  try { return JSON.parse(readFileSync(path, "utf-8")) as CommunitySummary[]; }
-  catch { return []; }
+  return readJsonOr<CommunitySummary[]>(path, []);
 }
 
 function arraysEqual(a: CommunitySummary[], b: CommunitySummary[]): boolean {
