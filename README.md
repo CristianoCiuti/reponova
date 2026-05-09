@@ -352,9 +352,7 @@ Every edge in the graph has a type that describes the relationship:
 | `imports` | Module-level import | `api.py` → `models.py` |
 | `imports_from` | Named import of a specific symbol | `api.py` → `UserModel` |
 | `extends` | Class inheritance | `AdminUser` → `BaseUser` |
-| `contains` | Module contains a symbol | `auth.py` → `login()` |
-| `contains_section` | Document contains a section | `README.md` → `Installation` |
-| `method` | Class contains a method | `UserService` → `get_user()` |
+| `contains` | Parent contains a child (module→symbol, class→method, document→section) | `auth.py` → `login()` |
 
 ---
 

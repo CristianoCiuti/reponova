@@ -218,22 +218,19 @@ describe("Graph Generation E2E: Class hierarchy & inheritance", () => {
     expect(extendsEdges[0]!.target).toBe(baseNode.id);
   });
 
-  it("should create 'method' edges from class to methods", () => {
+  it("should create 'contains' edges from class to methods (not 'method' edges)", () => {
     const { graph } = buildGraph({ extractions: [classExtraction] });
+    // "method" edge type was removed — class→method edges use "contains"
     const methodEdges = getEdgesByType(graph, "method");
-    // User has 3 methods
-    expect(methodEdges.length).toBe(3);
-    const userNode = findNode(graph, "User")!;
-    for (const edge of methodEdges) {
-      expect(edge.source).toBe(userNode.id);
-    }
+    expect(methodEdges.length).toBe(0);
   });
 
   it("should also create 'contains' edges from module to methods (for discoverability)", () => {
     const { graph } = buildGraph({ extractions: [classExtraction] });
     const containsEdges = getEdgesByType(graph, "contains");
     // module → BaseModel, module → User, module → get_name, module → save, module → validate
-    expect(containsEdges.length).toBe(5);
+    // + User → get_name, User → save, User → validate (class→method)
+    expect(containsEdges.length).toBe(8);
   });
 
   it("should resolve calls between methods in the same class", () => {

@@ -189,18 +189,18 @@
     }
   ],
   "edges": [
-    { "source": "Function:get_user_by_id", "target": "Function:connect_database", "type": "CALLS" },
-    { "source": "Function:get_user_by_id", "target": "Function:validate_user", "type": "CALLS" },
-    { "source": "Function:update_user", "target": "Function:get_user_by_id", "type": "CALLS" },
-    { "source": "Function:UserController.get", "target": "Function:get_user_by_id", "type": "CALLS" },
-    { "source": "Function:create_order", "target": "Function:connect_database", "type": "CALLS" },
-    { "source": "Function:create_order", "target": "Function:get_user_by_id", "type": "CALLS" },
-    { "source": "Function:check_db_health", "target": "Function:connect_database", "type": "CALLS" },
-    { "source": "Function:connect_database", "target": "Function:get_db_url", "type": "CALLS" },
-    { "source": "Function:test_get_user_by_id", "target": "Function:get_user_by_id", "type": "CALLS" },
-    { "source": "Class:UserController", "target": "Function:UserController.get", "type": "MEMBER_OF" },
-    { "source": "Function:get_user_by_id", "target": "Module:settings", "type": "IMPORTS" },
-    { "source": "Class:AuthService", "target": "Function:authenticate_user", "type": "MEMBER_OF" }
+    { "source": "Function:get_user_by_id", "target": "Function:connect_database", "type": "calls" },
+    { "source": "Function:get_user_by_id", "target": "Function:validate_user", "type": "calls" },
+    { "source": "Function:update_user", "target": "Function:get_user_by_id", "type": "calls" },
+    { "source": "Function:UserController.get", "target": "Function:get_user_by_id", "type": "calls" },
+    { "source": "Function:create_order", "target": "Function:connect_database", "type": "calls" },
+    { "source": "Function:create_order", "target": "Function:get_user_by_id", "type": "calls" },
+    { "source": "Function:check_db_health", "target": "Function:connect_database", "type": "calls" },
+    { "source": "Function:connect_database", "target": "Function:get_db_url", "type": "calls" },
+    { "source": "Function:test_get_user_by_id", "target": "Function:get_user_by_id", "type": "calls" },
+    { "source": "Class:UserController", "target": "Function:UserController.get", "type": "contains" },
+    { "source": "Function:get_user_by_id", "target": "Module:settings", "type": "imports" },
+    { "source": "Class:AuthService", "target": "Function:authenticate_user", "type": "contains" }
   ],
   "communities": [
     { "id": 1, "name": "Core Database Layer", "members": ["Function:connect_database", "Function:get_db_url"], "size": 2 },

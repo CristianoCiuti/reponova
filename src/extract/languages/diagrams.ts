@@ -6,7 +6,7 @@
  * - .svg: Extract text elements from SVG XML
  * - .png/.jpg/.gif: Register as metadata node only (path, size)
  *
- * These produce "document"-type nodes in the graph with file_type "diagram".
+ * These produce "diagram"-type file nodes in the graph (fileNode.kind === "diagram").
  * They enable agents to discover visual documentation that's otherwise invisible.
  */
 import type { LanguageExtractor, SyntaxTree, FileExtraction, SymbolNode, SymbolReference, FileNodeDeclaration } from "../types.js";

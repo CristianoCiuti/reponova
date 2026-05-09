@@ -27,8 +27,9 @@ export interface FileNodeDeclaration {
 /**
  * Valid kinds for file-level nodes.
  * Each maps 1:1 to the graph node `type` attribute.
+ * Convention: "module" | "document" | "diagram" | ... any extractor-defined value
  */
-export type FileNodeKind = "module" | "document" | "diagram";
+export type FileNodeKind = string;
 
 // ─── File Extraction (output of each language extractor) ─────────────────────
 
@@ -84,19 +85,12 @@ export interface SymbolNode {
   calls: string[];
 }
 
-export type SymbolKind =
-  | "function"
-  | "class"
-  | "method"
-  | "variable"
-  | "constant"
-  | "interface"
-  | "enum"
-  | "module"
-  | "document"
-  | "diagram"
-  | "section"
-  | "component";
+/**
+ * Convention: "function" | "class" | "method" | "variable" | "constant"
+ * | "interface" | "enum" | "module" | "document" | "diagram"
+ * | "section" | "component" | ... any extractor-defined value
+ */
+export type SymbolKind = string;
 
 /**
  * An import/export declaration.

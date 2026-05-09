@@ -15,7 +15,7 @@ export interface ShortestPathOptions {
  * Find the shortest path between two nodes using weighted Dijkstra.
  */
 export function findShortestPath(db: Database, fromName: string, toName: string, options: ShortestPathOptions = {}): PathResult {
-  const { max_depth = 10, edge_types = ["CALLS", "IMPORTS", "EXTENDS", "MEMBER_OF"], edge_weights = DEFAULT_EDGE_WEIGHTS } = options;
+  const { max_depth = 10, edge_types = ["calls", "imports", "imports_from", "extends", "contains"], edge_weights = DEFAULT_EDGE_WEIGHTS } = options;
 
   const fromId = resolveNodeId(db, fromName);
   const toId = resolveNodeId(db, toName);

@@ -9,7 +9,7 @@
  * The assembler mechanically creates nodes and edges from that declaration.
  *
  * Node types: function, class, method, module, document, diagram, section, component, constant
- * Edge types: calls, imports, imports_from, extends, contains, method
+ * Edge types: calls, imports, imports_from, extends, contains
  */
 import Graph from "graphology";
 import type { FileExtraction } from "./types.js";
@@ -127,9 +127,8 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
           // Parent is the file node → use "contains"
           addEdgeSafe(graph, moduleId, nodeId, "contains");
         } else {
-          // Parent is a class or other container → use "method" for methods, "contains" otherwise
-          const edgeType = symbol.kind === "method" ? "method" : "contains";
-          addEdgeSafe(graph, parentId, nodeId, edgeType);
+          // Parent is a class or other container — always "contains"
+          addEdgeSafe(graph, parentId, nodeId, "contains");
           // Also add file→symbol edge for discoverability
           addEdgeSafe(graph, moduleId, nodeId, "contains");
         }

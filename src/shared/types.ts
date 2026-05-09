@@ -352,10 +352,11 @@ export interface ClassEntry {
 
 /** Edge type weights for Dijkstra */
 export const DEFAULT_EDGE_WEIGHTS: Record<string, number> = {
-  CALLS: 1.0,
-  IMPORTS: 0.5,
-  EXTENDS: 0.8,
-  MEMBER_OF: 0.3,
+  calls: 1.0,
+  imports: 0.5,
+  imports_from: 0.5,
+  extends: 0.8,
+  contains: 0.3,
 };
 
 /** Default config values */

@@ -196,7 +196,7 @@ function getEdgeColor(relation: string): string {
     case "calls": return "#ff6b6b";
     case "imports": case "imports_from": return "#4ecdc4";
     case "extends": case "inherits": return "#45b7d1";
-    case "contains": case "method": case "contains_section": return "#95a5a6";
+    case "contains": return "#95a5a6";
     default: return "#bdc3c7";
   }
 }
