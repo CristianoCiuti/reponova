@@ -7,20 +7,9 @@
  * - The WASM filename to look for in grammars/
  */
 import type { FileOutline } from "../../shared/types.js";
+import type { SyntaxNode } from "../../extract/types.js";
 
-/**
- * AST node interface (subset of web-tree-sitter SyntaxNode).
- * Language extractors receive this from the tree-sitter parser.
- */
-export interface SyntaxNode {
-  type: string;
-  text: string;
-  startPosition: { row: number; column: number };
-  endPosition: { row: number; column: number };
-  children: SyntaxNode[];
-  namedChildren: SyntaxNode[];
-  childForFieldName(name: string): SyntaxNode | null;
-}
+export type { SyntaxNode };
 
 export interface LanguageSupport {
   /** WASM grammar filename (e.g. "tree-sitter-python.wasm") */
