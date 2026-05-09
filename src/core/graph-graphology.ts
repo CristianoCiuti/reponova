@@ -15,7 +15,7 @@ import { loadGraphData } from "./graph-loader.js";
  */
 export function loadGraphAsGraphology(jsonPath: string): Graph {
   const data = loadGraphData(jsonPath);
-  const graph = new Graph({ type: "directed", multi: false, allowSelfLoops: false });
+  const graph = new Graph({ type: "directed", multi: true, allowSelfLoops: false });
 
   for (const node of data.nodes) {
     graph.addNode(node.id, {

@@ -41,7 +41,7 @@ export interface BuiltGraph {
  */
 export function buildGraph(options: BuildGraphOptions): BuiltGraph {
   const { extractions, repoName, repoNames } = options;
-  const graph = new Graph({ type: "directed", multi: false, allowSelfLoops: false });
+  const graph = new Graph({ type: "directed", multi: true, allowSelfLoops: false });
 
   let crossFileEdges = 0;
   let unresolvedImports = 0;
@@ -350,27 +350,19 @@ function addEdgeSafe(graph: Graph, source: string, target: string, edgeType: str
   if (!graph.hasNode(source) || !graph.hasNode(target)) return;
   if (source === target) return;
 
-  // Check for existing edge
-  if (graph.hasEdge(source, target)) {
-    try {
-      const existingType = graph.getEdgeAttribute(graph.edge(source, target)!, "relation");
-      if (existingType === edgeType) return;
-    } catch {
-      // Edge exists but can't get attribute — skip duplicate
-      return;
-    }
-  }
+  // With multi:true, check if this exact (source, target, type) already exists
+  let duplicateFound = false;
+  graph.forEachEdge(source, (_edge, attrs, _src, tgt) => {
+    if (tgt === target && attrs.relation === edgeType) duplicateFound = true;
+  });
+  if (duplicateFound) return;
 
-  try {
-    graph.addEdge(source, target, {
-      relation: edgeType,
-      confidence: "EXTRACTED",
-      confidence_score: 1.0,
-      weight: 1,
-    });
-  } catch {
-    // Edge already exists (parallel edge in non-multi graph) — ignore
-  }
+  graph.addEdge(source, target, {
+    relation: edgeType,
+    confidence: "EXTRACTED",
+    confidence_score: 1.0,
+    weight: 1,
+  });
 }
 
 /**
