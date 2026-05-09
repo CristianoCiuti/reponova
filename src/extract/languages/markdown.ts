@@ -88,6 +88,8 @@ export class MarkdownExtractor implements LanguageExtractor {
 
   private extractSections(lines: string[], filePath: string, docName: string): SymbolNode[] {
     const sections: SymbolNode[] = [];
+    const moduleName = this.filePathToModuleName(filePath);
+    const sectionCounts = new Map<string, number>();
     let currentStart = -1;
     let currentName = "";
 
@@ -110,7 +112,10 @@ export class MarkdownExtractor implements LanguageExtractor {
         }
 
         const sectionName = this.sanitizeSectionName(heading);
-        const qualified = `${filePath}/${sectionName}`;
+        const count = (sectionCounts.get(sectionName) ?? 0) + 1;
+        sectionCounts.set(sectionName, count);
+        const uniqueSectionName = count === 1 ? sectionName : `${sectionName}_${count}`;
+        const qualified = `${moduleName}.${uniqueSectionName}`;
 
         sections.push({
           name: sectionName,
@@ -206,5 +211,10 @@ export class MarkdownExtractor implements LanguageExtractor {
       .replace(/\s+/g, "_")
       .replace(/[^a-zA-Z0-9_-]/g, "")
       .slice(0, 80);
+  }
+
+  private filePathToModuleName(filePath: string): string {
+    const normalized = filePath.replace(/\\/g, "/");
+    return normalized.replace(/\.[^.]+$/, "").replace(/\//g, ".");
   }
 }

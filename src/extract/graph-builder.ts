@@ -37,15 +37,6 @@ export interface BuiltGraph {
 }
 
 /**
- * Deterministic node ID generation.
- * Same formula: combine file path and symbol name, normalize to lowercase alphanumeric.
- */
-function makeNodeId(filePath: string, symbolName: string): string {
-  const combined = `${filePath}/${symbolName}`;
-  return combined.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_|_$/g, "").toLowerCase();
-}
-
-/**
  * Build a directed graph from file extractions.
  */
 export function buildGraph(options: BuildGraphOptions): BuiltGraph {
@@ -59,7 +50,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
 
   for (const extraction of extractions) {
     const filePath = extraction.filePath.replace(/\\/g, "/");
-    const moduleId = makeNodeId(filePath, "");
+    const moduleId = filePath;
     const fileNode = extraction.fileNode;
     const label = fileNode.label ?? filePath.split("/").pop() ?? filePath;
 
@@ -81,19 +72,15 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
 
   // ── 2. Create symbol nodes + containment edges ─────────────────────────
 
-  // Track: qualifiedName → nodeId for cross-referencing
-  const qualifiedToId = new Map<string, string>();
   // Track: simple name → nodeId[] for call resolution
   const simpleNameToIds = new Map<string, string[]>();
 
   for (const extraction of extractions) {
     const filePath = extraction.filePath.replace(/\\/g, "/");
-    const moduleId = makeNodeId(filePath, "");
+    const moduleId = filePath;
 
     for (const symbol of extraction.symbols) {
-      const nodeId = makeNodeId(filePath, symbol.name);
-
-      qualifiedToId.set(symbol.qualifiedName, nodeId);
+      const nodeId = symbol.qualifiedName;
 
       // Register simple name for call resolution
       const existing = simpleNameToIds.get(symbol.name);
@@ -122,8 +109,8 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
 
       // Determine containment edge
       if (symbol.parent) {
-        const parentId = makeNodeId(filePath, symbol.parent);
-        if (parentId === moduleId || !graph.hasNode(parentId)) {
+        const parentId = extraction.symbols.find((s) => s.name === symbol.parent)?.qualifiedName ?? null;
+        if (!parentId || parentId === moduleId || !graph.hasNode(parentId)) {
           // Parent is the file node → use "contains"
           addEdgeSafe(graph, moduleId, nodeId, "contains");
         } else {
@@ -151,18 +138,18 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
 
     if (!ri.targetFile) continue;
 
-    const sourceModuleId = makeNodeId(ri.sourceFile.replace(/\\/g, "/"), "");
+    const sourceModuleId = ri.sourceFile.replace(/\\/g, "/");
 
     for (const rn of ri.resolvedNames) {
       if (rn.targetSymbol) {
-        const targetId = qualifiedToId.get(rn.targetSymbol);
+        const targetId = rn.targetSymbol;
         if (targetId) {
           addEdgeSafe(graph, sourceModuleId, targetId, "imports_from");
           crossFileEdges++;
         }
       } else {
         // Import of the module itself
-        const targetModuleId = makeNodeId(ri.targetFile.replace(/\\/g, "/"), "");
+        const targetModuleId = ri.targetFile.replace(/\\/g, "/");
         if (graph.hasNode(targetModuleId)) {
           addEdgeSafe(graph, sourceModuleId, targetModuleId, "imports");
           crossFileEdges++;
@@ -172,7 +159,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
 
     // If no specific names resolved but we have a target file
     if (ri.resolvedNames.length === 0 && ri.targetFile) {
-      const targetModuleId = makeNodeId(ri.targetFile.replace(/\\/g, "/"), "");
+      const targetModuleId = ri.targetFile.replace(/\\/g, "/");
       if (graph.hasNode(targetModuleId)) {
         addEdgeSafe(graph, sourceModuleId, targetModuleId, "imports");
         crossFileEdges++;
@@ -196,7 +183,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
 
     for (const rn of ri.resolvedNames) {
       if (rn.targetSymbol) {
-        const targetId = qualifiedToId.get(rn.targetSymbol);
+        const targetId = rn.targetSymbol;
         if (targetId) {
           fileImports.set(rn.name, targetId);
         }
@@ -210,7 +197,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
 
     for (const symbol of extraction.symbols) {
       if (symbol.calls.length === 0) continue;
-      const callerId = makeNodeId(filePath, symbol.name);
+      const callerId = symbol.qualifiedName;
       if (!graph.hasNode(callerId)) continue;
 
       for (const callName of symbol.calls) {
@@ -219,12 +206,12 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
           filePath,
           extraction,
           fileImports,
-          qualifiedToId,
           simpleNameToIds,
+          graph,
         );
         if (targetId && targetId !== callerId) {
           addEdgeSafe(graph, callerId, targetId, "calls");
-          if (!isSameFile(callerId, targetId, filePath, extraction)) {
+          if (!isSameFile(graph, callerId, targetId)) {
             crossFileEdges++;
           }
         }
@@ -240,7 +227,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
 
     for (const symbol of extraction.symbols) {
       if (!symbol.bases || symbol.bases.length === 0) continue;
-      const classId = makeNodeId(filePath, symbol.name);
+      const classId = symbol.qualifiedName;
 
       for (const base of symbol.bases) {
         // Try import-based resolution first
@@ -253,7 +240,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
             (s) => s.name === baseName && s.kind === "class",
           );
           if (sameFileSymbol) {
-            targetId = qualifiedToId.get(sameFileSymbol.qualifiedName);
+            targetId = sameFileSymbol.qualifiedName;
           }
         }
 
@@ -300,8 +287,8 @@ function resolveCall(
   _filePath: string,
   extraction: FileExtraction,
   fileImports: Map<string, string>,
-  qualifiedToId: Map<string, string>,
   simpleNameToIds: Map<string, string[]>,
+  graph: Graph,
 ): string | null {
   // Handle attribute calls: "self.method" → just "method"
   let simpleName = callName;
@@ -315,20 +302,21 @@ function resolveCall(
         (s) => s.name === simpleName && s.kind === "method",
       );
       if (sameFileSymbol) {
-        return qualifiedToId.get(sameFileSymbol.qualifiedName) ?? null;
+        return sameFileSymbol.qualifiedName;
       }
     }
 
     // "ClassName.method" or "module.function" → try import resolution
     const baseName = parts[0]!;
     const importedTarget = fileImports.get(baseName);
-    if (importedTarget) {
-      // The import resolved to a class/module, now find the method
-      const candidates = simpleNameToIds.get(simpleName);
-      if (candidates) {
-        // Prefer same repo/module
-        return candidates[0] ?? null;
-      }
+    if (importedTarget && graph.hasNode(importedTarget)) {
+      let methodId: string | null = null;
+      graph.forEachOutEdge(importedTarget, (_edge, attrs, _src, target) => {
+        if (attrs.relation === "contains" && graph.getNodeAttribute(target, "label") === simpleName) {
+          methodId = target;
+        }
+      });
+      if (methodId) return methodId;
     }
   }
 
@@ -341,7 +329,7 @@ function resolveCall(
     (s) => s.name === simpleName && (s.kind === "function" || s.kind === "class" || s.kind === "method"),
   );
   if (sameFileSymbol) {
-    return qualifiedToId.get(sameFileSymbol.qualifiedName) ?? null;
+    return sameFileSymbol.qualifiedName;
   }
 
   // 3. Global unique resolution (only if unambiguous)
@@ -353,15 +341,9 @@ function resolveCall(
   return null;
 }
 
-function isSameFile(
-  _callerId: string,
-  _targetId: string,
-  _filePath: string,
-  _extraction: FileExtraction,
-): boolean {
-  // Simple heuristic: IDs derived from same file will share a prefix
-  // This is approximate but sufficient for stats
-  return false;
+function isSameFile(graph: Graph, callerId: string, targetId: string): boolean {
+  if (!graph.hasNode(callerId) || !graph.hasNode(targetId)) return false;
+  return graph.getNodeAttribute(callerId, "source_file") === graph.getNodeAttribute(targetId, "source_file");
 }
 
 function addEdgeSafe(graph: Graph, source: string, target: string, edgeType: string): void {

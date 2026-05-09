@@ -40,6 +40,7 @@ export class DiagramExtractor implements LanguageExtractor {
     const symbols: SymbolNode[] = [];
     const references: SymbolReference[] = [];
     const lines = source.split("\n");
+    const moduleName = this.filePathToModuleName(filePath);
 
     const fileName = filePath.split("/").pop() ?? filePath;
 
@@ -68,7 +69,7 @@ export class DiagramExtractor implements LanguageExtractor {
 
         symbols.push({
           name,
-          qualifiedName: `${filePath}/${name}`,
+          qualifiedName: `${moduleName}.${name}`,
           kind: kind.includes("interface") ? "interface" : "component",
           decorators: [kind.replace("abstract ", "abstract_")],
           startLine: i + 1,
@@ -102,6 +103,8 @@ export class DiagramExtractor implements LanguageExtractor {
   private extractSvg(source: string, filePath: string): FileExtraction {
     const symbols: SymbolNode[] = [];
     const fileName = filePath.split("/").pop() ?? filePath;
+    const moduleName = this.filePathToModuleName(filePath);
+    const sectionCounts = new Map<string, number>();
 
     // File-level node declared via fileNode
     const fileNode: FileNodeDeclaration = {
@@ -128,10 +131,13 @@ export class DiagramExtractor implements LanguageExtractor {
       const text = uniqueTexts[i]!;
       const sectionName = text.replace(/[^a-zA-Z0-9_\s-]/g, "").replace(/\s+/g, "_").slice(0, 60);
       if (sectionName.length < 2) continue;
+      const count = (sectionCounts.get(sectionName) ?? 0) + 1;
+      sectionCounts.set(sectionName, count);
+      const uniqueSectionName = count === 1 ? sectionName : `${sectionName}_${count}`;
 
       symbols.push({
         name: sectionName,
-        qualifiedName: `${filePath}/${sectionName}`,
+        qualifiedName: `${moduleName}.${uniqueSectionName}`,
         kind: "section",
         decorators: ["svg_text"],
         docstring: text,
@@ -180,5 +186,10 @@ export class DiagramExtractor implements LanguageExtractor {
   private extractSvgTitle(source: string): string | undefined {
     const titleMatch = source.match(/<title>([^<]+)<\/title>/);
     return titleMatch?.[1]?.trim();
+  }
+
+  private filePathToModuleName(filePath: string): string {
+    const normalized = filePath.replace(/\\/g, "/");
+    return normalized.replace(/\.[^.]+$/, "").replace(/\//g, ".");
   }
 }
