@@ -48,15 +48,12 @@ export function resolveImports(extractions: FileExtraction[]): ResolvedImport[] 
     }
   }
 
-  // Build symbol lookup: qualified name → file path
-  const symbolToFile = new Map<string, string>();
-  // Also: simple name within file → qualified name
+  // Build symbol lookup: simple name within file → qualified name
   const fileSymbols = new Map<string, Map<string, string>>(); // filePath → (simpleName → qualifiedName)
 
   for (const ext of extractions) {
     const nameMap = new Map<string, string>();
     for (const sym of ext.symbols) {
-      symbolToFile.set(sym.qualifiedName, ext.filePath);
       nameMap.set(sym.name, sym.qualifiedName);
     }
     fileSymbols.set(ext.filePath, nameMap);
@@ -97,23 +94,28 @@ function resolveOneImport(
   let targetFile: string | null = null;
   for (const candidate of candidates) {
     const normalized = candidate.replace(/\\/g, "/");
-    if (byPath.has(normalized)) {
-      targetFile = normalized;
-      break;
-    }
-    // Try with each known file path prefix (for multi-repo scenarios)
-    for (const knownPath of byPath.keys()) {
-      if (knownPath.endsWith(normalized) || knownPath.endsWith("/" + normalized)) {
-        targetFile = knownPath;
-        break;
-      }
-    }
+    targetFile = findInByPath(normalized, byPath);
     if (targetFile) break;
   }
 
   // Resolve imported names to symbols
   const resolvedNames: ResolvedName[] = [];
-  if (targetFile && declaration.names.length > 0) {
+  if (declaration.isWildcard && targetFile) {
+    const targetExtraction = byPath.get(targetFile);
+    if (targetExtraction) {
+      const exportedNames = targetExtraction.exports
+        ?? targetExtraction.symbols.map((s) => s.name);
+      const targetSymbols = fileSymbols.get(targetFile);
+      if (targetSymbols) {
+        for (const name of exportedNames) {
+          const qualifiedName = targetSymbols.get(name) ?? null;
+          if (qualifiedName) {
+            resolvedNames.push({ name, targetSymbol: qualifiedName });
+          }
+        }
+      }
+    }
+  } else if (targetFile && declaration.names.length > 0) {
     const targetSymbols = fileSymbols.get(targetFile);
     if (targetSymbols) {
       for (const name of declaration.names) {
@@ -128,6 +130,25 @@ function resolveOneImport(
     resolvedNames.push({ name: declaration.module, targetSymbol: null });
   }
 
+  if (targetFile) {
+    for (const rn of resolvedNames) {
+      if (rn.targetSymbol !== null) continue;
+      const targetExtraction = byPath.get(targetFile);
+      if (!targetExtraction) continue;
+      const reExportedSymbol = chaseReExport(
+        rn.name,
+        targetExtraction,
+        byPath,
+        fileSymbols,
+        new Set([targetFile]),
+        2,
+      );
+      if (reExportedSymbol) {
+        rn.targetSymbol = reExportedSymbol;
+      }
+    }
+  }
+
   return {
     declaration,
     sourceFile,
@@ -135,4 +156,51 @@ function resolveOneImport(
     isExternal: targetFile === null,
     resolvedNames,
   };
+}
+
+function chaseReExport(
+  name: string,
+  fromExtraction: FileExtraction,
+  byPath: Map<string, FileExtraction>,
+  fileSymbols: Map<string, Map<string, string>>,
+  visited: Set<string>,
+  maxDepth: number,
+): string | null {
+  if (maxDepth <= 0) return null;
+  for (const imp of fromExtraction.imports) {
+    const matchesName = imp.names.includes(name)
+      || imp.names.some((n) => n.split(" as ")[0]?.trim() === name);
+    const matchesWildcard = imp.isWildcard;
+    if (!matchesName && !matchesWildcard) continue;
+    const extractor = getExtractorForFile(fromExtraction.filePath);
+    if (!extractor) continue;
+    const candidates = extractor.resolveImportPath(imp.module, fromExtraction.filePath);
+    for (const candidate of candidates) {
+      const normalized = candidate.replace(/\\/g, "/");
+      const resolvedTarget = findInByPath(normalized, byPath);
+      if (!resolvedTarget || visited.has(resolvedTarget)) continue;
+      visited.add(resolvedTarget);
+      const symbols = fileSymbols.get(resolvedTarget);
+      if (symbols) {
+        const qualifiedName = symbols.get(name);
+        if (qualifiedName) return qualifiedName;
+      }
+      const targetExtraction = byPath.get(resolvedTarget);
+      if (targetExtraction) {
+        const result = chaseReExport(name, targetExtraction, byPath, fileSymbols, visited, maxDepth - 1);
+        if (result) return result;
+      }
+    }
+  }
+  return null;
+}
+
+function findInByPath(normalized: string, byPath: Map<string, FileExtraction>): string | null {
+  if (byPath.has(normalized)) return normalized;
+  for (const knownPath of byPath.keys()) {
+    if (knownPath.endsWith(normalized) || knownPath.endsWith("/" + normalized)) {
+      return knownPath;
+    }
+  }
+  return null;
 }

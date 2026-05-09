@@ -71,7 +71,15 @@ export class PythonExtractor implements LanguageExtractor {
       }
     }
 
-    return { filePath, language: "python", fileNode, symbols, imports, references };
+    const isInit = filePath.endsWith("__init__.py") || filePath.endsWith("__init__");
+    if (isInit) {
+      for (const imp of imports) {
+        imp.isExport = true;
+      }
+    }
+
+    const exports = this.computeExports(tree, symbols);
+    return { filePath, language: "python", fileNode, symbols, imports, references, exports };
   }
 
   resolveImportPath(importModule: string, currentFilePath: string): string[] {
@@ -328,6 +336,33 @@ export class PythonExtractor implements LanguageExtractor {
       endLine: node.endPosition.row + 1,
       calls: [],
     });
+  }
+
+  private computeExports(tree: SyntaxTree, symbols: SymbolNode[]): string[] {
+    const allList = this.extractDunderAll(tree);
+    if (allList) return allList;
+    return symbols.filter((s) => !s.name.startsWith("_")).map((s) => s.name);
+  }
+
+  private extractDunderAll(tree: SyntaxTree): string[] | null {
+    for (const child of tree.rootNode.namedChildren) {
+      if (child.type !== "expression_statement") continue;
+      const expr = child.namedChildren[0];
+      if (!expr || expr.type !== "assignment") continue;
+      const left = expr.childForFieldName("left");
+      if (!left || left.text !== "__all__") continue;
+      const right = expr.childForFieldName("right");
+      if (!right || right.type !== "list") continue;
+      const names: string[] = [];
+      for (const element of right.namedChildren) {
+        if (element.type === "string") {
+          const text = element.text.replace(/^["']|["']$/g, "");
+          if (text) names.push(text);
+        }
+      }
+      return names.length > 0 ? names : null;
+    }
+    return null;
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────

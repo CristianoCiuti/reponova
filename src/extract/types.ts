@@ -55,6 +55,12 @@ export interface FileExtraction {
   imports: ImportDeclaration[];
   /** Detected calls/references to other symbols */
   references: SymbolReference[];
+  /**
+   * Explicitly exported symbol names, for languages with export semantics.
+   * If undefined, all symbols are considered exported.
+   * Python: derived from __all__ or public names (no _ prefix)
+   */
+  exports?: string[];
 }
 
 /**
