@@ -20,7 +20,7 @@ import { getOutlineSupportedExtensions } from "../../outline/languages/registry.
 import { hashFile } from "../../shared/hash.js";
 import { atomicWriteJson, atomicWriteText } from "../../shared/atomic-write.js";
 import { readJsonSafe } from "../../shared/fs.js";
-import { log } from "../../shared/utils.js";
+import { log, errorMessage } from "../../shared/utils.js";
 
 export const outlinesPhase: Phase = {
   id: "outlines",
@@ -30,86 +30,106 @@ export const outlinesPhase: Phase = {
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
+    log.info(`  [${this.id}] ${this.label}...`);
 
-    const { config, workspace, outputDir, force } = ctx;
-    const outlinesDir = join(outputDir, "outlines");
-    const cachePath = join(outputDir, ".cache", "outline-hashes.json");
+    try {
+      const { config, workspace, outputDir, force } = ctx;
+      const outlinesDir = join(outputDir, "outlines");
+      const cachePath = join(outputDir, ".cache", "outline-hashes.json");
 
-    if (!config.outlines.enabled) {
-      removeDirectory(outlinesDir);
-      removeFile(cachePath);
-      const finishedAt = new Date();
-      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: 0, skipped: true, skipReason: "disabled in config" };
-    }
-
-    // Read detected files and filter to outline-supported extensions
-    const detected = readDetectedFiles(outputDir);
-    const supportedExts = getOutlineSupportedExtensions();
-    const codeFiles = detected.code.filter((f) => supportedExts.has(extname(f).toLowerCase()));
-
-    if (codeFiles.length === 0) {
-      const finishedAt = new Date();
-      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: 0, skipped: true, skipReason: "no outline-supported files" };
-    }
-
-    const previousHashes = force ? new Map<string, string>() : loadOutlineHashes(outputDir);
-    const nextHashes = new Map<string, string>();
-
-    let count = 0;
-
-    for (const relPath of codeFiles) {
-      const absPath = join(workspace, relPath);
-      if (!existsSync(absPath)) continue;
-
-      const outPath = join(outlinesDir, relPath + ".outline.json");
-      const fileHash = hashFile(absPath);
-      nextHashes.set(relPath, fileHash);
-
-      if (!force && existsSync(outPath) && previousHashes.get(relPath) === fileHash) {
-        continue;
+      if (!config.outlines.enabled) {
+        removeDirectory(outlinesDir);
+        removeFile(cachePath);
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Skipped: disabled in config (${elapsed}s)`);
+        return { processed: 0, skipped: true, skipReason: "disabled in config" };
       }
 
-      try {
-        const source = readFileSync(absPath, "utf-8");
-        const outline = await generateOutline(relPath, source);
-        if (!outline) continue;
+      // Read detected files and filter to outline-supported extensions
+      const detected = readDetectedFiles(outputDir);
+      const supportedExts = getOutlineSupportedExtensions();
+      const codeFiles = detected.code.filter((f) => supportedExts.has(extname(f).toLowerCase()));
 
-        atomicWriteText(outPath, formatOutlineJson(outline));
-        count++;
-      } catch (error) {
-        log.warn(`Failed to process ${absPath}: ${error}`);
+      if (codeFiles.length === 0) {
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Skipped: no outline-supported files (${elapsed}s)`);
+        return { processed: 0, skipped: true, skipReason: "no outline-supported files" };
       }
-    }
 
-    // Clean stale outlines
-    let staleCount = 0;
-    for (const [relPath] of previousHashes) {
-      if (!nextHashes.has(relPath)) {
-        const stalePath = join(outlinesDir, relPath + ".outline.json");
+      const previousHashes = force ? new Map<string, string>() : loadOutlineHashes(outputDir);
+      const nextHashes = new Map<string, string>();
+
+      let count = 0;
+
+      for (const relPath of codeFiles) {
+        const absPath = join(workspace, relPath);
+        if (!existsSync(absPath)) continue;
+
+        const outPath = join(outlinesDir, relPath + ".outline.json");
+        const fileHash = hashFile(absPath);
+        nextHashes.set(relPath, fileHash);
+
+        if (!force && existsSync(outPath) && previousHashes.get(relPath) === fileHash) {
+          continue;
+        }
+
         try {
-          if (existsSync(stalePath)) {
-            unlinkSync(stalePath);
-            staleCount++;
-          }
-        } catch { /* ignore */ }
+          const source = readFileSync(absPath, "utf-8");
+          const outline = await generateOutline(relPath, source);
+          if (!outline) continue;
+
+          atomicWriteText(outPath, formatOutlineJson(outline));
+          count++;
+        } catch (error) {
+          log.warn(`Failed to process ${absPath}: ${error}`);
+        }
       }
-    }
 
-    if (staleCount > 0) log.info(`  Removed ${staleCount} stale outline(s)`);
-    removeEmptyDirs(outlinesDir);
-    saveOutlineHashes(outputDir, nextHashes);
+      // Clean stale outlines
+      let staleCount = 0;
+      for (const [relPath] of previousHashes) {
+        if (!nextHashes.has(relPath)) {
+          const stalePath = join(outlinesDir, relPath + ".outline.json");
+          try {
+            if (existsSync(stalePath)) {
+              unlinkSync(stalePath);
+              staleCount++;
+            }
+          } catch { /* ignore */ }
+        }
+      }
 
-    if (count === 0 && staleCount === 0) {
+      if (staleCount > 0) log.info(`  Removed ${staleCount} stale outline(s)`);
+      removeEmptyDirs(outlinesDir);
+      saveOutlineHashes(outputDir, nextHashes);
+
+      if (count === 0 && staleCount === 0) {
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Skipped: up to date (${elapsed}s)`);
+        return { processed: 0, skipped: true, skipReason: "up to date" };
+      }
+
+      const result: PhaseResult = { processed: count, skipped: false };
       const finishedAt = new Date();
-      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: 0, skipped: true, skipReason: "up to date" };
-    }
+      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+      ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
 
-    const finishedAt = new Date();
-    ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-    return { processed: count, skipped: false };
+      return result;
+    } catch (err) {
+      const finishedAt = new Date();
+      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+      const message = errorMessage(err);
+      ctx.manifest.record(this.id, { status: "failed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      log.warn(`  [${this.id}] Failed: ${message} (${elapsed}s)`);
+      return { processed: 0, skipped: true, skipReason: `error: ${message}` };
+    }
   },
 };
 

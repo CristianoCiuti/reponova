@@ -30,6 +30,15 @@ export class BuildManifest {
   }
 
   /**
+   * Read a phase's current manifest entry (if any).
+   * Returns undefined if the manifest file or the phase key does not exist.
+   */
+  readEntry(phaseId: string): PhaseManifestEntry | undefined {
+    const manifest = readJsonSafe<ManifestData>(this.manifestPath);
+    return manifest?.[phaseId];
+  }
+
+  /**
    * Record a phase's execution state.
    * Each phase writes only its own key — other entries are preserved.
    *

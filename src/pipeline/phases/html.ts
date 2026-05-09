@@ -12,6 +12,7 @@ import { loadGraphAsGraphology } from "../../graph/graphology.js";
 import { detectCommunities } from "../../graph/community.js";
 import { exportHtml, exportCommunityHtml, type CommunitySummaryInfo } from "../../graph/export-html.js";
 import { readJsonSafe } from "../../shared/fs.js";
+import { log, errorMessage } from "../../shared/utils.js";
 
 export const htmlPhase: Phase = {
   id: "html",
@@ -21,49 +22,68 @@ export const htmlPhase: Phase = {
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
-    const { config, outputDir, force } = ctx;
-    const htmlPath = join(outputDir, "graph.html");
-    const communityHtmlPath = join(outputDir, "graph_communities.html");
-    const graphJsonPath = join(outputDir, "graph.json");
-    const summariesPath = join(outputDir, "community_summaries.json");
-    const descriptionsPath = join(outputDir, "node_descriptions.json");
+    log.info(`  [${this.id}] ${this.label}...`);
 
-    if (!config.html) {
-      removeFile(htmlPath);
-      removeFile(communityHtmlPath);
+    try {
+      const { config, outputDir, force } = ctx;
+      const htmlPath = join(outputDir, "graph.html");
+      const communityHtmlPath = join(outputDir, "graph_communities.html");
+      const graphJsonPath = join(outputDir, "graph.json");
+      const summariesPath = join(outputDir, "community_summaries.json");
+      const descriptionsPath = join(outputDir, "node_descriptions.json");
+
+      if (!config.html) {
+        removeFile(htmlPath);
+        removeFile(communityHtmlPath);
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Skipped: disabled in config (${elapsed}s)`);
+        return { processed: 0, skipped: true, skipReason: "disabled in config" };
+      }
+
+      if (!shouldRun(graphJsonPath, summariesPath, descriptionsPath, htmlPath, communityHtmlPath, force)) {
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Skipped: up to date (${elapsed}s)`);
+        return { processed: 0, skipped: true, skipReason: "up to date" };
+      }
+
+      // Load graph from filesystem
+      const graph = loadGraphAsGraphology(graphJsonPath);
+      const communities = detectCommunities(graph);
+      const communitySummaries = loadCommunitySummaries(outputDir);
+
+      exportHtml({
+        graph,
+        communities,
+        outputPath: htmlPath,
+        minDegree: config.html_min_degree,
+      });
+
+      exportCommunityHtml({
+        graph,
+        communities,
+        outputPath: communityHtmlPath,
+        communitySummaries,
+      });
+
+      const result: PhaseResult = { processed: 2, skipped: false };
       const finishedAt = new Date();
-      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: 0, skipped: true, skipReason: "disabled in config" };
-    }
+      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+      ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
 
-    if (!shouldRun(graphJsonPath, summariesPath, descriptionsPath, htmlPath, communityHtmlPath, force)) {
+      return result;
+    } catch (err) {
       const finishedAt = new Date();
-      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: 0, skipped: true, skipReason: "up to date" };
+      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+      const message = errorMessage(err);
+      ctx.manifest.record(this.id, { status: "failed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      log.warn(`  [${this.id}] Failed: ${message} (${elapsed}s)`);
+      return { processed: 0, skipped: true, skipReason: `error: ${message}` };
     }
-
-    // Load graph from filesystem
-    const graph = loadGraphAsGraphology(graphJsonPath);
-    const communities = detectCommunities(graph);
-    const communitySummaries = loadCommunitySummaries(outputDir);
-
-    exportHtml({
-      graph,
-      communities,
-      outputPath: htmlPath,
-      minDegree: config.html_min_degree,
-    });
-
-    exportCommunityHtml({
-      graph,
-      communities,
-      outputPath: communityHtmlPath,
-      communitySummaries,
-    });
-
-    const finishedAt = new Date();
-    ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-    return { processed: 2, skipped: false };
   },
 };
 

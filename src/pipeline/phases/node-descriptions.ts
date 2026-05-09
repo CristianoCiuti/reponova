@@ -11,7 +11,7 @@ import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import type { GraphData, GraphNode } from "../../shared/types.js";
 import { atomicWriteJson, atomicWriteText } from "../../shared/atomic-write.js";
 import { readJsonSafe, readJsonOr } from "../../shared/fs.js";
-import { log } from "../../shared/utils.js";
+import { log, errorMessage } from "../../shared/utils.js";
 import { NodeDescriptionGenerator, type NodeDescription } from "../../intelligence/node-description-generator.js";
 import { LlmEnginePool } from "../../intelligence/llm-engine-pool.js";
 
@@ -24,109 +24,137 @@ export const nodeDescriptionsPhase: Phase = {
     const { config, outputDir, force } = ctx;
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
-    const ndConfig = config.node_descriptions;
-    const descriptionsPath = join(outputDir, "node_descriptions.json");
-    const cachePath = join(outputDir, ".cache", "node-description-fingerprints.json");
-    const configHashPath = join(outputDir, ".cache", "node-descriptions-config-hash.txt");
-
-    if (!ndConfig.enabled) {
-      removeFile(descriptionsPath);
-      removeFile(cachePath);
-      removeFile(configHashPath);
-      const finishedAt = new Date(); ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: 0, skipped: true, skipReason: "disabled in config" };
-    }
-
-    // Config invalidation
-    const currentConfigHash = hashConfigFields(ndConfig.model ?? null, ndConfig.context_size, ndConfig.threshold);
-    const configChanged = checkConfigChanged(configHashPath, currentConfigHash);
-    const effectiveForce = force || configChanged;
-
-    const graphJsonPath = join(outputDir, "graph.json");
-    const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
-    const edgeCounts = computeEdgeCounts(graphData);
-
-    if (edgeCounts.size === 0) {
-      const finishedAt = new Date(); ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: 0, skipped: true, skipReason: "graph has no edges" };
-    }
-
-    const targetNodes = selectTargetNodes(graphData.nodes, edgeCounts, ndConfig.threshold);
-    if (targetNodes.length === 0) {
-      atomicWriteJson(descriptionsPath, []);
-      atomicWriteJson(cachePath, {});
-      atomicWriteText(configHashPath, currentConfigHash);
-      const finishedAt = new Date(); ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: 0, skipped: true, skipReason: "no qualifying nodes" };
-    }
-
-    const previousFingerprints = effectiveForce ? {} : loadFingerprints(cachePath);
-    const previousDescriptions = effectiveForce ? new Map<string, string>() : loadDescriptions(descriptionsPath);
-
-    const kept = new Map<string, string>();
-    const regenNodes: GraphNode[] = [];
-    const nextFingerprints: Record<string, string> = {};
-
-    for (const node of targetNodes) {
-      const fingerprint = computeNodeFingerprint(node, edgeCounts.get(node.id) ?? 0);
-      nextFingerprints[node.id] = fingerprint;
-
-      const previousFingerprint = previousFingerprints[node.id];
-      const previousDescription = previousDescriptions.get(node.id);
-      if (previousFingerprint === fingerprint && previousDescription) {
-        kept.set(node.id, previousDescription);
-      } else {
-        regenNodes.push(node);
-      }
-    }
-
-    if (regenNodes.length === 0) {
-      const allDescriptions = targetNodes.map<NodeDescription>((n) => ({
-        id: n.id,
-        description: kept.get(n.id)!,
-      }));
-      const existing = loadExistingDescriptions(descriptionsPath);
-      if (!descriptionsEqual(existing, allDescriptions)) {
-        atomicWriteJson(descriptionsPath, allDescriptions);
-        atomicWriteJson(cachePath, nextFingerprints);
-      }
-      atomicWriteText(configHashPath, currentConfigHash);
-      const finishedAt = new Date(); ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: 0, skipped: true, skipReason: "up to date" };
-    }
-
-    // Acquire LLM if configured
-    const modelUri = ndConfig.model ?? null;
-    let llm = null;
-    const llmPool = modelUri ? new LlmEnginePool(config.models) : null;
+    log.info(`  [${this.id}] ${this.label}...`);
 
     try {
-      if (modelUri && llmPool) {
-        llm = await llmPool.acquire(modelUri, ndConfig.context_size);
-        if (!llm) {
-          log.info("  Node descriptions LLM not available — using algorithmic");
+      const ndConfig = config.node_descriptions;
+      const descriptionsPath = join(outputDir, "node_descriptions.json");
+      const cachePath = join(outputDir, ".cache", "node-description-fingerprints.json");
+      const configHashPath = join(outputDir, ".cache", "node-descriptions-config-hash.txt");
+
+      if (!ndConfig.enabled) {
+        removeFile(descriptionsPath);
+        removeFile(cachePath);
+        removeFile(configHashPath);
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Skipped: disabled in config (${elapsed}s)`);
+        return { processed: 0, skipped: true, skipReason: "disabled in config" };
+      }
+
+      // Config invalidation
+      const currentConfigHash = hashConfigFields(ndConfig.model ?? null, ndConfig.context_size, ndConfig.threshold);
+      const configChanged = checkConfigChanged(configHashPath, currentConfigHash);
+      const effectiveForce = force || configChanged;
+
+      const graphJsonPath = join(outputDir, "graph.json");
+      const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
+      const edgeCounts = computeEdgeCounts(graphData);
+
+      if (edgeCounts.size === 0) {
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Skipped: graph has no edges (${elapsed}s)`);
+        return { processed: 0, skipped: true, skipReason: "graph has no edges" };
+      }
+
+      const targetNodes = selectTargetNodes(graphData.nodes, edgeCounts, ndConfig.threshold);
+      if (targetNodes.length === 0) {
+        atomicWriteJson(descriptionsPath, []);
+        atomicWriteJson(cachePath, {});
+        atomicWriteText(configHashPath, currentConfigHash);
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Skipped: no qualifying nodes (${elapsed}s)`);
+        return { processed: 0, skipped: true, skipReason: "no qualifying nodes" };
+      }
+
+      const previousFingerprints = effectiveForce ? {} : loadFingerprints(cachePath);
+      const previousDescriptions = effectiveForce ? new Map<string, string>() : loadDescriptions(descriptionsPath);
+
+      const kept = new Map<string, string>();
+      const regenNodes: GraphNode[] = [];
+      const nextFingerprints: Record<string, string> = {};
+
+      for (const node of targetNodes) {
+        const fingerprint = computeNodeFingerprint(node, edgeCounts.get(node.id) ?? 0);
+        nextFingerprints[node.id] = fingerprint;
+
+        const previousFingerprint = previousFingerprints[node.id];
+        const previousDescription = previousDescriptions.get(node.id);
+        if (previousFingerprint === fingerprint && previousDescription) {
+          kept.set(node.id, previousDescription);
+        } else {
+          regenNodes.push(node);
         }
       }
 
-      const generator = new NodeDescriptionGenerator(ndConfig, llm);
-      const generated = await generator.generate(regenNodes, edgeCounts);
-      const generatedMap = new Map(generated.map((e) => [e.id, e.description]));
-
-      const allDescriptions = targetNodes
-        .map<NodeDescription>((n) => ({
+      if (regenNodes.length === 0) {
+        const allDescriptions = targetNodes.map<NodeDescription>((n) => ({
           id: n.id,
-          description: generatedMap.get(n.id) ?? kept.get(n.id) ?? "",
-        }))
-        .filter((e) => e.description.length > 0);
+          description: kept.get(n.id)!,
+        }));
+        const existing = loadExistingDescriptions(descriptionsPath);
+        if (!descriptionsEqual(existing, allDescriptions)) {
+          atomicWriteJson(descriptionsPath, allDescriptions);
+          atomicWriteJson(cachePath, nextFingerprints);
+        }
+        atomicWriteText(configHashPath, currentConfigHash);
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Skipped: up to date (${elapsed}s)`);
+        return { processed: 0, skipped: true, skipReason: "up to date" };
+      }
 
-      atomicWriteJson(descriptionsPath, allDescriptions);
-      atomicWriteJson(cachePath, nextFingerprints);
-      atomicWriteText(configHashPath, currentConfigHash);
+      // Acquire LLM if configured
+      const modelUri = ndConfig.model ?? null;
+      let llm = null;
+      const llmPool = modelUri ? new LlmEnginePool(config.models) : null;
 
-      const finishedAt = new Date(); ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: generated.length, skipped: false };
-    } finally {
-      if (llmPool) await llmPool.disposeAll();
+      try {
+        if (modelUri && llmPool) {
+          llm = await llmPool.acquire(modelUri, ndConfig.context_size);
+          if (!llm) {
+            log.info("  Node descriptions LLM not available — using algorithmic");
+          }
+        }
+
+        const generator = new NodeDescriptionGenerator(ndConfig, llm);
+        const generated = await generator.generate(regenNodes, edgeCounts);
+        const generatedMap = new Map(generated.map((e) => [e.id, e.description]));
+
+        const allDescriptions = targetNodes
+          .map<NodeDescription>((n) => ({
+            id: n.id,
+            description: generatedMap.get(n.id) ?? kept.get(n.id) ?? "",
+          }))
+          .filter((e) => e.description.length > 0);
+
+        atomicWriteJson(descriptionsPath, allDescriptions);
+        atomicWriteJson(cachePath, nextFingerprints);
+        atomicWriteText(configHashPath, currentConfigHash);
+
+        const result: PhaseResult = { processed: generated.length, skipped: false };
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
+
+        return result;
+      } finally {
+        if (llmPool) await llmPool.disposeAll();
+      }
+    } catch (err) {
+      const finishedAt = new Date();
+      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+      const message = errorMessage(err);
+      ctx.manifest.record(this.id, { status: "failed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      log.warn(`  [${this.id}] Failed: ${message} (${elapsed}s)`);
+      return { processed: 0, skipped: true, skipReason: `error: ${message}` };
     }
   },
 };

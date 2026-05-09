@@ -11,7 +11,7 @@ import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import type { GraphData, GraphNode } from "../../shared/types.js";
 import { atomicWriteJson, atomicWriteText } from "../../shared/atomic-write.js";
 import { readJsonOr } from "../../shared/fs.js";
-import { log } from "../../shared/utils.js";
+import { log, errorMessage } from "../../shared/utils.js";
 import {
   CommunitySummaryGenerator,
   type CommunityData,
@@ -28,96 +28,117 @@ export const communitySummariesPhase: Phase = {
     const { config, outputDir, force } = ctx;
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
-    const csConfig = config.community_summaries;
-    const summariesPath = join(outputDir, "community_summaries.json");
-    const cachePath = join(outputDir, ".cache", "community-summary-fingerprints.json");
-    const configHashPath = join(outputDir, ".cache", "community-summaries-config-hash.txt");
-
-    if (!csConfig.enabled) {
-      removeFile(summariesPath);
-      removeFile(cachePath);
-      removeFile(configHashPath);
-      const finishedAt = new Date();
-      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: 0, skipped: true, skipReason: "disabled in config" };
-    }
-
-    // Config invalidation
-    const currentConfigHash = hashConfigFields(csConfig.model ?? null, csConfig.context_size);
-    const configChanged = checkConfigChanged(configHashPath, currentConfigHash);
-    const effectiveForce = force || configChanged;
-
-    const graphJsonPath = join(outputDir, "graph.json");
-    const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
-    const communities = buildCommunityData(graphData, csConfig.max_number);
-
-    if (communities.length === 0) {
-      atomicWriteJson(summariesPath, []);
-      atomicWriteJson(cachePath, {});
-      atomicWriteText(configHashPath, currentConfigHash);
-      const finishedAt = new Date();
-      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: 0, skipped: true, skipReason: "no qualifying communities" };
-    }
-
-    const previousCache = effectiveForce ? {} : loadFingerprintCache(cachePath);
-    const keptSummaries: CommunitySummary[] = [];
-    const regenCommunities: CommunityData[] = [];
-
-    for (const community of communities) {
-      const fingerprint = computeCommunityFingerprint(community.nodes);
-      const cached = previousCache[fingerprint];
-      if (cached) {
-        keptSummaries.push({ ...cached, id: community.id });
-      } else {
-        regenCommunities.push(community);
-      }
-    }
-
-    if (regenCommunities.length === 0) {
-      const existing = loadExistingSummaries(summariesPath);
-      if (!arraysEqual(existing, keptSummaries)) {
-        const cache = buildFingerprintCache(communities, keptSummaries);
-        atomicWriteJson(summariesPath, keptSummaries);
-        atomicWriteJson(cachePath, cache);
-      }
-      atomicWriteText(configHashPath, currentConfigHash);
-      const finishedAt = new Date();
-      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: 0, skipped: true, skipReason: "up to date" };
-    }
-
-    // Acquire LLM if configured
-    const modelUri = csConfig.model ?? null;
-    let llm = null;
-    const llmPool = modelUri ? new LlmEnginePool(config.models) : null;
+    log.info(`  [${this.id}] ${this.label}...`);
 
     try {
-      if (modelUri && llmPool) {
-        llm = await llmPool.acquire(modelUri, csConfig.context_size);
-        if (!llm) {
-          log.info("  Community summaries LLM not available — using algorithmic");
+      const csConfig = config.community_summaries;
+      const summariesPath = join(outputDir, "community_summaries.json");
+      const cachePath = join(outputDir, ".cache", "community-summary-fingerprints.json");
+      const configHashPath = join(outputDir, ".cache", "community-summaries-config-hash.txt");
+
+      if (!csConfig.enabled) {
+        removeFile(summariesPath);
+        removeFile(cachePath);
+        removeFile(configHashPath);
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Skipped: disabled in config (${elapsed}s)`);
+        return { processed: 0, skipped: true, skipReason: "disabled in config" };
+      }
+
+      // Config invalidation
+      const currentConfigHash = hashConfigFields(csConfig.model ?? null, csConfig.context_size);
+      const configChanged = checkConfigChanged(configHashPath, currentConfigHash);
+      const effectiveForce = force || configChanged;
+
+      const graphJsonPath = join(outputDir, "graph.json");
+      const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
+      const communities = buildCommunityData(graphData, csConfig.max_number);
+
+      if (communities.length === 0) {
+        atomicWriteJson(summariesPath, []);
+        atomicWriteJson(cachePath, {});
+        atomicWriteText(configHashPath, currentConfigHash);
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Skipped: no qualifying communities (${elapsed}s)`);
+        return { processed: 0, skipped: true, skipReason: "no qualifying communities" };
+      }
+
+      const previousCache = effectiveForce ? {} : loadFingerprintCache(cachePath);
+      const keptSummaries: CommunitySummary[] = [];
+      const regenCommunities: CommunityData[] = [];
+
+      for (const community of communities) {
+        const fingerprint = computeCommunityFingerprint(community.nodes);
+        const cached = previousCache[fingerprint];
+        if (cached) {
+          keptSummaries.push({ ...cached, id: community.id });
+        } else {
+          regenCommunities.push(community);
         }
       }
 
-      const generator = new CommunitySummaryGenerator(csConfig, llm);
-      const generated = await generator.generate(regenCommunities);
-      const generatedById = new Map(generated.map((s) => [s.id, s]));
+      if (regenCommunities.length === 0) {
+        const existing = loadExistingSummaries(summariesPath);
+        if (!arraysEqual(existing, keptSummaries)) {
+          const cache = buildFingerprintCache(communities, keptSummaries);
+          atomicWriteJson(summariesPath, keptSummaries);
+          atomicWriteJson(cachePath, cache);
+        }
+        atomicWriteText(configHashPath, currentConfigHash);
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Skipped: up to date (${elapsed}s)`);
+        return { processed: 0, skipped: true, skipReason: "up to date" };
+      }
 
-      const allSummaries = communities
-        .map((c) => keptSummaries.find((s) => s.id === c.id) ?? generatedById.get(c.id))
-        .filter((s): s is CommunitySummary => s != null);
+      // Acquire LLM if configured
+      const modelUri = csConfig.model ?? null;
+      let llm = null;
+      const llmPool = modelUri ? new LlmEnginePool(config.models) : null;
 
-      const cache = buildFingerprintCache(communities, allSummaries);
-      atomicWriteJson(summariesPath, allSummaries);
-      atomicWriteJson(cachePath, cache);
-      atomicWriteText(configHashPath, currentConfigHash);
+      try {
+        if (modelUri && llmPool) {
+          llm = await llmPool.acquire(modelUri, csConfig.context_size);
+          if (!llm) {
+            log.info("  Community summaries LLM not available — using algorithmic");
+          }
+        }
 
+        const generator = new CommunitySummaryGenerator(csConfig, llm);
+        const generated = await generator.generate(regenCommunities);
+        const generatedById = new Map(generated.map((s) => [s.id, s]));
+
+        const allSummaries = communities
+          .map((c) => keptSummaries.find((s) => s.id === c.id) ?? generatedById.get(c.id))
+          .filter((s): s is CommunitySummary => s != null);
+
+        const cache = buildFingerprintCache(communities, allSummaries);
+        atomicWriteJson(summariesPath, allSummaries);
+        atomicWriteJson(cachePath, cache);
+        atomicWriteText(configHashPath, currentConfigHash);
+
+        const result: PhaseResult = { processed: generated.length, skipped: false };
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
+
+        return result;
+      } finally {
+        if (llmPool) await llmPool.disposeAll();
+      }
+    } catch (err) {
       const finishedAt = new Date();
-      ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: generated.length, skipped: false };
-    } finally {
-      if (llmPool) await llmPool.disposeAll();
+      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+      const message = errorMessage(err);
+      ctx.manifest.record(this.id, { status: "failed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      log.warn(`  [${this.id}] Failed: ${message} (${elapsed}s)`);
+      return { processed: 0, skipped: true, skipReason: `error: ${message}` };
     }
   },
 };

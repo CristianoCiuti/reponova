@@ -10,6 +10,7 @@ import { extname, join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import type { GraphData, GraphNode } from "../../shared/types.js";
 import { loadGraphData } from "../../graph/loader.js";
+import { log, errorMessage } from "../../shared/utils.js";
 
 interface RankedCommunity {
   id: string;
@@ -33,23 +34,41 @@ export const reportPhase: Phase = {
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
-    const { outputDir, force } = ctx;
-    const outputPath = join(outputDir, "report.md");
-    const graphJsonPath = join(outputDir, "graph.json");
-    const summariesPath = join(outputDir, "community_summaries.json");
-    const descriptionsPath = join(outputDir, "node_descriptions.json");
+    log.info(`  [${this.id}] ${this.label}...`);
 
-    if (!shouldRun(graphJsonPath, outputPath, summariesPath, descriptionsPath, force)) {
+    try {
+      const { outputDir, force } = ctx;
+      const outputPath = join(outputDir, "report.md");
+      const graphJsonPath = join(outputDir, "graph.json");
+      const summariesPath = join(outputDir, "community_summaries.json");
+      const descriptionsPath = join(outputDir, "node_descriptions.json");
+
+      if (!shouldRun(graphJsonPath, outputPath, summariesPath, descriptionsPath, force)) {
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Skipped: up to date (${elapsed}s)`);
+        return { processed: 0, skipped: true, skipReason: "up to date" };
+      }
+
+      const graphData = loadGraphData(graphJsonPath);
+      generateGraphReport({ graphData, outputDir, outputPath });
+
+      const result: PhaseResult = { processed: graphData.nodes.length, skipped: false };
       const finishedAt = new Date();
-      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: 0, skipped: true, skipReason: "up to date" };
-    }
+      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+      ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
 
-    const graphData = loadGraphData(graphJsonPath);
-    generateGraphReport({ graphData, outputDir, outputPath });
-    const finishedAt = new Date();
-    ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-    return { processed: graphData.nodes.length, skipped: false };
+      return result;
+    } catch (err) {
+      const finishedAt = new Date();
+      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+      const message = errorMessage(err);
+      ctx.manifest.record(this.id, { status: "failed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      log.warn(`  [${this.id}] Failed: ${message} (${elapsed}s)`);
+      return { processed: 0, skipped: true, skipReason: `error: ${message}` };
+    }
   },
 };
 

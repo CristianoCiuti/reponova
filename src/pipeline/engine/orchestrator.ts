@@ -114,22 +114,13 @@ async function executeLevel(
 }
 
 /**
- * Execute a single phase with error handling and logging.
+ * Execute a single phase.
+ *
+ * Phases own their own timing, logging, and error handling.
+ * The orchestrator only sequences and parallelizes.
  */
 async function executePhase(phase: Phase, ctx: PhaseContext): Promise<PhaseResult> {
-  log.info(`  [${phase.id}] ${phase.label}...`);
-  const start = Date.now();
-
-  const result = await phase.execute(ctx);
-  const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-
-  if (result.skipped) {
-    log.info(`  [${phase.id}] Skipped: ${result.skipReason ?? "up to date"} (${elapsed}s)`);
-  } else {
-    log.info(`  [${phase.id}] Done: ${result.processed} processed (${elapsed}s)`);
-  }
-
-  return result;
+  return phase.execute(ctx);
 }
 
 /**
@@ -148,14 +139,23 @@ function collectResults(
     if (outcome.status === "fulfilled") {
       results.set(phase.id, outcome.value);
     } else {
+      // Safety net: phase threw an uncaught error.
+      // If the phase already recorded "failed" (via its own try/catch), respect it.
+      // Only overwrite if the manifest still shows "running" (actual crash scenario).
       const message = errorMessage(outcome.reason);
+      const existing = ctx.manifest.readEntry(phase.id);
+      if (!existing || existing.status === "running") {
+        const finishedAt = new Date();
+        ctx.manifest.record(phase.id, {
+          status: "failed",
+          startedAt: existing?.startedAt ?? finishedAt.toISOString(),
+          finishedAt: finishedAt.toISOString(),
+          durationMs: existing
+            ? finishedAt.getTime() - new Date(existing.startedAt).getTime()
+            : 0,
+        });
+      }
       log.warn(`  [${phase.id}] Failed (non-blocking): ${message}`);
-      ctx.manifest.record(phase.id, {
-        status: "failed",
-        startedAt: new Date().toISOString(),
-        finishedAt: new Date().toISOString(),
-        durationMs: 0,
-      });
       results.set(phase.id, {
         processed: 0,
         skipped: true,

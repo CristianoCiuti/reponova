@@ -9,7 +9,7 @@ import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { loadGraphData } from "../../graph/loader.js";
 import { openDatabase, initializeSchema, populateDatabase, saveDatabase } from "../../query/db.js";
-import { log } from "../../shared/utils.js";
+import { log, errorMessage } from "../../shared/utils.js";
 
 export const searchIndexPhase: Phase = {
   id: "index",
@@ -19,29 +19,47 @@ export const searchIndexPhase: Phase = {
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
-    const { outputDir, force } = ctx;
-    const graphJsonPath = join(outputDir, "graph.json");
-    const dbPath = join(outputDir, "graph_search.db");
+    log.info(`  [${this.id}] ${this.label}...`);
 
-    if (!shouldRun(graphJsonPath, dbPath, force)) {
+    try {
+      const { outputDir, force } = ctx;
+      const graphJsonPath = join(outputDir, "graph.json");
+      const dbPath = join(outputDir, "graph_search.db");
+
+      if (!shouldRun(graphJsonPath, dbPath, force)) {
+        const finishedAt = new Date();
+        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        log.info(`  [${this.id}] Skipped: up to date (${elapsed}s)`);
+        return { processed: 0, skipped: true, skipReason: "up to date" };
+      }
+
+      log.info("Generating search index...");
+      const graphData = loadGraphData(graphJsonPath);
+
+      const db = await openDatabase(dbPath);
+      initializeSchema(db);
+      populateDatabase(db, graphData);
+      saveDatabase(db, dbPath);
+      db.close();
+
+      log.info(`  Search index: ${graphData.nodes.length} nodes, ${graphData.edges.length} edges`);
+
+      const result: PhaseResult = { processed: graphData.nodes.length, skipped: false };
       const finishedAt = new Date();
-      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      return { processed: 0, skipped: true, skipReason: "up to date" };
+      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+      ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
+
+      return result;
+    } catch (err) {
+      const finishedAt = new Date();
+      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+      const message = errorMessage(err);
+      ctx.manifest.record(this.id, { status: "failed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      log.warn(`  [${this.id}] Failed: ${message} (${elapsed}s)`);
+      return { processed: 0, skipped: true, skipReason: `error: ${message}` };
     }
-
-    log.info("Generating search index...");
-    const graphData = loadGraphData(graphJsonPath);
-
-    const db = await openDatabase(dbPath);
-    initializeSchema(db);
-    populateDatabase(db, graphData);
-    saveDatabase(db, dbPath);
-    db.close();
-
-    log.info(`  Search index: ${graphData.nodes.length} nodes, ${graphData.edges.length} edges`);
-    const finishedAt = new Date();
-    ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-    return { processed: graphData.nodes.length, skipped: false };
   },
 };
 

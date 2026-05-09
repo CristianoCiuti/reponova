@@ -10,7 +10,7 @@ import { detectFiles, detectDocFiles, detectDiagramFiles } from "../../extract/i
 import { buildSkipDirs } from "../../shared/path-resolver.js";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
 import { readJsonSafe } from "../../shared/fs.js";
-import { log } from "../../shared/utils.js";
+import { log, errorMessage } from "../../shared/utils.js";
 
 export interface DetectedFiles {
   workspace: string;
@@ -34,32 +34,44 @@ export const fileDetectionPhase: Phase = {
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
+    log.info(`  [${this.id}] ${this.label}...`);
 
-    const { config, workspace, outputDir } = ctx;
+    try {
+      const { config, workspace, outputDir } = ctx;
 
-    const skipDirs = buildSkipDirs(config.exclude_common);
-    skipDirs.add(basename(outputDir));
+      const skipDirs = buildSkipDirs(config.exclude_common);
+      skipDirs.add(basename(outputDir));
 
-    const repoNames = config.repos.length > 1
-      ? new Set(config.repos.map((r) => r.name))
-      : undefined;
+      const repoNames = config.repos.length > 1
+        ? new Set(config.repos.map((r) => r.name))
+        : undefined;
 
-    const code = detectFiles(workspace, config.patterns, config.exclude, skipDirs, repoNames);
-    const docs = detectDocFiles(workspace, config.docs, skipDirs, repoNames);
-    const diagrams = detectDiagramFiles(workspace, config.images, skipDirs, repoNames);
+      const code = detectFiles(workspace, config.patterns, config.exclude, skipDirs, repoNames);
+      const docs = detectDocFiles(workspace, config.docs, skipDirs, repoNames);
+      const diagrams = detectDiagramFiles(workspace, config.images, skipDirs, repoNames);
 
-    const detected: DetectedFiles = { workspace, code, docs, diagrams };
-    atomicWriteJson(join(outputDir, "detected-files.json"), detected);
+      const detected: DetectedFiles = { workspace, code, docs, diagrams };
+      atomicWriteJson(join(outputDir, "detected-files.json"), detected);
 
-    const extras: string[] = [];
-    if (docs.length > 0) extras.push(`${docs.length} docs`);
-    if (diagrams.length > 0) extras.push(`${diagrams.length} diagrams`);
-    log.info(`  ${code.length} source files${extras.length > 0 ? `, ${extras.join(", ")}` : ""}`);
+      const extras: string[] = [];
+      if (docs.length > 0) extras.push(`${docs.length} docs`);
+      if (diagrams.length > 0) extras.push(`${diagrams.length} diagrams`);
+      log.info(`  ${code.length} source files${extras.length > 0 ? `, ${extras.join(", ")}` : ""}`);
 
-    const result: PhaseResult = { processed: code.length + docs.length + diagrams.length, skipped: false };
-    const finishedAt = new Date();
-    ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      const result: PhaseResult = { processed: code.length + docs.length + diagrams.length, skipped: false };
+      const finishedAt = new Date();
+      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+      ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
 
-    return result;
+      return result;
+    } catch (err) {
+      const finishedAt = new Date();
+      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+      const message = errorMessage(err);
+      ctx.manifest.record(this.id, { status: "failed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      log.warn(`  [${this.id}] Failed: ${message} (${elapsed}s)`);
+      return { processed: 0, skipped: true, skipReason: `error: ${message}` };
+    }
   },
 };
