@@ -72,23 +72,12 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
 
   // ── 2. Create symbol nodes + containment edges ─────────────────────────
 
-  // Track: simple name → nodeId[] for call resolution
-  const simpleNameToIds = new Map<string, string[]>();
-
   for (const extraction of extractions) {
     const filePath = extraction.filePath.replace(/\\/g, "/");
     const moduleId = filePath;
 
     for (const symbol of extraction.symbols) {
       const nodeId = symbol.qualifiedName;
-
-      // Register simple name for call resolution
-      const existing = simpleNameToIds.get(symbol.name);
-      if (existing) {
-        existing.push(nodeId);
-      } else {
-        simpleNameToIds.set(symbol.name, [nodeId]);
-      }
 
       if (!graph.hasNode(nodeId)) {
         graph.addNode(nodeId, {
@@ -206,7 +195,6 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
           filePath,
           extraction,
           fileImports,
-          simpleNameToIds,
           graph,
         );
         if (targetId && targetId !== callerId) {
@@ -241,14 +229,6 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
           );
           if (sameFileSymbol) {
             targetId = sameFileSymbol.qualifiedName;
-          }
-        }
-
-        // Try global name resolution
-        if (!targetId) {
-          const candidates = simpleNameToIds.get(baseName);
-          if (candidates && candidates.length === 1) {
-            targetId = candidates[0];
           }
         }
 
@@ -287,7 +267,6 @@ function resolveCall(
   _filePath: string,
   extraction: FileExtraction,
   fileImports: Map<string, string>,
-  simpleNameToIds: Map<string, string[]>,
   graph: Graph,
 ): string | null {
   // Handle attribute calls: "self.method" → just "method"
@@ -330,12 +309,6 @@ function resolveCall(
   );
   if (sameFileSymbol) {
     return sameFileSymbol.qualifiedName;
-  }
-
-  // 3. Global unique resolution (only if unambiguous)
-  const candidates = simpleNameToIds.get(simpleName);
-  if (candidates && candidates.length === 1) {
-    return candidates[0] ?? null;
   }
 
   return null;
