@@ -21,6 +21,7 @@ import type {
   SymbolKind,
 } from "../types.js";
 import { dirname, join } from "node:path";
+import { posixBasename, toPosix } from "../../shared/paths.js";
 
 export class PythonExtractor implements LanguageExtractor {
   readonly languageId = "python";
@@ -33,7 +34,7 @@ export class PythonExtractor implements LanguageExtractor {
     const references: SymbolReference[] = [];
 
     const moduleName = this.filePathToModuleName(filePath);
-    const fileName = filePath.split("/").pop() ?? filePath;
+    const fileName = posixBasename(filePath);
 
     // Declare file-level node
     const fileNode: FileNodeDeclaration = {
@@ -444,7 +445,7 @@ export class PythonExtractor implements LanguageExtractor {
    * "motore_common/src/config/loader.py" → "motore_common.src.config.loader"
    */
   private filePathToModuleName(filePath: string): string {
-    const normalized = filePath.replace(/\\/g, "/");
+    const normalized = toPosix(filePath);
     let modulePath = normalized;
 
     // Remove .py extension
@@ -469,7 +470,7 @@ export class PythonExtractor implements LanguageExtractor {
    * "..config" from "pkg/sub/module.py" → ["pkg/config.py", "pkg/config/__init__.py"]
    */
   private resolveRelativeImport(importModule: string, currentFilePath: string): string[] {
-    const normalized = currentFilePath.replace(/\\/g, "/");
+    const normalized = toPosix(currentFilePath);
     let currentDir = dirname(normalized);
 
     // Count leading dots
@@ -486,12 +487,12 @@ export class PythonExtractor implements LanguageExtractor {
     const remainder = importModule.slice(dots);
     if (!remainder) {
       return [
-        join(currentDir, "__init__.py").replace(/\\/g, "/"),
+        toPosix(join(currentDir, "__init__.py")),
       ];
     }
 
     const parts = remainder.split(".");
-    const basePath = join(currentDir, ...parts).replace(/\\/g, "/");
+    const basePath = toPosix(join(currentDir, ...parts));
 
     return [
       `${basePath}.py`,

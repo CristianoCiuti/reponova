@@ -14,6 +14,7 @@
  *   - Code blocks with imports → parsed for import references
  */
 import type { LanguageExtractor, SyntaxTree, FileExtraction, SymbolNode, ImportDeclaration, SymbolReference, FileNodeDeclaration } from "../types.js";
+import { posixBasename, toPosix } from "../../shared/paths.js";
 
 export class MarkdownExtractor implements LanguageExtractor {
   readonly languageId = "markdown";
@@ -27,7 +28,7 @@ export class MarkdownExtractor implements LanguageExtractor {
     const imports: ImportDeclaration[] = [];
     const references: SymbolReference[] = [];
 
-    const docName = filePath.split("/").pop() ?? filePath;
+    const docName = posixBasename(filePath);
 
     // Declare the file-level node via fileNode (NOT in symbols[])
     const fileNode: FileNodeDeclaration = {
@@ -214,7 +215,7 @@ export class MarkdownExtractor implements LanguageExtractor {
   }
 
   private filePathToModuleName(filePath: string): string {
-    const normalized = filePath.replace(/\\/g, "/");
+    const normalized = toPosix(filePath);
     return normalized.replace(/\.[^.]+$/, "").replace(/\//g, ".");
   }
 }

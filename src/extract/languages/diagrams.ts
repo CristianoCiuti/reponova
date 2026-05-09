@@ -10,6 +10,7 @@
  * They enable agents to discover visual documentation that's otherwise invisible.
  */
 import type { LanguageExtractor, SyntaxTree, FileExtraction, SymbolNode, SymbolReference, FileNodeDeclaration } from "../types.js";
+import { posixBasename, toPosix } from "../../shared/paths.js";
 
 export class DiagramExtractor implements LanguageExtractor {
   readonly languageId = "diagram";
@@ -42,7 +43,7 @@ export class DiagramExtractor implements LanguageExtractor {
     const lines = source.split("\n");
     const moduleName = this.filePathToModuleName(filePath);
 
-    const fileName = filePath.split("/").pop() ?? filePath;
+    const fileName = posixBasename(filePath);
 
     // File-level node declared via fileNode
     const fileNode: FileNodeDeclaration = {
@@ -102,7 +103,7 @@ export class DiagramExtractor implements LanguageExtractor {
 
   private extractSvg(source: string, filePath: string): FileExtraction {
     const symbols: SymbolNode[] = [];
-    const fileName = filePath.split("/").pop() ?? filePath;
+    const fileName = posixBasename(filePath);
     const moduleName = this.filePathToModuleName(filePath);
     const sectionCounts = new Map<string, number>();
 
@@ -154,7 +155,7 @@ export class DiagramExtractor implements LanguageExtractor {
   // ─── Binary Image Metadata ───────────────────────────────────────────────
 
   private extractImageMetadata(filePath: string): FileExtraction {
-    const fileName = filePath.split("/").pop() ?? filePath;
+    const fileName = posixBasename(filePath);
     const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
 
     const fileNode: FileNodeDeclaration = {
@@ -189,7 +190,7 @@ export class DiagramExtractor implements LanguageExtractor {
   }
 
   private filePathToModuleName(filePath: string): string {
-    const normalized = filePath.replace(/\\/g, "/");
+    const normalized = toPosix(filePath);
     return normalized.replace(/\.[^.]+$/, "").replace(/\//g, ".");
   }
 }
