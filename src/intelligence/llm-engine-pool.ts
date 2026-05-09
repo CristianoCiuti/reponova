@@ -1,14 +1,14 @@
 /**
- * LLM Engine Pool — deduplicates model instances across build steps.
+ * LLM Engine Pool — deduplicates model instances across build phases.
  *
  * When community_summaries and node_descriptions reference the same model,
  * the pool returns the same LlmEngine instance. Avoids loading ~350MB twice.
  *
  * Lifecycle:
- * 1. Orchestrator creates pool before intelligence steps
- * 2. Each step calls pool.acquire(uri, contextSize, modelsConfig)
+ * 1. Build entry point (build.ts) creates pool and injects it into PhaseContext
+ * 2. Each phase calls ctx.llmPool.acquire(uri, contextSize)
  * 3. Pool returns cached engine or creates a new one
- * 4. Orchestrator calls pool.disposeAll() after all steps complete
+ * 4. Build entry point calls pool.disposeAll() after all phases complete
  *
  * Context size promotion: if a second acquire() requests a larger context
  * than the cached engine, the pool re-creates with the larger size.
@@ -27,6 +27,7 @@ interface PoolEntry {
 export class LlmEnginePool {
   private entries: PoolEntry[] = [];
   private modelsConfig: ModelsConfig;
+  private inFlightAcquires = new Map<string, Promise<LlmEngine | null>>();
 
   constructor(modelsConfig: ModelsConfig) {
     this.modelsConfig = modelsConfig;
@@ -35,6 +36,9 @@ export class LlmEnginePool {
   /**
    * Acquire an LLM engine for the given model URI.
    * Returns a cached instance if an equivalent model is already loaded.
+   * Deduplicates concurrent callers: if another acquire() for the same URI
+   * is in-flight, the second caller awaits the same Promise instead of
+   * creating a duplicate engine.
    * Returns null if the engine fails to initialize.
    */
   async acquire(modelUri: string, contextSize: number): Promise<LlmEngine | null> {
@@ -60,19 +64,36 @@ export class LlmEnginePool {
       return entry.engine;
     }
 
-    // No cached engine — create new
-    const engine = this.createEngine(modelUri, contextSize);
-    const ready = await engine.initialize();
-    if (!ready) return null;
+    // Deduplicate concurrent acquires for the same model URI.
+    // Without this, two phases calling acquire() before either completes
+    // initialization would each create their own engine (double memory).
+    const inFlight = this.inFlightAcquires.get(modelUri);
+    if (inFlight) {
+      return inFlight;
+    }
 
-    this.entries.push({
-      engine,
-      modelUri,
-      contextSize,
-      resolvedKey: modelUri,
-    });
+    // No cached engine — create new with in-flight tracking
+    const promise = (async (): Promise<LlmEngine | null> => {
+      const engine = this.createEngine(modelUri, contextSize);
+      const ready = await engine.initialize();
+      if (!ready) return null;
 
-    return engine;
+      this.entries.push({
+        engine,
+        modelUri,
+        contextSize,
+        resolvedKey: modelUri,
+      });
+
+      return engine;
+    })();
+
+    this.inFlightAcquires.set(modelUri, promise);
+    try {
+      return await promise;
+    } finally {
+      this.inFlightAcquires.delete(modelUri);
+    }
   }
 
   /**

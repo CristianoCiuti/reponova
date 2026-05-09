@@ -13,7 +13,6 @@ import { atomicWriteJson, atomicWriteText } from "../../shared/atomic-write.js";
 import { readJsonSafe, readJsonOr } from "../../shared/fs.js";
 import { log, errorMessage } from "../../shared/utils.js";
 import { NodeDescriptionGenerator, type NodeDescription } from "../../intelligence/node-description-generator.js";
-import { LlmEnginePool } from "../../intelligence/llm-engine-pool.js";
 
 export const nodeDescriptionsPhase: Phase = {
   id: "node-descriptions",
@@ -113,41 +112,36 @@ export const nodeDescriptionsPhase: Phase = {
       // Acquire LLM if configured
       const modelUri = ndConfig.model ?? null;
       let llm = null;
-      const llmPool = modelUri ? new LlmEnginePool(config.models) : null;
 
-      try {
-        if (modelUri && llmPool) {
-          llm = await llmPool.acquire(modelUri, ndConfig.context_size);
-          if (!llm) {
-            log.info("  Node descriptions LLM not available — using algorithmic");
-          }
+      if (modelUri) {
+        llm = await ctx.llmPool.acquire(modelUri, ndConfig.context_size);
+        if (!llm) {
+          log.info("  Node descriptions LLM not available — using algorithmic");
         }
-
-        const generator = new NodeDescriptionGenerator(ndConfig, llm);
-        const generated = await generator.generate(regenNodes, edgeCounts);
-        const generatedMap = new Map(generated.map((e) => [e.id, e.description]));
-
-        const allDescriptions = targetNodes
-          .map<NodeDescription>((n) => ({
-            id: n.id,
-            description: generatedMap.get(n.id) ?? kept.get(n.id) ?? "",
-          }))
-          .filter((e) => e.description.length > 0);
-
-        atomicWriteJson(descriptionsPath, allDescriptions);
-        atomicWriteJson(cachePath, nextFingerprints);
-        atomicWriteText(configHashPath, currentConfigHash);
-
-        const result: PhaseResult = { processed: generated.length, skipped: false };
-        const finishedAt = new Date();
-        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-        ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-        log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
-
-        return result;
-      } finally {
-        if (llmPool) await llmPool.disposeAll();
       }
+
+      const generator = new NodeDescriptionGenerator(ndConfig, llm);
+      const generated = await generator.generate(regenNodes, edgeCounts);
+      const generatedMap = new Map(generated.map((e) => [e.id, e.description]));
+
+      const allDescriptions = targetNodes
+        .map<NodeDescription>((n) => ({
+          id: n.id,
+          description: generatedMap.get(n.id) ?? kept.get(n.id) ?? "",
+        }))
+        .filter((e) => e.description.length > 0);
+
+      atomicWriteJson(descriptionsPath, allDescriptions);
+      atomicWriteJson(cachePath, nextFingerprints);
+      atomicWriteText(configHashPath, currentConfigHash);
+
+      const result: PhaseResult = { processed: generated.length, skipped: false };
+      const finishedAt = new Date();
+      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+      ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
+
+      return result;
     } catch (err) {
       const finishedAt = new Date();
       const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);

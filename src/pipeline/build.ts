@@ -15,6 +15,7 @@ import { createDefaultRegistry } from "./engine/registry.js";
 import { orchestrate, type BuildResult, type OrchestratorOptions } from "./engine/orchestrator.js";
 import type { PhaseContext } from "./engine/phase.js";
 import { BuildManifest } from "./engine/manifest.js";
+import { LlmEnginePool } from "../intelligence/llm-engine-pool.js";
 
 export interface BuildOptions {
   force?: boolean;
@@ -66,6 +67,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
     log.info(`Build${config.incremental && !options.force ? " (incremental)" : ""} [${pathContext.mode}-repo mode]...`);
 
     // Create phase context
+    const llmPool = new LlmEnginePool(config.models);
     const ctx: PhaseContext = {
       config,
       configDir,
@@ -73,6 +75,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
       workspace,
       force: options.force ?? false,
       manifest: new BuildManifest(outputDir),
+      llmPool,
     };
 
     // Create registry with all phases
@@ -84,15 +87,19 @@ export async function runBuild(config: Config, configDir: string, options: Build
       force: options.force ?? false,
     };
 
-    const result = await orchestrate(registry, ctx, orchestratorOptions);
+    try {
+      const result = await orchestrate(registry, ctx, orchestratorOptions);
 
-    log.info("");
-    log.info("Build complete!");
-    log.info(`  Output: ${outputDir}`);
-    log.info(`  Phases: ${result.phases.size}`);
-    log.info(`  Total processed: ${result.totalProcessed}`);
+      log.info("");
+      log.info("Build complete!");
+      log.info(`  Output: ${outputDir}`);
+      log.info(`  Phases: ${result.phases.size}`);
+      log.info(`  Total processed: ${result.totalProcessed}`);
 
-    return result;
+      return result;
+    } finally {
+      await llmPool.disposeAll();
+    }
   } finally {
     try {
       rmSync(tmpDir, { recursive: true, force: true });

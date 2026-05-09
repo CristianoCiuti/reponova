@@ -17,7 +17,6 @@ import {
   type CommunityData,
   type CommunitySummary,
 } from "../../intelligence/community-summary-generator.js";
-import { LlmEnginePool } from "../../intelligence/llm-engine-pool.js";
 
 export const communitySummariesPhase: Phase = {
   id: "community-summaries",
@@ -99,39 +98,34 @@ export const communitySummariesPhase: Phase = {
       // Acquire LLM if configured
       const modelUri = csConfig.model ?? null;
       let llm = null;
-      const llmPool = modelUri ? new LlmEnginePool(config.models) : null;
 
-      try {
-        if (modelUri && llmPool) {
-          llm = await llmPool.acquire(modelUri, csConfig.context_size);
-          if (!llm) {
-            log.info("  Community summaries LLM not available — using algorithmic");
-          }
+      if (modelUri) {
+        llm = await ctx.llmPool.acquire(modelUri, csConfig.context_size);
+        if (!llm) {
+          log.info("  Community summaries LLM not available — using algorithmic");
         }
-
-        const generator = new CommunitySummaryGenerator(csConfig, llm);
-        const generated = await generator.generate(regenCommunities);
-        const generatedById = new Map(generated.map((s) => [s.id, s]));
-
-        const allSummaries = communities
-          .map((c) => keptSummaries.find((s) => s.id === c.id) ?? generatedById.get(c.id))
-          .filter((s): s is CommunitySummary => s != null);
-
-        const cache = buildFingerprintCache(communities, allSummaries);
-        atomicWriteJson(summariesPath, allSummaries);
-        atomicWriteJson(cachePath, cache);
-        atomicWriteText(configHashPath, currentConfigHash);
-
-        const result: PhaseResult = { processed: generated.length, skipped: false };
-        const finishedAt = new Date();
-        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-        ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-        log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
-
-        return result;
-      } finally {
-        if (llmPool) await llmPool.disposeAll();
       }
+
+      const generator = new CommunitySummaryGenerator(csConfig, llm);
+      const generated = await generator.generate(regenCommunities);
+      const generatedById = new Map(generated.map((s) => [s.id, s]));
+
+      const allSummaries = communities
+        .map((c) => keptSummaries.find((s) => s.id === c.id) ?? generatedById.get(c.id))
+        .filter((s): s is CommunitySummary => s != null);
+
+      const cache = buildFingerprintCache(communities, allSummaries);
+      atomicWriteJson(summariesPath, allSummaries);
+      atomicWriteJson(cachePath, cache);
+      atomicWriteText(configHashPath, currentConfigHash);
+
+      const result: PhaseResult = { processed: generated.length, skipped: false };
+      const finishedAt = new Date();
+      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
+      ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+      log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
+
+      return result;
     } catch (err) {
       const finishedAt = new Date();
       const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);

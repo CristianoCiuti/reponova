@@ -13,6 +13,7 @@ import {
 } from "../src/pipeline/engine/dag.js";
 import { orchestrate } from "../src/pipeline/engine/orchestrator.js";
 import { BuildManifest, type ManifestData } from "../src/pipeline/engine/manifest.js";
+import { LlmEnginePool } from "../src/intelligence/llm-engine-pool.js";
 
 let testDir: string;
 
@@ -33,6 +34,7 @@ function createContext(): PhaseContext {
     workspace: "/tmp/ws",
     force: false,
     manifest: new BuildManifest(testDir),
+    llmPool: new LlmEnginePool({ cache_dir: "~/.cache/reponova/models", gpu: "cpu", threads: 0, download_on_first_use: false }),
   };
 }
 

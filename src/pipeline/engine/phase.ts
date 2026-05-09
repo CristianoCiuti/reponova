@@ -9,10 +9,12 @@
  */
 import type { Config } from "../../shared/types.js";
 import type { BuildManifest } from "./manifest.js";
+import type { LlmEnginePool } from "../../intelligence/llm-engine-pool.js";
 
 /**
  * Context provided by the orchestrator to every phase.
  * The phase reads config and filesystem — it never receives in-memory data from other phases.
+ * Shared infrastructure (e.g. LLM pool) is injected here to avoid duplicate resource allocation.
  */
 export interface PhaseContext {
   /** Complete config (each phase reads its own section) */
@@ -27,6 +29,9 @@ export interface PhaseContext {
   force: boolean;
   /** Shared build manifest — each phase records its own execution state */
   manifest: BuildManifest;
+  /** Shared LLM engine pool — phases acquire from here instead of creating their own.
+   *  The build entry point creates and disposes the pool; phases only call acquire(). */
+  llmPool: LlmEnginePool;
 }
 
 /**
