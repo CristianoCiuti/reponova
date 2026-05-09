@@ -24,6 +24,9 @@ export const graphPhase: Phase = {
   dependencies: ["file-detection"],
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const startedAt = new Date();
+    ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
+
     const { config, workspace, outputDir, force } = ctx;
     const graphNodesPath = join(outputDir, "graph-nodes.json");
 
@@ -40,6 +43,8 @@ export const graphPhase: Phase = {
         configDir: ctx.configDir,
         outputDir,
       });
+      const finishedAt = new Date();
+      ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       return { processed: 0, skipped: false };
     }
 
@@ -89,6 +94,10 @@ export const graphPhase: Phase = {
       outputDir,
     });
 
-    return { processed: extractions.length, skipped: false };
+    const result: PhaseResult = { processed: extractions.length, skipped: false };
+    const finishedAt = new Date();
+    ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+
+    return result;
   },
 };

@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { mkdirSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import type { Phase, PhaseContext, PhaseResult } from "../src/pipeline/engine/phase.js";
 import { PhaseRegistry } from "../src/pipeline/engine/registry.js";
 import {
@@ -9,14 +12,27 @@ import {
   validate,
 } from "../src/pipeline/engine/dag.js";
 import { orchestrate } from "../src/pipeline/engine/orchestrator.js";
+import { BuildManifest, type ManifestData } from "../src/pipeline/engine/manifest.js";
+
+let testDir: string;
+
+beforeEach(() => {
+  testDir = join(tmpdir(), `rn-test-manifest-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(testDir, { recursive: true });
+});
+
+afterEach(() => {
+  try { rmSync(testDir, { recursive: true, force: true }); } catch { /* ignore */ }
+});
 
 function createContext(): PhaseContext {
   return {
     config: {} as any,
     configDir: "/tmp",
-    outputDir: "/tmp/out",
+    outputDir: testDir,
     workspace: "/tmp/ws",
     force: false,
+    manifest: new BuildManifest(testDir),
   };
 }
 
@@ -220,7 +236,7 @@ describe("Orchestrator", () => {
     expect(executeA).toHaveBeenCalledOnce();
     expect(executeB).toHaveBeenCalledOnce();
     expect(executeC).toHaveBeenCalledOnce();
-    expect(result.outputDir).toBe("/tmp/out");
+    expect(result.outputDir).toBe(testDir);
     expect(result.phases).toBeInstanceOf(Map);
     expect(result.phases.get("a")).toEqual({ processed: 1, skipped: false });
     expect(result.phases.get("b")).toEqual({ processed: 2, skipped: false });
@@ -339,5 +355,135 @@ describe("Orchestrator", () => {
 
     expect(starts).toEqual(["a", "b", "c"]);
     expect(result.totalProcessed).toBe(3);
+  });
+});
+
+describe("BuildManifest", () => {
+  it("records a phase entry and persists it to disk", () => {
+    const manifest = new BuildManifest(testDir);
+    manifest.record("test-phase", {
+      status: "completed",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      finishedAt: "2026-01-01T00:00:01.000Z",
+      durationMs: 1000,
+    });
+
+    const raw = JSON.parse(readFileSync(join(testDir, "build-manifest.json"), "utf-8")) as ManifestData;
+    expect(raw["test-phase"]).toEqual({
+      status: "completed",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      finishedAt: "2026-01-01T00:00:01.000Z",
+      durationMs: 1000,
+    });
+  });
+
+  it("preserves other phases when recording a new one", () => {
+    const manifest = new BuildManifest(testDir);
+    manifest.record("phase-a", {
+      status: "completed",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      finishedAt: "2026-01-01T00:00:01.000Z",
+      durationMs: 1000,
+    });
+    manifest.record("phase-b", {
+      status: "skipped",
+      startedAt: "2026-01-01T00:00:01.000Z",
+      finishedAt: "2026-01-01T00:00:01.010Z",
+      durationMs: 10,
+    });
+
+    const raw = JSON.parse(readFileSync(join(testDir, "build-manifest.json"), "utf-8")) as ManifestData;
+    expect(Object.keys(raw)).toEqual(["phase-a", "phase-b"]);
+    expect(raw["phase-a"]!.status).toBe("completed");
+    expect(raw["phase-b"]!.status).toBe("skipped");
+  });
+
+  it("overwrites the same phase entry on re-record", () => {
+    const manifest = new BuildManifest(testDir);
+    manifest.record("phase-x", {
+      status: "running",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      finishedAt: null,
+      durationMs: null,
+    });
+    manifest.record("phase-x", {
+      status: "completed",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      finishedAt: "2026-01-01T00:00:02.000Z",
+      durationMs: 2000,
+    });
+
+    const raw = JSON.parse(readFileSync(join(testDir, "build-manifest.json"), "utf-8")) as ManifestData;
+    expect(raw["phase-x"]!.status).toBe("completed");
+    expect(raw["phase-x"]!.durationMs).toBe(2000);
+  });
+
+  it("works when manifest file does not exist yet", () => {
+    const subDir = join(testDir, "sub");
+    mkdirSync(subDir, { recursive: true });
+    const manifest = new BuildManifest(subDir);
+
+    expect(existsSync(join(subDir, "build-manifest.json"))).toBe(false);
+
+    manifest.record("first", {
+      status: "completed",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      finishedAt: "2026-01-01T00:00:00.500Z",
+      durationMs: 500,
+    });
+
+    expect(existsSync(join(subDir, "build-manifest.json"))).toBe(true);
+    const raw = JSON.parse(readFileSync(join(subDir, "build-manifest.json"), "utf-8")) as ManifestData;
+    expect(raw["first"]!.status).toBe("completed");
+  });
+});
+
+describe("Orchestrator + Manifest integration", () => {
+  it("failed phases are recorded as failed in the manifest", async () => {
+    const { phase: ok } = createPhase({
+      id: "ok",
+      implementation: async (ctx: PhaseContext) => {
+        const startedAt = new Date();
+        ctx.manifest.record("ok", { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
+        const finishedAt = new Date();
+        ctx.manifest.record("ok", { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        return { processed: 1, skipped: false };
+      },
+    });
+    const { phase: failing } = createPhase({
+      id: "failing",
+      implementation: async (ctx: PhaseContext) => {
+        ctx.manifest.record("failing", { status: "running", startedAt: new Date().toISOString(), finishedAt: null, durationMs: null });
+        throw new Error("boom");
+      },
+    });
+
+    const ctx = createContext();
+    await orchestrate(createRegistry([ok, failing]), ctx, { force: false });
+
+    const raw = JSON.parse(readFileSync(join(testDir, "build-manifest.json"), "utf-8")) as ManifestData;
+    expect(raw["ok"]!.status).toBe("completed");
+    expect(raw["failing"]!.status).toBe("failed");
+  });
+
+  it("skipped phases are recorded as skipped in the manifest", async () => {
+    const { phase } = createPhase({
+      id: "cached",
+      implementation: async (ctx: PhaseContext) => {
+        const startedAt = new Date();
+        ctx.manifest.record("cached", { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
+        const finishedAt = new Date();
+        ctx.manifest.record("cached", { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+        return { processed: 0, skipped: true, skipReason: "cached" };
+      },
+    });
+
+    const ctx = createContext();
+    await orchestrate(createRegistry([phase]), ctx, { force: false });
+
+    const raw = JSON.parse(readFileSync(join(testDir, "build-manifest.json"), "utf-8")) as ManifestData;
+    expect(raw["cached"]!.status).toBe("skipped");
+    expect(raw["cached"]!.durationMs).toBeTypeOf("number");
+    expect(raw["cached"]!.finishedAt).toBeTypeOf("string");
   });
 });

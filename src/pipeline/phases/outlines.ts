@@ -28,6 +28,9 @@ export const outlinesPhase: Phase = {
   dependencies: ["file-detection"],
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const startedAt = new Date();
+    ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
+
     const { config, workspace, outputDir, force } = ctx;
     const outlinesDir = join(outputDir, "outlines");
     const cachePath = join(outputDir, ".cache", "outline-hashes.json");
@@ -35,6 +38,8 @@ export const outlinesPhase: Phase = {
     if (!config.outlines.enabled) {
       removeDirectory(outlinesDir);
       removeFile(cachePath);
+      const finishedAt = new Date();
+      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       return { processed: 0, skipped: true, skipReason: "disabled in config" };
     }
 
@@ -44,6 +49,8 @@ export const outlinesPhase: Phase = {
     const codeFiles = detected.code.filter((f) => supportedExts.has(extname(f).toLowerCase()));
 
     if (codeFiles.length === 0) {
+      const finishedAt = new Date();
+      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       return { processed: 0, skipped: true, skipReason: "no outline-supported files" };
     }
 
@@ -95,9 +102,13 @@ export const outlinesPhase: Phase = {
     saveOutlineHashes(outputDir, nextHashes);
 
     if (count === 0 && staleCount === 0) {
+      const finishedAt = new Date();
+      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       return { processed: 0, skipped: true, skipReason: "up to date" };
     }
 
+    const finishedAt = new Date();
+    ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
     return { processed: count, skipped: false };
   },
 };

@@ -8,6 +8,7 @@
  * - Communicates with other phases via filesystem only (no in-memory passing)
  */
 import type { Config } from "../../shared/types.js";
+import type { BuildManifest } from "./manifest.js";
 
 /**
  * Context provided by the orchestrator to every phase.
@@ -24,6 +25,8 @@ export interface PhaseContext {
   workspace: string;
   /** If true, the phase ignores cache and regenerates everything */
   force: boolean;
+  /** Shared build manifest — each phase records its own execution state */
+  manifest: BuildManifest;
 }
 
 /**

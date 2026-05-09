@@ -100,14 +100,14 @@ async function executeLevel(
       const batchResults = await Promise.allSettled(
         batch.map((phase) => executePhase(phase, ctx)),
       );
-      collectResults(batch, batchResults, results);
+      collectResults(batch, batchResults, results, ctx);
     }
   } else {
     // Execute all in parallel
     const settled = await Promise.allSettled(
       phases.map((phase) => executePhase(phase, ctx)),
     );
-    collectResults(phases, settled, results);
+    collectResults(phases, settled, results, ctx);
   }
 
   return results;
@@ -139,6 +139,7 @@ function collectResults(
   phases: Phase[],
   settled: PromiseSettledResult<PhaseResult>[],
   results: Map<string, PhaseResult>,
+  ctx: PhaseContext,
 ): void {
   for (let i = 0; i < phases.length; i++) {
     const phase = phases[i]!;
@@ -149,6 +150,12 @@ function collectResults(
     } else {
       const message = errorMessage(outcome.reason);
       log.warn(`  [${phase.id}] Failed (non-blocking): ${message}`);
+      ctx.manifest.record(phase.id, {
+        status: "failed",
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        durationMs: 0,
+      });
       results.set(phase.id, {
         processed: 0,
         skipped: true,

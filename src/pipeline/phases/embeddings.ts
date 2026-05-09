@@ -24,6 +24,8 @@ export const embeddingsPhase: Phase = {
   dependencies: ["community-summaries", "node-descriptions"],
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const startedAt = new Date();
+    ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
     const { config, outputDir, force } = ctx;
     const embConfig = config.embeddings;
     const vectorsPath = join(outputDir, "vectors");
@@ -36,6 +38,8 @@ export const embeddingsPhase: Phase = {
       removeFile(tfidfPath);
       removeFile(cachePath);
       removeFile(configHashPath);
+      const finishedAt = new Date();
+      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       return { processed: 0, skipped: true, skipReason: "disabled in config" };
     }
 
@@ -100,12 +104,16 @@ export const embeddingsPhase: Phase = {
       if (itemsNeedingEmbeddings.length === 0 && removedIds.size === 0 && staleVectorIds.size === 0) {
         atomicWriteJson(getNodeTextCachePath(outputDir), Object.fromEntries(currentTexts));
         atomicWriteText(configHashPath, currentConfigHash);
+        const finishedAt = new Date();
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
         return { processed: 0, skipped: true, skipReason: "up to date" };
       }
 
       if (itemsNeedingEmbeddings.length === 0) {
         if (embConfig.method === "tfidf" && staleVectorIds.size > 0 && items.length > 0) {
           const result = await generateTfidf(ctx, graphData, items, items, [], currentTexts, vectorStore);
+          const finishedAt = new Date();
+          ctx.manifest.record(this.id, { status: result.skipped ? "skipped" : "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
           atomicWriteText(configHashPath, currentConfigHash);
           return result;
         }
@@ -114,6 +122,8 @@ export const embeddingsPhase: Phase = {
         await vectorStore.upsert(cleanedRecords);
         atomicWriteJson(getNodeTextCachePath(outputDir), Object.fromEntries(currentTexts));
         atomicWriteText(configHashPath, currentConfigHash);
+        const finishedAt = new Date();
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
         return { processed: 0, skipped: true, skipReason: "stale cleanup only" };
       }
 
@@ -124,6 +134,8 @@ export const embeddingsPhase: Phase = {
         result = await generateOnnx(ctx, graphData, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
       }
 
+      const finishedAt = new Date();
+      ctx.manifest.record(this.id, { status: result.skipped ? "skipped" : "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       atomicWriteText(configHashPath, currentConfigHash);
       return result;
     } finally {

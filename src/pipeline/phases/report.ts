@@ -31,6 +31,8 @@ export const reportPhase: Phase = {
   dependencies: ["community-summaries", "node-descriptions"],
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const startedAt = new Date();
+    ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
     const { outputDir, force } = ctx;
     const outputPath = join(outputDir, "report.md");
     const graphJsonPath = join(outputDir, "graph.json");
@@ -38,11 +40,15 @@ export const reportPhase: Phase = {
     const descriptionsPath = join(outputDir, "node_descriptions.json");
 
     if (!shouldRun(graphJsonPath, outputPath, summariesPath, descriptionsPath, force)) {
+      const finishedAt = new Date();
+      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       return { processed: 0, skipped: true, skipReason: "up to date" };
     }
 
     const graphData = loadGraphData(graphJsonPath);
     generateGraphReport({ graphData, outputDir, outputPath });
+    const finishedAt = new Date();
+    ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
     return { processed: graphData.nodes.length, skipped: false };
   },
 };

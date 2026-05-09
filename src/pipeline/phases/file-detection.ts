@@ -32,6 +32,9 @@ export const fileDetectionPhase: Phase = {
   dependencies: [],
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const startedAt = new Date();
+    ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
+
     const { config, workspace, outputDir } = ctx;
 
     const skipDirs = buildSkipDirs(config.exclude_common);
@@ -53,6 +56,10 @@ export const fileDetectionPhase: Phase = {
     if (diagrams.length > 0) extras.push(`${diagrams.length} diagrams`);
     log.info(`  ${code.length} source files${extras.length > 0 ? `, ${extras.join(", ")}` : ""}`);
 
-    return { processed: code.length + docs.length + diagrams.length, skipped: false };
+    const result: PhaseResult = { processed: code.length + docs.length + diagrams.length, skipped: false };
+    const finishedAt = new Date();
+    ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+
+    return result;
   },
 };

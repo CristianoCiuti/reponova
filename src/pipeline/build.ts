@@ -14,6 +14,7 @@ import { log } from "../shared/utils.js";
 import { createDefaultRegistry } from "./engine/registry.js";
 import { orchestrate, type BuildResult, type OrchestratorOptions } from "./engine/orchestrator.js";
 import type { PhaseContext } from "./engine/phase.js";
+import { BuildManifest } from "./engine/manifest.js";
 
 export interface BuildOptions {
   force?: boolean;
@@ -71,6 +72,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
       outputDir,
       workspace,
       force: options.force ?? false,
+      manifest: new BuildManifest(outputDir),
     };
 
     // Create registry with all phases

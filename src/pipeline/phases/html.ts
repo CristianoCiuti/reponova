@@ -19,6 +19,8 @@ export const htmlPhase: Phase = {
   dependencies: ["community-summaries", "node-descriptions"],
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const startedAt = new Date();
+    ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
     const { config, outputDir, force } = ctx;
     const htmlPath = join(outputDir, "graph.html");
     const communityHtmlPath = join(outputDir, "graph_communities.html");
@@ -29,10 +31,14 @@ export const htmlPhase: Phase = {
     if (!config.html) {
       removeFile(htmlPath);
       removeFile(communityHtmlPath);
+      const finishedAt = new Date();
+      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       return { processed: 0, skipped: true, skipReason: "disabled in config" };
     }
 
     if (!shouldRun(graphJsonPath, summariesPath, descriptionsPath, htmlPath, communityHtmlPath, force)) {
+      const finishedAt = new Date();
+      ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       return { processed: 0, skipped: true, skipReason: "up to date" };
     }
 
@@ -55,6 +61,8 @@ export const htmlPhase: Phase = {
       communitySummaries,
     });
 
+    const finishedAt = new Date();
+    ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
     return { processed: 2, skipped: false };
   },
 };

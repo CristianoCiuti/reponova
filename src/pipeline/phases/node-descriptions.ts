@@ -22,6 +22,8 @@ export const nodeDescriptionsPhase: Phase = {
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const { config, outputDir, force } = ctx;
+    const startedAt = new Date();
+    ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
     const ndConfig = config.node_descriptions;
     const descriptionsPath = join(outputDir, "node_descriptions.json");
     const cachePath = join(outputDir, ".cache", "node-description-fingerprints.json");
@@ -31,6 +33,7 @@ export const nodeDescriptionsPhase: Phase = {
       removeFile(descriptionsPath);
       removeFile(cachePath);
       removeFile(configHashPath);
+      const finishedAt = new Date(); ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       return { processed: 0, skipped: true, skipReason: "disabled in config" };
     }
 
@@ -44,6 +47,7 @@ export const nodeDescriptionsPhase: Phase = {
     const edgeCounts = computeEdgeCounts(graphData);
 
     if (edgeCounts.size === 0) {
+      const finishedAt = new Date(); ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       return { processed: 0, skipped: true, skipReason: "graph has no edges" };
     }
 
@@ -52,6 +56,7 @@ export const nodeDescriptionsPhase: Phase = {
       atomicWriteJson(descriptionsPath, []);
       atomicWriteJson(cachePath, {});
       atomicWriteText(configHashPath, currentConfigHash);
+      const finishedAt = new Date(); ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       return { processed: 0, skipped: true, skipReason: "no qualifying nodes" };
     }
 
@@ -86,6 +91,7 @@ export const nodeDescriptionsPhase: Phase = {
         atomicWriteJson(cachePath, nextFingerprints);
       }
       atomicWriteText(configHashPath, currentConfigHash);
+      const finishedAt = new Date(); ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       return { processed: 0, skipped: true, skipReason: "up to date" };
     }
 
@@ -117,6 +123,7 @@ export const nodeDescriptionsPhase: Phase = {
       atomicWriteJson(cachePath, nextFingerprints);
       atomicWriteText(configHashPath, currentConfigHash);
 
+      const finishedAt = new Date(); ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       return { processed: generated.length, skipped: false };
     } finally {
       if (llmPool) await llmPool.disposeAll();

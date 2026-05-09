@@ -21,6 +21,9 @@ export const communitiesPhase: Phase = {
   dependencies: ["graph"],
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const startedAt = new Date();
+    ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
+
     const { config, outputDir, force } = ctx;
     const graphNodesPath = join(outputDir, "graph-nodes.json");
     const graphJsonPath = join(outputDir, "graph.json");
@@ -35,6 +38,8 @@ export const communitiesPhase: Phase = {
       const currentHash = hashFileContent(graphNodesPath);
       const previousHash = readFileSync(hashCachePath, "utf-8").trim();
       if (currentHash === previousHash) {
+        const finishedAt = new Date();
+        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
         return { processed: 0, skipped: true, skipReason: "graph unchanged" };
       }
     }
@@ -57,7 +62,11 @@ export const communitiesPhase: Phase = {
     const hash = hashFileContent(graphNodesPath);
     atomicWriteText(hashCachePath, `${hash}\n`);
 
-    return { processed: communities.count, skipped: false };
+    const result: PhaseResult = { processed: communities.count, skipped: false };
+    const finishedAt = new Date();
+    ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
+
+    return result;
   },
 };
 
