@@ -222,13 +222,25 @@ reponova install --target <editor> [--graph <path>]
 Build (or rebuild) the knowledge graph.
 
 ```bash
-reponova build [--config <path>] [--force]
+reponova build [--config <path>] [--force] [--target <phase>]
 ```
 
 | Option | Required | Description |
 |--------|----------|-------------|
 | `--config` | No | Path to `reponova.yml`. Default: auto-detected (see [Config Resolution](#config-resolution)) |
 | `--force` | No | Delete output directory and rebuild from scratch. Default: `false` |
+| `--target` | No | Run only this phase and its transitive dependencies. Useful for selective rebuilds without running the full pipeline. |
+
+**Target examples:**
+
+```bash
+reponova build --target index       # file-detection → graph → communities → index
+reponova build --target outlines    # file-detection → outlines
+reponova build --target html        # file-detection → graph → communities → community-summaries → node-descriptions → html
+reponova build --target embeddings  # file-detection → graph → communities → community-summaries → node-descriptions → embeddings
+```
+
+When `--target` is omitted, all 10 phases run in DAG order.
 
 **Build pipeline:**
 
@@ -246,32 +258,6 @@ reponova build [--config <path>] [--force]
 12. Generate `graph.html` and `graph_communities.html` interactive visualizations
 13. Generate SQLite search index (`graph_search.db`)
 14. Generate code outlines (SHA256 per-file hashing — skip unchanged) and `report.md`
-
-### `reponova index`
-
-Regenerate the SQLite search index (`graph_search.db`) from an existing `graph.json`. Useful when the index is corrupted or deleted without needing a full rebuild.
-
-```bash
-reponova index [--graph <path>]
-```
-
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--graph` | No | Path to `reponova-out/` directory. Default: auto-detected |
-
-### `reponova outline`
-
-Pre-compute tree-sitter code outlines for files matching `outlines.patterns`. Runs the same outline logic as `reponova build`, but standalone — useful to regenerate outlines without re-running extraction or graph construction.
-
-```bash
-reponova outline [--config <path>] [--graph <path>] [--force]
-```
-
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--config` | No | Path to `reponova.yml`. Default: auto-detected |
-| `--graph` | No | Path to `reponova-out/` directory. Default: resolved from config `output` field |
-| `--force` | No | Regenerate all outlines, ignoring SHA256 file hashes. Default: `false` |
 
 ### `reponova mcp`
 
