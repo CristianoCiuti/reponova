@@ -1,7 +1,7 @@
 /**
  * Node description generator.
  */
-import { log } from "../shared/utils.js";
+import { log, ProgressTimer } from "../shared/utils.js";
 import type { NodeDescriptionsConfig, GraphNode } from "../shared/types.js";
 import type { LlmEngine } from "./llm-engine.js";
 
@@ -49,7 +49,7 @@ export class NodeDescriptionGenerator {
     edgeCounts: Map<string, number>,
   ): Promise<NodeDescription[]> {
     const descriptions: NodeDescription[] = [];
-    const startTime = Date.now();
+    const timer = new ProgressTimer(nodes.length);
     const progressInterval = computeProgressInterval(nodes.length);
     let llmCount = 0;
     let fallbackCount = 0;
@@ -85,23 +85,20 @@ export class NodeDescriptionGenerator {
       }
 
       if ((i + 1) % progressInterval === 0) {
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        const avgMs = ((Date.now() - startTime) / (i + 1)).toFixed(0);
-        const remaining = (((Date.now() - startTime) / (i + 1)) * (nodes.length - i - 1) / 1000).toFixed(0);
+        const { elapsed, avgMs, remaining } = timer.tick(i);
         log.info(
           `  Node descriptions: ${i + 1}/${nodes.length} (${elapsed}s, ~${avgMs}ms/item, ~${remaining}s remaining, LLM=${llmCount} algo=${fallbackCount})`,
         );
       }
     }
 
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    log.info(`  ✓ ${descriptions.length} node descriptions generated in ${elapsed}s (LLM=${llmCount}, algorithmic=${fallbackCount})`);
+    log.info(`  ✓ ${descriptions.length} node descriptions generated in ${timer.elapsedSec()}s (LLM=${llmCount}, algorithmic=${fallbackCount})`);
     return descriptions;
   }
 
   private generateAlgorithmic(nodes: GraphNode[], edgeCounts: Map<string, number>): NodeDescription[] {
     const descriptions: NodeDescription[] = [];
-    const startTime = Date.now();
+    const timer = new ProgressTimer(nodes.length);
     const progressInterval = computeProgressInterval(nodes.length);
 
     for (let i = 0; i < nodes.length; i++) {
@@ -116,8 +113,7 @@ export class NodeDescriptionGenerator {
       }
     }
 
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    log.info(`  ✓ ${descriptions.length} node descriptions generated in ${elapsed}s (LLM=0, algorithmic=${descriptions.length})`);
+    log.info(`  ✓ ${descriptions.length} node descriptions generated in ${timer.elapsedSec()}s (LLM=0, algorithmic=${descriptions.length})`);
     return descriptions;
   }
 }

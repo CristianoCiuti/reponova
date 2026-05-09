@@ -3,7 +3,7 @@
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { log } from "../shared/utils.js";
+import { log, errorMessage } from "../shared/utils.js";
 import { resolveCacheDir } from "./cache-dir.js";
 
 export interface LlmEngineOptions {
@@ -115,7 +115,7 @@ export class LlmEngine {
       log.info("LLM engine initialized");
       return true;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       log.warn(`Failed to initialize LLM: ${msg}`);
       await this.dispose();
       return false;
@@ -141,7 +141,7 @@ export class LlmEngine {
       await session.dispose();
       return result;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       log.warn(`LLM generation failed: ${msg}`);
       return null;
     }

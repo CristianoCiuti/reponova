@@ -1,7 +1,8 @@
 /**
  * Community summary generator.
  */
-import { log } from "../shared/utils.js";
+import { toPosix } from "../shared/paths.js";
+import { log, ProgressTimer } from "../shared/utils.js";
 import type { CommunitySummariesConfig, GraphNode } from "../shared/types.js";
 import type { LlmEngine } from "./llm-engine.js";
 
@@ -37,7 +38,7 @@ export class CommunitySummaryGenerator {
     log.info(`Generating community summaries (${selected.length}/${communities.length} communities, max=${maxNumber}, mode=${mode})...`);
 
     const summaries: CommunitySummary[] = [];
-    const startTime = Date.now();
+    const timer = new ProgressTimer(selected.length);
     const progressInterval = computeProgressInterval(selected.length);
 
     for (let i = 0; i < selected.length; i++) {
@@ -45,14 +46,12 @@ export class CommunitySummaryGenerator {
       summaries.push(summary);
 
       if ((i + 1) % progressInterval === 0 || i === selected.length - 1) {
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        const avgMs = ((Date.now() - startTime) / (i + 1)).toFixed(0);
-        const remaining = (((Date.now() - startTime) / (i + 1)) * (selected.length - i - 1) / 1000).toFixed(0);
+        const { elapsed, avgMs, remaining } = timer.tick(i);
         log.info(`  Community summaries: ${i + 1}/${selected.length} (${elapsed}s elapsed, ~${avgMs}ms/item, ~${remaining}s remaining)`);
       }
     }
 
-    log.info(`  ✓ ${summaries.length} community summaries generated in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+    log.info(`  ✓ ${summaries.length} community summaries generated in ${timer.elapsedSec()}s`);
     return summaries;
   }
 
@@ -131,7 +130,7 @@ function findPrimaryPath(nodes: GraphNode[]): string {
   const paths = nodes.filter((n) => n.source_file).map((n) => n.source_file!);
   if (paths.length === 0) return "(unknown)";
 
-  const dirs = paths.map((p) => p.replace(/\\/g, "/").split("/").slice(0, -1).join("/"));
+  const dirs = paths.map((p) => toPosix(p).split("/").slice(0, -1).join("/"));
   const counts = new Map<string, number>();
   for (const dir of dirs) {
     counts.set(dir, (counts.get(dir) ?? 0) + 1);
@@ -146,7 +145,7 @@ function findPrimaryPath(nodes: GraphNode[]): string {
     }
   }
 
-  return maxDir || (paths[0] ?? "").replace(/\\/g, "/").split("/").slice(0, -1).join("/");
+  return maxDir || toPosix(paths[0] ?? "").split("/").slice(0, -1).join("/");
 }
 
 function countTypes(nodes: GraphNode[]): Record<string, number> {

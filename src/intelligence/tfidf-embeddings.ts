@@ -4,8 +4,8 @@
  * Produces fixed-size dense vectors (default 384-dim) compatible with
  * the same vector store and cosine similarity used by the ONNX embedder.
  */
-import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { readJsonSafe } from "../shared/fs.js";
 import { log } from "../shared/utils.js";
 import type { EmbeddingsConfig } from "../shared/types.js";
 import type { EmbeddingResult } from "./embeddings.js";
@@ -95,16 +95,11 @@ export class TfidfEmbeddingEngine {
 
   loadVocabulary(outputDir: string): boolean {
     const path = join(outputDir, "tfidf_idf.json");
-    if (!existsSync(path)) return false;
-
-    try {
-      const data = JSON.parse(readFileSync(path, "utf-8")) as Record<string, number>;
-      this.idf = new Map(Object.entries(data));
-      this.ready = true;
-      return true;
-    } catch {
-      return false;
-    }
+    const data = readJsonSafe<Record<string, number>>(path);
+    if (!data) return false;
+    this.idf = new Map(Object.entries(data));
+    this.ready = true;
+    return true;
   }
 }
 

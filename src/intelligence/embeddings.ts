@@ -7,7 +7,8 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { log } from "../shared/utils.js";
+import { posixBasename } from "../shared/paths.js";
+import { log, errorMessage, ProgressTimer } from "../shared/utils.js";
 import type { EmbeddingsConfig } from "../shared/types.js";
 import { resolveCacheDir } from "./cache-dir.js";
 
@@ -162,7 +163,7 @@ export class EmbeddingEngine {
       try {
         await this.downloadModel(modelDir);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errorMessage(err);
         log.warn(`Failed to download embedding model: ${msg}`);
         return false;
       }
@@ -180,7 +181,7 @@ export class EmbeddingEngine {
       log.info(`Embedding engine initialized (${this.config.model}, ${EMBEDDING_DIM}-dim)`);
       return true;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       log.warn(`Failed to load ONNX model: ${msg}`);
       return false;
     }
@@ -192,7 +193,7 @@ export class EmbeddingEngine {
     const results: EmbeddingResult[] = [];
     const batchSize = this.config.batch_size;
     const total = items.length;
-    const startTime = Date.now();
+    const timer = new ProgressTimer(total);
     const progressInterval = Math.max(batchSize * 10, Math.floor(total / 10));
 
     for (let i = 0; i < total; i += batchSize) {
@@ -202,9 +203,10 @@ export class EmbeddingEngine {
 
       const processed = Math.min(i + batchSize, total);
       if (processed >= total || (i > 0 && i % progressInterval < batchSize)) {
-        const elapsed = (Date.now() - startTime) / 1000;
-        const rate = processed / elapsed;
-        const remaining = Math.ceil((total - processed) / rate);
+        const { elapsed } = timer.tick(processed - 1);
+        const elapsedNum = parseFloat(elapsed);
+        const rate = elapsedNum > 0 ? processed / elapsedNum : 0;
+        const remaining = rate > 0 ? Math.ceil((total - processed) / rate) : 0;
         if (processed < total) {
           log.info(`  Embedded ${processed}/${total} nodes (${rate.toFixed(1)}/s, ~${formatEta(remaining)} remaining)`);
         }
@@ -287,7 +289,7 @@ export class EmbeddingEngine {
 
     for (const [key, relativePath] of Object.entries(MODEL_FILES)) {
       const url = `${baseUrl}/${relativePath}`;
-      const localPath = join(modelDir, key === "model" ? "model.onnx" : relativePath.split("/").pop()!);
+      const localPath = join(modelDir, key === "model" ? "model.onnx" : posixBasename(relativePath));
 
       if (existsSync(localPath)) continue;
 
