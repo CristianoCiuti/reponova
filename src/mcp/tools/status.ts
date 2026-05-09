@@ -1,9 +1,9 @@
-import type { Database } from "../../core/db.js";
+import type { Database } from "../../query/db.js";
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { getMeta } from "../../core/db.js";
+import { getMeta } from "../../query/db.js";
 import { formatNumber } from "../../shared/utils.js";
-import { loadBuildConfigFingerprint } from "../../core/build-config-metadata.js";
+import { loadBuildConfigFingerprint } from "../../pipeline/build-config-metadata.js";
 
 export function readBuildConfigStatusLines(graphJsonPath: string | null): string[] {
   if (!graphJsonPath || !existsSync(graphJsonPath)) {

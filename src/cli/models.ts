@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { EmbeddingEngine } from "../intelligence/embeddings.js";
 import { LlmEngine, resolveModelPath } from "../intelligence/llm-engine.js";
-import { loadConfig } from "../core/config.js";
+import { loadConfig } from "../shared/config.js";
 import type { Config, ModelsConfig } from "../shared/types.js";
 import { log } from "../shared/utils.js";
 

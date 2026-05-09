@@ -1,8 +1,9 @@
 /**
- * Incremental build engine.
+ * Extraction cache — incremental build persistence for FileExtraction objects.
  *
- * Uses SHA-256 content hashing per file to avoid re-extracting unchanged files.
- * Cached FileExtraction results are stored on disk and reused across builds.
+ * Stores cached FileExtraction results on disk and reuses them across builds.
+ * This is the extraction-specific cache; other pipeline phases implement
+ * their own caching (embeddings, communities, outlines, etc.).
  *
  * Storage layout:
  *   <output>/.cache/
@@ -13,7 +14,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import type { FileExtraction } from "./types.js";
+import type { FileExtraction } from "../extract/types.js";
 import { log } from "../shared/utils.js";
 
 export interface BuildCache {
@@ -34,33 +35,6 @@ export interface IncrementalResult {
   removedFiles: string[];
   /** Cached extractions loaded from disk */
   cachedExtractions: FileExtraction[];
-}
-
-/**
- * Compute SHA-256 hash of file contents.
- */
-export function hashFile(absPath: string): string {
-  const content = readFileSync(absPath);
-  return createHash("sha256").update(content).digest("hex");
-}
-
-/**
- * Compute hashes for all files in the list.
- * @param workspace - Workspace root directory
- * @param filePaths - Relative file paths
- * @returns Map of relPath → sha256
- */
-export function computeHashes(workspace: string, filePaths: string[]): Map<string, string> {
-  const hashes = new Map<string, string>();
-  for (const relPath of filePaths) {
-    const absPath = join(workspace, relPath);
-    try {
-      hashes.set(relPath, hashFile(absPath));
-    } catch {
-      // File might have been deleted between detection and hashing
-    }
-  }
-  return hashes;
 }
 
 /**

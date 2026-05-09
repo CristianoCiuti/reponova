@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { EmbeddingEngine, composeNodeText, type NodeEmbeddingInput } from "../src/intelligence/embeddings.js";
-import { VectorStore, type VectorRecord } from "../src/core/vector-store.js";
+import { VectorStore, type VectorRecord } from "../src/query/vector-store.js";
 
 // Force VectorStore into fast in-memory fallback (no native lancedb loading)
 vi.mock("@lancedb/lancedb", () => ({

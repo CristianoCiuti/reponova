@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { detectFiles, detectDocFiles, detectDiagramFiles } from "../src/extract/index.js";
 import { buildSkipDirs, COMMON_SKIP_DIRS } from "../src/shared/glob.js";
-import { diffFiles, type BuildCache } from "../src/extract/incremental.js";
+import { diffFiles, type BuildCache } from "../src/pipeline/cache.js";
 
 function normalizePaths(paths: string[]): string[] {
   return paths.map((path) => path.replace(/\\/g, "/")).sort();

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { loadConfig } from "../src/core/config.js";
+import { loadConfig } from "../src/shared/config.js";
 
 describe("loadConfig", () => {
   it("returns default config when no file exists", () => {

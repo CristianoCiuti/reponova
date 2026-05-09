@@ -1,7 +1,7 @@
 import type { Database } from "./db.js";
 import { queryAll, queryOne } from "./db.js";
 import type { ImpactResult, ImpactLayer, ImpactNode, GraphNode } from "../shared/types.js";
-import type { ResolvedPaths } from "./path-resolver.js";
+import type { ResolvedPaths } from "../shared/path-resolver.js";
 
 export interface ImpactOptions {
   direction?: "upstream" | "downstream" | "both";

@@ -1,6 +1,6 @@
-import type { Database } from "../../core/db.js";
-import { findShortestPath, formatPathMarkdown } from "../../core/shortest-path.js";
-import type { PathResolver } from "../../core/path-resolver.js";
+import type { Database } from "../../query/db.js";
+import { findShortestPath, formatPathMarkdown } from "../../query/shortest-path.js";
+import type { PathResolver } from "../../shared/path-resolver.js";
 
 export function handlePath(
   db: Database,

@@ -12,8 +12,8 @@
  * Edge types: calls, imports, imports_from, extends, contains
  */
 import Graph from "graphology";
-import type { FileExtraction } from "./types.js";
-import { resolveImports } from "./import-resolver.js";
+import type { FileExtraction } from "../extract/types.js";
+import { resolveImports } from "../extract/import-resolver.js";
 
 export interface BuildGraphOptions {
   /** All file extractions (can be from mixed languages) */

@@ -1,8 +1,8 @@
 import type { CommandModule } from "yargs";
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { resolveGraphPath, resolveSearchDb, resolveGraphJson } from "../core/graph-resolver.js";
-import { loadBuildConfigFingerprint, getMissingBuildConfigErrorMessage } from "../core/build-config-metadata.js";
+import { resolveGraphPath, resolveSearchDb, resolveGraphJson } from "../shared/graph-resolver.js";
+import { loadBuildConfigFingerprint, getMissingBuildConfigErrorMessage } from "../pipeline/build-config-metadata.js";
 
 export interface CheckItem {
   label: string;

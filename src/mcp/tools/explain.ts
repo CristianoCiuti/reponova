@@ -1,6 +1,6 @@
-import type { Database } from "../../core/db.js";
-import { getNodeDetail, getNodeSuggestions, formatNodeDetailMarkdown } from "../../core/node-detail.js";
-import type { PathResolver } from "../../core/path-resolver.js";
+import type { Database } from "../../query/db.js";
+import { getNodeDetail, getNodeSuggestions, formatNodeDetailMarkdown } from "../../query/node-detail.js";
+import type { PathResolver } from "../../shared/path-resolver.js";
 import { handleOutline } from "./outline.js";
 
 export async function handleExplain(

@@ -14,13 +14,13 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+import { computeHashes } from "../src/shared/hash.js";
 import {
-  computeHashes,
   diffFiles,
   loadBuildCache,
   saveBuildCache,
   cleanStaleCacheEntries,
-} from "../src/extract/incremental.js";
+} from "../src/pipeline/cache.js";
 import type { FileExtraction } from "../src/extract/types.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

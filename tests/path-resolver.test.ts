@@ -26,8 +26,8 @@ import {
   resolveOutlinePath,
   reconstructRepos,
   createPatternMatcher,
-} from "../src/core/path-resolver.js";
-import type { PathContext, RepoMapping } from "../src/core/path-resolver.js";
+} from "../src/shared/path-resolver.js";
+import type { PathContext, RepoMapping } from "../src/shared/path-resolver.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

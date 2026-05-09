@@ -4,9 +4,9 @@
  * Returns token-budgeted, relevance-ranked context for any query.
  * Combines text search, vector similarity, graph expansion, and community summaries.
  */
-import type { Database } from "../../core/db.js";
-import { ContextBuilder } from "../../core/context-builder.js";
-import type { PathResolver } from "../../core/path-resolver.js";
+import type { Database } from "../../query/db.js";
+import { ContextBuilder } from "../../query/context-builder.js";
+import type { PathResolver } from "../../shared/path-resolver.js";
 import type { EmbeddingsConfig } from "../../shared/types.js";
 
 let contextBuilder: ContextBuilder | null = null;

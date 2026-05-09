@@ -21,7 +21,7 @@ import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { readDetectedFiles } from "./file-detection.js";
 import { generateOutline, formatOutlineJson } from "../../outline/index.js";
 import { getOutlineSupportedExtensions } from "../../outline/languages/registry.js";
-import { hashFile } from "../../extract/incremental.js";
+import { hashFile } from "../../shared/hash.js";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
 import { log } from "../../shared/utils.js";
 

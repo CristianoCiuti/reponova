@@ -10,19 +10,16 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { resolve, join, relative } from "node:path";
 import type { FileExtraction } from "./types.js";
-import type { Config, DocsConfig, ImagesConfig } from "../shared/types.js";
+import type { DocsConfig, ImagesConfig } from "../shared/types.js";
 import { parse } from "./parser.js";
 import { getExtractorForFile, getSupportedExtensions } from "./languages/registry.js";
-import { buildGraph, type BuiltGraph } from "./graph-builder.js";
-import { detectCommunities, type CommunityResult } from "./community.js";
-import { exportJson } from "./export-json.js";
-import { buildSkipDirs, createPatternMatcher, extensionsToGlobs } from "../core/path-resolver.js";
+import { buildSkipDirs, createPatternMatcher, extensionsToGlobs } from "../shared/path-resolver.js";
 import { log } from "../shared/utils.js";
 
-export { buildGraph, type BuiltGraph } from "./graph-builder.js";
-export { detectCommunities, type CommunityResult } from "./community.js";
-export { exportJson } from "./export-json.js";
-export { exportHtml, exportCommunityHtml } from "./export-html.js";
+export { buildGraph, type BuiltGraph } from "../graph/builder.js";
+export { detectCommunities, type CommunityResult } from "../graph/community.js";
+export { exportJson } from "../graph/export-json.js";
+export { exportHtml, exportCommunityHtml } from "../graph/export-html.js";
 export type { FileExtraction } from "./types.js";
 
 // ─── File Detection ──────────────────────────────────────────────────────────
@@ -251,168 +248,3 @@ export async function extractAll(workspace: string, filePaths: string[]): Promis
   return extractions;
 }
 
-// ─── Full Pipeline ───────────────────────────────────────────────────────────
-
-export interface PipelineOptions {
-  /** Workspace root directory */
-  workspace: string;
-  /** Glob patterns for source code files (empty = auto-detect by extension) */
-  patterns?: string[];
-  /** Glob patterns to exclude from source code detection */
-  excludeGlobs?: string[];
-  /** Directory names to skip during filesystem walking */
-  skipDirs?: Set<string>;
-  /** Output path for graph.json */
-  graphJsonPath: string;
-  /** Repo name for tagging nodes (single-repo mode) */
-  repoName?: string;
-  /** Min degree for HTML filtering (passed through for orchestrator use) */
-  htmlMinDegree?: number;
-  /** Output directory (for incremental cache storage) */
-  outputDir?: string;
-  /** Whether to use incremental build (skip unchanged files) */
-  incremental?: boolean;
-  /** Docs configuration */
-  docsConfig?: DocsConfig;
-  /** Images/diagrams configuration */
-  imagesConfig?: ImagesConfig;
-  /** Full config (for build_config fingerprint in graph.json metadata) */
-  config?: Config;
-  /** Config directory (for metadata in graph.json) */
-  configDir?: string;
-  /** Repo names for multi-repo pattern matching (match repo-relative + workspace-relative) */
-  repoNames?: Set<string>;
-}
-
-export interface PipelineResult {
-  builtGraph: BuiltGraph;
-  communities: CommunityResult;
-  fileCount: number;
-  extractionCount: number;
-  /** Incremental build stats */
-  incrementalStats?: {
-    cachedFiles: number;
-    reextractedFiles: number;
-    removedFiles: number;
-  };
-}
-
-/**
- * Run the full extraction pipeline:
- * detect → extract → build graph → detect communities → export
- *
- * When incremental=true and outputDir is provided, caches extraction results
- * and reuses them for unchanged files on subsequent builds.
- */
-export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
-  const {
-    workspace,
-    patterns = [],
-    excludeGlobs = [],
-    skipDirs,
-    graphJsonPath,
-    repoName,
-    outputDir,
-    incremental,
-    docsConfig,
-    imagesConfig,
-    config,
-    configDir,
-    repoNames,
-  } = options;
-
-  // 1. Detect files
-  log.info("Detecting files...");
-  const resolvedSkipDirs = skipDirs ?? new Set<string>();
-  const codeFiles = detectFiles(workspace, patterns, excludeGlobs, resolvedSkipDirs, repoNames);
-  const docFiles = detectDocFiles(workspace, docsConfig, resolvedSkipDirs, repoNames);
-  const diagramFiles = detectDiagramFiles(workspace, imagesConfig, resolvedSkipDirs, repoNames);
-  const files = [...codeFiles, ...docFiles, ...diagramFiles];
-
-  const extras: string[] = [];
-  if (docFiles.length > 0) extras.push(`${docFiles.length} doc files`);
-  if (diagramFiles.length > 0) extras.push(`${diagramFiles.length} diagram/image files`);
-  log.info(`  Found ${codeFiles.length} source files${extras.length > 0 ? `, ${extras.join(", ")}` : ""}`);
-
-  if (files.length === 0) {
-    // Write empty graph
-    const emptyGraph = buildGraph({ extractions: [] });
-    const emptyCommunities = detectCommunities(emptyGraph.graph);
-    exportJson({ graph: emptyGraph.graph, outputPath: graphJsonPath, config, configDir, outputDir });
-    return {
-      builtGraph: emptyGraph,
-      communities: emptyCommunities,
-      fileCount: 0,
-      extractionCount: 0,
-    };
-  }
-
-  // 2. Extract (with optional incremental caching)
-  let extractions: FileExtraction[];
-  let incrementalStats: { cachedFiles: number; reextractedFiles: number; removedFiles: number } | undefined;
-
-  if (outputDir) {
-    // Lazy-import to avoid circular dependencies
-    const { computeHashes, loadBuildCache, diffFiles, saveBuildCache, cleanStaleCacheEntries } = await import("./incremental.js");
-
-    log.info("Computing file hashes...");
-    const currentHashes = computeHashes(workspace, files);
-
-    // Only try to use cache when incremental is enabled
-    const cache = incremental ? loadBuildCache(outputDir) : null;
-    const diff = diffFiles(currentHashes, cache);
-
-    if (diff.unchangedFiles.length > 0) {
-      log.info(`  ${diff.unchangedFiles.length} files unchanged (cached)`);
-      log.info(`  ${diff.changedFiles.length} files changed (re-extracting)`);
-    }
-
-    // Extract only changed files
-    log.info("Extracting symbols and relationships...");
-    const freshExtractions = await extractAll(workspace, diff.changedFiles);
-
-    // Combine cached + fresh
-    extractions = [...diff.cachedExtractions, ...freshExtractions];
-    incrementalStats = {
-      cachedFiles: diff.unchangedFiles.length,
-      reextractedFiles: diff.changedFiles.length,
-      removedFiles: diff.removedFiles.length,
-    };
-
-    // Always save cache when outputDir is available — even after --force builds.
-    // The incremental flag controls whether to LOAD the cache, not whether to SAVE it.
-    // Without this, a --force build produces no cache, forcing the next incremental
-    // build to re-extract everything from scratch.
-    saveBuildCache(outputDir, currentHashes, extractions);
-    cleanStaleCacheEntries(outputDir, currentHashes);
-  } else {
-    log.info("Extracting symbols and relationships...");
-    extractions = await extractAll(workspace, files);
-  }
-
-  // 3. Build graph
-  log.info("Building graph...");
-  const builtGraph = buildGraph({ extractions, repoName, repoNames: repoNames ? [...repoNames] : undefined });
-  log.info(`  ${builtGraph.stats.nodeCount} nodes, ${builtGraph.stats.edgeCount} edges`);
-  log.info(`  ${builtGraph.stats.crossFileEdges} cross-file edges, ${builtGraph.stats.unresolvedImports} external imports`);
-
-  // 4. Detect communities
-  log.info("Detecting communities...");
-  const communities = detectCommunities(builtGraph.graph);
-  log.info(`  ${communities.count} communities detected`);
-
-  // 5. Export JSON
-  log.info("Exporting graph.json...");
-  exportJson({ graph: builtGraph.graph, outputPath: graphJsonPath, config, configDir, outputDir });
-
-  // Note: HTML generation is done in the orchestrator AFTER the intelligence
-  // layer, so that community summaries can be injected as community names.
-
-  return {
-    builtGraph,
-    communities,
-    fileCount: files.length,
-    extractionCount: extractions.length,
-    incrementalStats,
-  };
-}

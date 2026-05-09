@@ -14,9 +14,9 @@ import { readFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { PythonExtractor } from "../src/extract/languages/python.js";
 import { parse, hasGrammar, getGrammarsDir } from "../src/extract/parser.js";
-import { buildGraph } from "../src/extract/graph-builder.js";
-import { detectCommunities } from "../src/extract/community.js";
-import { exportJson } from "../src/extract/export-json.js";
+import { buildGraph } from "../src/graph/builder.js";
+import { detectCommunities } from "../src/graph/community.js";
+import { exportJson } from "../src/graph/export-json.js";
 import { resolveImports } from "../src/extract/import-resolver.js";
 import { getExtractorForFile, getSupportedExtensions, detectLanguageFromPath } from "../src/extract/languages/registry.js";
 import type { FileExtraction } from "../src/extract/types.js";
@@ -501,7 +501,7 @@ describe("JSON Export", () => {
       }
 
       // Verify the existing graph-loader can read this format
-      const { loadGraphData } = await import("../src/core/graph-loader.js");
+    const { loadGraphData } = await import("../src/graph/loader.js");
       const loaded = loadGraphData(tmpPath);
       expect(loaded.nodes.length).toBeGreaterThan(0);
       expect(loaded.edges.length).toBeGreaterThan(0);

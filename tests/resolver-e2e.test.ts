@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PythonExtractor } from "../src/extract/languages/python.js";
 import { parse } from "../src/extract/parser.js";
-import { buildGraph } from "../src/extract/graph-builder.js";
+import { buildGraph } from "../src/graph/builder.js";
 import type { FileExtraction } from "../src/extract/types.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

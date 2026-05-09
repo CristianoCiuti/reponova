@@ -24,7 +24,7 @@ import type {
 } from "../shared/types.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { resolveOutlinePath } from "./path-resolver.js";
+import { resolveOutlinePath } from "../shared/path-resolver.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

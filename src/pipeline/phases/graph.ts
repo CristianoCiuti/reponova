@@ -8,14 +8,14 @@ import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { readDetectedFiles } from "./file-detection.js";
 import { extractAll, buildGraph } from "../../extract/index.js";
-import { exportJson } from "../../extract/export-json.js";
+import { exportJson } from "../../graph/export-json.js";
+import { computeHashes } from "../../shared/hash.js";
 import {
-  computeHashes,
   loadBuildCache,
   diffFiles,
   saveBuildCache,
   cleanStaleCacheEntries,
-} from "../../extract/incremental.js";
+} from "../cache.js";
 import { log } from "../../shared/utils.js";
 
 export const graphPhase: Phase = {

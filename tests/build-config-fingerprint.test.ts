@@ -9,8 +9,8 @@ import { readFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Graph from "graphology";
-import { exportJson } from "../src/extract/export-json.js";
-import { loadGraphData } from "../src/core/graph-loader.js";
+import { exportJson } from "../src/graph/export-json.js";
+import { loadGraphData } from "../src/graph/loader.js";
 import type { Config, BuildConfigFingerprint } from "../src/shared/types.js";
 import { DEFAULT_CONFIG } from "../src/shared/types.js";
 

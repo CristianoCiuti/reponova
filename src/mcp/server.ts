@@ -6,11 +6,11 @@ import {
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { openDatabase } from "../core/db.js";
-import { resolveGraphPath, resolveSearchDb, resolveGraphJson } from "../core/graph-resolver.js";
-import { embeddingsConfigFromFingerprint, requireBuildConfigFingerprint } from "../core/build-config-metadata.js";
-import { loadGraphData } from "../core/graph-loader.js";
-import { reconstructRepos, resolveFilePaths, type PathResolver } from "../core/path-resolver.js";
+import { openDatabase } from "../query/db.js";
+import { resolveGraphPath, resolveSearchDb, resolveGraphJson } from "../shared/graph-resolver.js";
+import { embeddingsConfigFromFingerprint, requireBuildConfigFingerprint } from "../pipeline/build-config-metadata.js";
+import { loadGraphData } from "../graph/loader.js";
+import { reconstructRepos, resolveFilePaths, type PathResolver } from "../shared/path-resolver.js";
 import { handleSearch } from "./tools/search.js";
 import { handleImpact } from "./tools/impact.js";
 import { handleOutline } from "./tools/outline.js";

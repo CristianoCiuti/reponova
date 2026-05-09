@@ -1,6 +1,6 @@
-import type { Database } from "../../core/db.js";
-import { queryAll } from "../../core/db.js";
-import type { PathResolver } from "../../core/path-resolver.js";
+import type { Database } from "../../query/db.js";
+import { queryAll } from "../../query/db.js";
+import type { PathResolver } from "../../shared/path-resolver.js";
 
 export function handleHotspots(
   db: Database,

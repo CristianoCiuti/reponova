@@ -8,7 +8,7 @@ import { writeFileSync, readFileSync, existsSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import type { GraphData, GraphNode } from "../../shared/types.js";
-import { loadGraphData } from "../../core/graph-loader.js";
+import { loadGraphData } from "../../graph/loader.js";
 
 interface RankedCommunity {
   id: string;

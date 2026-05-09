@@ -6,24 +6,24 @@
  */
 
 export { startMcpServer } from "./mcp/server.js";
-export { loadConfig } from "./core/config.js";
-export { openDatabase, initializeSchema, populateDatabase, saveDatabase, getMeta, queryAll, queryOne } from "./core/db.js";
-export type { Database } from "./core/db.js";
-export { loadGraphData, buildAdjacencyMap, buildNodeMap } from "./core/graph-loader.js";
-export { searchNodes, fuzzyMatchNode } from "./core/search.js";
-export { analyzeImpact, formatImpactMarkdown } from "./core/impact.js";
-export { findShortestPath, formatPathMarkdown } from "./core/shortest-path.js";
-export { getNodeDetail, getNodeSuggestions, formatNodeDetailMarkdown } from "./core/node-detail.js";
-export { resolveGraphPath, resolveGraphJson, resolveSearchDb } from "./core/graph-resolver.js";
-export { resolveAbsolutePath, reconstructRepos, resolveOutlinePath, createPatternMatcher, buildSkipDirs } from "./core/path-resolver.js";
-export type { RepoMapping, PathContext } from "./core/path-resolver.js";
+export { loadConfig } from "./shared/config.js";
+export { openDatabase, initializeSchema, populateDatabase, saveDatabase, getMeta, queryAll, queryOne } from "./query/db.js";
+export type { Database } from "./query/db.js";
+export { loadGraphData, buildAdjacencyMap, buildNodeMap } from "./graph/loader.js";
+export { searchNodes, fuzzyMatchNode } from "./query/search.js";
+export { analyzeImpact, formatImpactMarkdown } from "./query/impact.js";
+export { findShortestPath, formatPathMarkdown } from "./query/shortest-path.js";
+export { getNodeDetail, getNodeSuggestions, formatNodeDetailMarkdown } from "./query/node-detail.js";
+export { resolveGraphPath, resolveGraphJson, resolveSearchDb } from "./shared/graph-resolver.js";
+export { resolveAbsolutePath, reconstructRepos, resolveOutlinePath, createPatternMatcher, buildSkipDirs } from "./shared/path-resolver.js";
+export type { RepoMapping, PathContext } from "./shared/path-resolver.js";
 
 // Intelligence layer exports
 export { EmbeddingEngine, composeNodeText } from "./intelligence/embeddings.js";
-export { VectorStore } from "./core/vector-store.js";
+export { VectorStore } from "./query/vector-store.js";
 export { LlmEngine } from "./intelligence/llm-engine.js";
 export { CommunitySummaryGenerator } from "./intelligence/community-summary-generator.js";
-export { ContextBuilder } from "./core/context-builder.js";
+export { ContextBuilder } from "./query/context-builder.js";
 
 // Extraction layer exports
 export { registerExtractor } from "./extract/languages/registry.js";
@@ -57,4 +57,4 @@ export type {
 export type {
   ContextParams,
   ContextResult,
-} from "./core/context-builder.js";
+} from "./query/context-builder.js";

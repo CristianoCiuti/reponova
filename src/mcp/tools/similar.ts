@@ -1,11 +1,11 @@
 /**
  * graph_similar MCP tool — semantic similarity search via vector embeddings.
  */
-import { VectorStore } from "../../core/vector-store.js";
+import { VectorStore } from "../../query/vector-store.js";
 import { EmbeddingEngine } from "../../intelligence/embeddings.js";
 import { TfidfEmbeddingEngine } from "../../intelligence/tfidf-embeddings.js";
 import type { EmbeddingsConfig } from "../../shared/types.js";
-import type { PathResolver } from "../../core/path-resolver.js";
+import type { PathResolver } from "../../shared/path-resolver.js";
 
 let vectorStore: VectorStore | null = null;
 let embeddingEngine: EmbeddingEngine | null = null;

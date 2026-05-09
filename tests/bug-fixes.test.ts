@@ -11,7 +11,7 @@
  * NEW-001: DEFAULT_EDGE_WEIGHTS keys normalized to lowercase
  */
 import { describe, it, expect } from "vitest";
-import { buildGraph } from "../src/extract/graph-builder.js";
+import { buildGraph } from "../src/graph/builder.js";
 import type { FileExtraction } from "../src/extract/types.js";
 import { DEFAULT_EDGE_WEIGHTS } from "../src/shared/types.js";
 

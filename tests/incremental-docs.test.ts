@@ -10,11 +10,13 @@ import { tmpdir } from "node:os";
 import {
   hashFile,
   computeHashes,
+} from "../src/shared/hash.js";
+import {
   loadBuildCache,
   saveBuildCache,
   diffFiles,
   loadCachedExtraction,
-} from "../src/extract/incremental.js";
+} from "../src/pipeline/cache.js";
 
 // Markdown extractor
 import { MarkdownExtractor } from "../src/extract/languages/markdown.js";

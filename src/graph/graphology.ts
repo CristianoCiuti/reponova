@@ -8,7 +8,7 @@
  * - Any phase that needs in-memory graph operations
  */
 import Graph from "graphology";
-import { loadGraphData } from "./graph-loader.js";
+import { loadGraphData } from "./loader.js";
 
 /**
  * Load a graph JSON file into a graphology directed graph.

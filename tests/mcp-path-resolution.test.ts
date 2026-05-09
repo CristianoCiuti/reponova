@@ -10,13 +10,13 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
-import { resolveFilePaths, type RepoMapping, type PathResolver } from "../src/core/path-resolver.js";
+import { resolveFilePaths, type RepoMapping, type PathResolver } from "../src/shared/path-resolver.js";
 import { handleSearch } from "../src/mcp/tools/search.js";
 import { handleHotspots } from "../src/mcp/tools/hotspots.js";
 import { handleCommunity } from "../src/mcp/tools/community.js";
 import { handleImpact } from "../src/mcp/tools/impact.js";
-import { openDatabase, type Database } from "../src/core/db.js";
-import { initializeSchema, populateDatabase } from "../src/core/db.js";
+import { openDatabase, type Database } from "../src/query/db.js";
+import { initializeSchema, populateDatabase } from "../src/query/db.js";
 
 // ─── Unit tests for resolveFilePaths ─────────────────────────────────────────
 

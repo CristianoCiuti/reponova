@@ -14,7 +14,7 @@ import { atomicWriteJson, atomicWriteText } from "../../shared/atomic-write.js";
 import { log } from "../../shared/utils.js";
 import { EmbeddingEngine, composeNodeText } from "../../intelligence/embeddings.js";
 import { TfidfEmbeddingEngine } from "../../intelligence/tfidf-embeddings.js";
-import { VectorStore, type VectorRecord } from "../../core/vector-store.js";
+import { VectorStore, type VectorRecord } from "../../query/vector-store.js";
 import { resolveCacheDir } from "../../intelligence/cache-dir.js";
 
 export const embeddingsPhase: Phase = {

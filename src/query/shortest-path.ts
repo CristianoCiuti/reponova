@@ -3,7 +3,7 @@ import { queryAll, queryOne } from "./db.js";
 import type { PathResult, PathStep } from "../shared/types.js";
 import { DEFAULT_EDGE_WEIGHTS } from "../shared/types.js";
 import { fuzzyMatchNode } from "./search.js";
-import type { ResolvedPaths } from "./path-resolver.js";
+import type { ResolvedPaths } from "../shared/path-resolver.js";
 
 export interface ShortestPathOptions {
   max_depth?: number;

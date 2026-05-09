@@ -7,9 +7,9 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
-import { loadGraphAsGraphology } from "../../core/graph-graphology.js";
-import { detectCommunities } from "../../extract/community.js";
-import { exportJson } from "../../extract/export-json.js";
+import { loadGraphAsGraphology } from "../../graph/graphology.js";
+import { detectCommunities } from "../../graph/community.js";
+import { exportJson } from "../../graph/export-json.js";
 import { atomicWriteText } from "../../shared/atomic-write.js";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";

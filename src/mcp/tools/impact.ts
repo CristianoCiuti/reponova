@@ -1,8 +1,8 @@
-import type { Database } from "../../core/db.js";
-import { queryOne } from "../../core/db.js";
-import { analyzeImpact, formatImpactMarkdown } from "../../core/impact.js";
-import type { PathResolver } from "../../core/path-resolver.js";
-import { fuzzyMatchNode } from "../../core/search.js";
+import type { Database } from "../../query/db.js";
+import { queryOne } from "../../query/db.js";
+import { analyzeImpact, formatImpactMarkdown } from "../../query/impact.js";
+import type { PathResolver } from "../../shared/path-resolver.js";
+import { fuzzyMatchNode } from "../../query/search.js";
 
 export function handleImpact(
   db: Database,

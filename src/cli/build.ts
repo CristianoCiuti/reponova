@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs";
-import { loadConfig } from "../core/config.js";
+import { loadConfig } from "../shared/config.js";
 import { runBuild } from "../pipeline/build.js";
 import { log } from "../shared/utils.js";
 

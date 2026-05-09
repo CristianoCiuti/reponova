@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig } from "../src/core/config.js";
+import { loadConfig } from "../src/shared/config.js";
 import { runBuild } from "../src/pipeline/build.js";
 import { DEFAULT_CONFIG, type Config } from "../src/shared/types.js";
 

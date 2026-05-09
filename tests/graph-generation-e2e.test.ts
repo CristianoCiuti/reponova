@@ -5,7 +5,7 @@
  * Covers all file types, edge types, node types, cross-file interactions, and edge cases.
  */
 import { describe, it, expect } from "vitest";
-import { buildGraph } from "../src/extract/graph-builder.js";
+import { buildGraph } from "../src/graph/builder.js";
 import type { FileExtraction } from "../src/extract/types.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

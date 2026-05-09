@@ -9,8 +9,8 @@ import { readFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Graph from "graphology";
-import { exportJson } from "../src/extract/export-json.js";
-import { buildGraph } from "../src/extract/graph-builder.js";
+import { exportJson } from "../src/graph/export-json.js";
+import { buildGraph } from "../src/graph/builder.js";
 import type { FileExtraction } from "../src/extract/types.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

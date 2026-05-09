@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { resolve } from "node:path";
-import { openDatabase, initializeSchema, populateDatabase } from "../src/core/db.js";
-import type { Database } from "../src/core/db.js";
-import { loadGraphData } from "../src/core/graph-loader.js";
-import { analyzeImpact, formatImpactMarkdown } from "../src/core/impact.js";
+import { openDatabase, initializeSchema, populateDatabase } from "../src/query/db.js";
+import type { Database } from "../src/query/db.js";
+import { loadGraphData } from "../src/graph/loader.js";
+import { analyzeImpact, formatImpactMarkdown } from "../src/query/impact.js";
 
 const FIXTURE_PATH = resolve(import.meta.dirname, "fixtures/sample-graph.json");
 let db: Database;

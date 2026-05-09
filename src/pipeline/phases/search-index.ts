@@ -7,8 +7,8 @@
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
-import { loadGraphData } from "../../core/graph-loader.js";
-import { openDatabase, initializeSchema, populateDatabase, saveDatabase } from "../../core/db.js";
+import { loadGraphData } from "../../graph/loader.js";
+import { openDatabase, initializeSchema, populateDatabase, saveDatabase } from "../../query/db.js";
 import { log } from "../../shared/utils.js";
 
 export const searchIndexPhase: Phase = {

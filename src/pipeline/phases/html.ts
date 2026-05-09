@@ -9,9 +9,9 @@ import { existsSync, statSync, unlinkSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
-import { loadGraphAsGraphology } from "../../core/graph-graphology.js";
-import { detectCommunities } from "../../extract/community.js";
-import { exportHtml, exportCommunityHtml, type CommunitySummaryInfo } from "../../extract/export-html.js";
+import { loadGraphAsGraphology } from "../../graph/graphology.js";
+import { detectCommunities } from "../../graph/community.js";
+import { exportHtml, exportCommunityHtml, type CommunitySummaryInfo } from "../../graph/export-html.js";
 
 export const htmlPhase: Phase = {
   id: "html",

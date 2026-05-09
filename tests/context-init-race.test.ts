@@ -79,7 +79,7 @@ const state = vi.hoisted(() => {
   };
 });
 
-vi.mock("../src/core/context-builder.js", () => ({
+vi.mock("../src/query/context-builder.js", () => ({
   ContextBuilder: state.MockContextBuilder,
 }));
 

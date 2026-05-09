@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { detectFiles, detectDocFiles, detectDiagramFiles } from "../../extract/index.js";
-import { buildSkipDirs } from "../../core/path-resolver.js";
+import { buildSkipDirs } from "../../shared/path-resolver.js";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
 import { log } from "../../shared/utils.js";
 
