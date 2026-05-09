@@ -8,12 +8,13 @@
  *   detectFiles → extractAll → buildGraph → detectCommunities → export
  */
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { resolve, join, relative } from "node:path";
+import { resolve, join } from "node:path";
 import type { FileExtraction } from "./types.js";
 import type { DocsConfig, ImagesConfig } from "../shared/types.js";
 import { parse } from "./parser.js";
 import { getExtractorForFile, getSupportedExtensions } from "./languages/registry.js";
 import { buildSkipDirs, createPatternMatcher, extensionsToGlobs } from "../shared/path-resolver.js";
+import { relativePosix } from "../shared/paths.js";
 import { log } from "../shared/utils.js";
 
 export { buildGraph, type BuiltGraph } from "../graph/builder.js";
@@ -78,7 +79,7 @@ export function detectFiles(
         if (skipDirs.has(entry.name)) continue;
         walk(fullPath);
       } else if (entry.isFile()) {
-        const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
+        const relPath = relativePosix(workspace, fullPath);
 
         if (isExcluded(relPath)) continue;
         if (isIncluded(relPath)) {
@@ -122,7 +123,7 @@ export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipD
         if (skipDirs.has(entry.name)) continue;
         walk(fullPath);
       } else if (entry.isFile()) {
-        const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
+        const relPath = relativePosix(workspace, fullPath);
 
         if (isExcluded(relPath)) continue;
         if (!isIncluded(relPath)) continue;
@@ -173,7 +174,7 @@ export function detectDiagramFiles(workspace: string, imagesConfig?: ImagesConfi
         if (skipDirs.has(entry.name)) continue;
         walk(fullPath);
       } else if (entry.isFile()) {
-        const relPath = relative(workspace, fullPath).replace(/\\/g, "/");
+        const relPath = relativePosix(workspace, fullPath);
 
         if (isExcluded(relPath)) continue;
         if (!isIncluded(relPath)) continue;

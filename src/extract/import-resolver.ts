@@ -7,6 +7,7 @@
  */
 import type { FileExtraction, ImportDeclaration, LanguageExtractor } from "./types.js";
 import { getExtractorForFile } from "./languages/registry.js";
+import { toPosix } from "../shared/paths.js";
 
 export interface ResolvedImport {
   /** The original import declaration */
@@ -40,7 +41,7 @@ export function resolveImports(extractions: FileExtraction[]): ResolvedImport[] 
   // Build lookup: normalized file path → extraction
   const byPath = new Map<string, FileExtraction>();
   for (const ext of extractions) {
-    const normalized = ext.filePath.replace(/\\/g, "/");
+    const normalized = toPosix(ext.filePath);
     byPath.set(normalized, ext);
     // Also index without leading ./
     if (normalized.startsWith("./")) {
@@ -93,7 +94,7 @@ function resolveOneImport(
   // Try to match against known files
   let targetFile: string | null = null;
   for (const candidate of candidates) {
-    const normalized = candidate.replace(/\\/g, "/");
+    const normalized = toPosix(candidate);
     targetFile = findInByPath(normalized, byPath);
     if (targetFile) break;
   }
@@ -176,7 +177,7 @@ function chaseReExport(
     if (!extractor) continue;
     const candidates = extractor.resolveImportPath(imp.module, fromExtraction.filePath);
     for (const candidate of candidates) {
-      const normalized = candidate.replace(/\\/g, "/");
+      const normalized = toPosix(candidate);
       const resolvedTarget = findInByPath(normalized, byPath);
       if (!resolvedTarget || visited.has(resolvedTarget)) continue;
       visited.add(resolvedTarget);
