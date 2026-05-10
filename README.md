@@ -359,7 +359,7 @@ All paths inside the config are **relative to the config file's location**. When
 
 ### Pattern Resolution
 
-All glob patterns (`build.patterns`, `build.exclude`, `docs.patterns`, `outlines.patterns`, etc.) are matched against **workspace-relative paths**. How those paths look depends on the number of repos.
+All glob patterns (`patterns`, `exclude`, `docs.patterns`, etc.) are matched against **workspace-relative paths**. How those paths look depends on the number of repos.
 
 #### Single-repo
 
@@ -377,9 +377,8 @@ Patterns work as you'd expect:
 repos:
   - name: my-project
     path: .
-build:
-  patterns: ["src/**/*.py"]          # matches src/core.py ✓
-  exclude: ["tests/**"]              # excludes tests/test_core.py ✓
+patterns: ["src/**/*.py"]            # matches src/core.py ✓
+exclude: ["tests/**"]                # excludes tests/test_core.py ✓
 ```
 
 #### Multi-repo
@@ -401,9 +400,8 @@ repos:
     path: ../services/api
   - name: core
     path: ../services/core
-build:
-  patterns: ["src/**/*.py"]          # matches api/src/routes.py, api/src/handlers.py, core/src/models.py, core/src/db.py ✓ (via repo-relative)
-  exclude: ["**/test_*.py"]          # works across all repos
+patterns: ["src/**/*.py"]            # matches api/src/routes.py, api/src/handlers.py, core/src/models.py, core/src/db.py ✓ (via repo-relative)
+exclude: ["**/test_*.py"]            # works across all repos
 ```
 
 #### Filtering a specific repo
@@ -411,14 +409,9 @@ build:
 Use the repo name as a path prefix to target one repo only:
 
 ```yaml
-build:
-  exclude:
-    - "api/src/generated/**"         # excludes only in the api repo
-    - "**/migrations/**"             # excludes in all repos
-
-outlines:
-  patterns:
-    - "core/src/**/*.py"             # outlines only for the core repo
+exclude:
+  - "api/src/generated/**"           # excludes only in the api repo
+  - "**/migrations/**"               # excludes in all repos
 ```
 
 This works because the full workspace path is always `<repo-name>/<path>`. The repo name is the `name` field from your `repos` config — not the directory name on disk.
@@ -476,224 +469,206 @@ models:
   # Default: true
   download_on_first_use: true
 
-# ── Build Options ─────────────────────────────────────────────────────────────
-build:
+# ── Source Code File Filters ──────────────────────────────────────────────────
+# Shared by graph + outlines — a single file-detection phase produces
+# the file list consumed by both.
 
-  # Glob patterns for source code files to include
+# Glob patterns for source code files to include
+# Type: string[]
+# Default: [] (empty = auto-detect by file extension using registered extractors)
+# Example: ["src/**/*.py", "lib/**/*.ts"]
+patterns: []
+
+# Glob patterns to exclude from source code detection
+# Type: string[]
+# Default: []
+# Example: ["**/generated/**", "**/*.test.ts", "**/vendor/**"]
+exclude: []
+
+# Exclude common non-source directories from all file detection
+# (source code, documentation and diagrams).
+# When true, the following directories are skipped at any depth:
+#   node_modules, __pycache__, .git, .svn, .hg, venv, .venv, env, .env, .tox,
+#   site-packages, dist, build, .eggs, .mypy_cache, .pytest_cache, .ruff_cache,
+#   target, bin, obj
+# Set to false if you need to index files inside these directories
+# (e.g. vendored code in node_modules). You can still exclude specific
+# directories via the `exclude` patterns above.
+# Type: boolean
+# Default: true
+exclude_common: true
+
+# Incremental builds: only re-process files whose SHA256 hash changed
+# Type: boolean
+# Default: true
+incremental: true
+
+# ── Documentation Extraction ─────────────────────────────────────────────────
+docs:
+  # Enable/disable documentation extraction
+  # Type: boolean
+  # Default: true
+  enabled: true
+
+  # Glob patterns for documentation files (relative to repo root)
   # Type: string[]
-  # Default: [] (empty = auto-detect by file extension using registered extractors)
-  # Example: ["src/**/*.py", "lib/**/*.ts"]
+  # Default: [] (empty = auto-detect by file extension: .md, .txt, .rst)
+  # Example: ["docs/**/*.md", "**/*.rst"]
   patterns: []
 
-  # Glob patterns to exclude from source code detection
+  # Glob patterns to exclude from documentation extraction
   # Type: string[]
   # Default: []
-  # Example: ["**/generated/**", "**/*.test.ts", "**/vendor/**"]
+  # Example: ["**/CHANGELOG.md", "**/node_modules/**"]
   exclude: []
 
-  # Exclude common non-source directories from all file detection
-  # (source code, documentation and diagrams).
-  # When true, the following directories are skipped at any depth:
-  #   node_modules, __pycache__, .git, .svn, .hg, venv, .venv, env, .env, .tox,
-  #   site-packages, dist, build, .eggs, .mypy_cache, .pytest_cache, .ruff_cache,
-  #   target, bin, obj
-  # Set to false if you need to index files inside these directories
-  # (e.g. vendored code in node_modules). You can still exclude specific
-  # directories via the `exclude` patterns above.
+  # Maximum file size in KB — files larger than this are skipped
+  # Type: number
+  # Default: 500
+  max_file_size_kb: 500
+
+# ── Diagram / Image Extraction ───────────────────────────────────────────────
+images:
+  # Enable/disable diagram extraction
   # Type: boolean
   # Default: true
-  exclude_common: true
+  enabled: true
 
-  # Incremental builds: only re-process files whose SHA256 hash changed
+  # Glob patterns for diagram files (relative to repo root)
+  # Type: string[]
+  # Default: [] (empty = auto-detect by file extension: .puml, .plantuml, .svg, .png, .jpg, .jpeg, .gif)
+  # Example: ["diagrams/**/*.puml", "**/*.svg"]
+  patterns: []
+
+  # Glob patterns to exclude
+  # Type: string[]
+  # Default: []
+  # Example: ["**/node_modules/**"]
+  exclude: []
+
+  # Parse PlantUML files to extract components and relationships
   # Type: boolean
   # Default: true
-  incremental: true
+  parse_puml: true
 
-  # Generate interactive HTML visualizations (graph.html + graph_communities.html)
+  # Extract text content from SVG files
   # Type: boolean
   # Default: true
-  html: true
+  parse_svg_text: true
 
-  # Minimum node degree to include in HTML visualization
-  # Useful for large graphs — filters out leaf nodes to reduce clutter
-  # Type: integer (>= 1)
-  # Default: not set (include all nodes)
-  # html_min_degree: 3
+# ── Embeddings ────────────────────────────────────────────────────────────────
+# Vector representations for semantic search (graph_similar, graph_context)
+embeddings:
+  # Enable/disable embedding generation
+  # Type: boolean
+  # Default: true
+  enabled: true
 
-  # ── Documentation Extraction ──────────────────────────────────────────────
-  docs:
-    # Enable/disable documentation extraction
-    # Type: boolean
-    # Default: true
-    enabled: true
+  # Embedding method
+  # Values: "tfidf" | "onnx"
+  #   - tfidf:  Feature-hashed TF-IDF (384-dim). Fast (milliseconds). No model download.
+  #   - onnx:   MiniLM-L6-v2 via ONNX Runtime (384-dim). More accurate. ~86MB model download.
+  # Default: "tfidf"
+  method: tfidf
 
-    # Glob patterns for documentation files (relative to repo root)
-    # Type: string[]
-    # Default: [] (empty = auto-detect by file extension: .md, .txt, .rst)
-    # Example: ["docs/**/*.md", "**/*.rst"]
-    patterns: []
+  # ONNX model name (only used when method: "onnx")
+  # Must be a sentence-transformers/ model on HuggingFace with ONNX export
+  # and BERT-compatible tokenizer. Dimensions must match 'dimensions' below.
+  # See the "Models" section for compatible models and details.
+  # Type: string
+  # Default: "all-MiniLM-L6-v2"
+  model: all-MiniLM-L6-v2
 
-    # Glob patterns to exclude from documentation extraction
-    # Type: string[]
-    # Default: []
-    # Example: ["**/CHANGELOG.md", "**/node_modules/**"]
-    exclude: []
+  # Embedding vector dimensions
+  # Type: number
+  # Default: 384
+  dimensions: 384
 
-    # Maximum file size in KB — files larger than this are skipped
-    # Type: number
-    # Default: 500
-    max_file_size_kb: 500
+  # Batch size for ONNX inference
+  # Type: number
+  # Default: 128
+  batch_size: 128
 
-  # ── Diagram / Image Extraction ────────────────────────────────────────────
-  images:
-    # Enable/disable diagram extraction
-    # Type: boolean
-    # Default: true
-    enabled: true
+# ── Community Summaries ───────────────────────────────────────────────────────
+# Natural-language summaries for each detected community (cluster of related symbols).
+# Independent from node descriptions — can enable one without the other.
+community_summaries:
+  # Enable/disable community summary generation
+  # Type: boolean
+  # Default: true
+  enabled: true
 
-    # Glob patterns for diagram files (relative to repo root)
-    # Type: string[]
-    # Default: [] (empty = auto-detect by file extension: .puml, .plantuml, .svg, .png, .jpg, .jpeg, .gif)
-    # Example: ["diagrams/**/*.puml", "**/*.svg"]
-    patterns: []
+  # Maximum number of communities to summarize
+  # Type: integer (>= 0)
+  # Default: 0 (no limit — summarize all communities)
+  # Communities are sorted by size (largest first). When max_number > 0,
+  # only the top N largest communities are summarized.
+  # Communities with fewer than 3 nodes are always excluded.
+  max_number: 0
 
-    # Glob patterns to exclude
-    # Type: string[]
-    # Default: []
-    # Example: ["**/node_modules/**"]
-    exclude: []
+  # LLM model for richer summaries (optional)
+  # Uses hf: URI notation — see the "Models" section for details.
+  # Type: string | null
+  # Default: null (algorithmic summaries — still useful, just less prose)
+  # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
 
-    # Parse PlantUML files to extract components and relationships
-    # Type: boolean
-    # Default: true
-    parse_puml: true
+  # Context window size for LLM inference (only used when model is set)
+  # Type: number
+  # Default: 512
+  context_size: 512
 
-    # Extract text content from SVG files
-    # Type: boolean
-    # Default: true
-    parse_svg_text: true
+# ── Node Descriptions ────────────────────────────────────────────────────────
+# Natural-language descriptions for high-degree (important) nodes.
+# Independent from community summaries — can enable one without the other.
+node_descriptions:
+  # Enable/disable node description generation
+  # Type: boolean
+  # Default: true
+  enabled: true
 
-  # ── Embeddings ────────────────────────────────────────────────────────────
-  # Vector representations for semantic search (graph_similar, graph_context)
-  embeddings:
-    # Enable/disable embedding generation
-    # Type: boolean
-    # Default: true
-    enabled: true
+  # Degree threshold for node description generation
+  # Type: number (0.0 – 1.0)
+  # Default: 0.8
+  # Meaning: top (1 - threshold)% of nodes by degree get descriptions.
+  #   - 0.8 = top 20% of nodes
+  #   - 0.5 = top 50% of nodes
+  #   - 0.0 = all nodes (expensive!)
+  #   - 1.0 = no nodes
+  threshold: 0.8
 
-    # Embedding method
-    # Values: "tfidf" | "onnx"
-    #   - tfidf:  Feature-hashed TF-IDF (384-dim). Fast (milliseconds). No model download.
-    #   - onnx:   MiniLM-L6-v2 via ONNX Runtime (384-dim). More accurate. ~86MB model download.
-    # Default: "tfidf"
-    method: tfidf
+  # LLM model for richer descriptions (optional)
+  # Uses hf: URI notation — see the "Models" section for details.
+  # Type: string | null
+  # Default: null (algorithmic descriptions)
+  # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
 
-    # ONNX model name (only used when method: "onnx")
-    # Must be a sentence-transformers/ model on HuggingFace with ONNX export
-    # and BERT-compatible tokenizer. Dimensions must match 'dimensions' below.
-    # See the "Models" section for compatible models and details.
-    # Type: string
-    # Default: "all-MiniLM-L6-v2"
-    model: all-MiniLM-L6-v2
+  # Context window size for LLM inference (only used when model is set)
+  # Type: number
+  # Default: 512
+  context_size: 512
 
-    # Embedding vector dimensions
-    # Type: number
-    # Default: 384
-    dimensions: 384
+# ── HTML Visualizations ──────────────────────────────────────────────────────
 
-    # Batch size for ONNX inference
-    # Type: number
-    # Default: 128
-    batch_size: 128
+# Generate interactive HTML visualizations (graph.html + graph_communities.html)
+# Type: boolean
+# Default: true
+html: true
 
-  # ── Community Summaries ───────────────────────────────────────────────────
-  # Natural-language summaries for each detected community (cluster of related symbols).
-  # Independent from node descriptions — can enable one without the other.
-  community_summaries:
-    # Enable/disable community summary generation
-    # Type: boolean
-    # Default: true
-    enabled: true
-
-    # Maximum number of communities to summarize
-    # Type: integer (>= 0)
-    # Default: 0 (no limit — summarize all communities)
-    # Communities are sorted by size (largest first). When max_number > 0,
-    # only the top N largest communities are summarized.
-    # Communities with fewer than 3 nodes are always excluded.
-    max_number: 0
-
-    # LLM model for richer summaries (optional)
-    # Uses hf: URI notation — see the "Models" section for details.
-    # Type: string | null
-    # Default: null (algorithmic summaries — still useful, just less prose)
-    # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
-
-    # Context window size for LLM inference (only used when model is set)
-    # Type: number
-    # Default: 512
-    context_size: 512
-
-  # ── Node Descriptions ─────────────────────────────────────────────────────
-  # Natural-language descriptions for high-degree (important) nodes.
-  # Independent from community summaries — can enable one without the other.
-  node_descriptions:
-    # Enable/disable node description generation
-    # Type: boolean
-    # Default: true
-    enabled: true
-
-    # Degree threshold for node description generation
-    # Type: number (0.0 – 1.0)
-    # Default: 0.8
-    # Meaning: top (1 - threshold)% of nodes by degree get descriptions.
-    #   - 0.8 = top 20% of nodes
-    #   - 0.5 = top 50% of nodes
-    #   - 0.0 = all nodes (expensive!)
-    #   - 1.0 = no nodes
-    threshold: 0.8
-
-    # LLM model for richer descriptions (optional)
-    # Uses hf: URI notation — see the "Models" section for details.
-    # Type: string | null
-    # Default: null (algorithmic descriptions)
-    # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
-
-    # Context window size for LLM inference (only used when model is set)
-    # Type: number
-    # Default: 512
-    context_size: 512
+# Minimum node degree to include in HTML visualization
+# Useful for large graphs — filters out leaf nodes to reduce clutter
+# Type: integer (>= 1)
+# Default: not set (include all nodes)
+# html_min_degree: 3
 
 # ── Outlines ──────────────────────────────────────────────────────────────────
 # Tree-sitter code outlines: functions, classes, imports with signatures.
 # Language is auto-detected from file extension (no need to specify it).
+# File selection comes from top-level patterns / exclude / exclude_common.
 outlines:
   # Enable/disable outline generation
   # Type: boolean
   # Default: true
   enabled: true
-
-  # Glob patterns for files to outline (relative to repo root)
-  # Type: string[]
-  # Default: [] (empty = auto-detect by file extension using registered outline languages)
-  # Example: ["src/**/*.py", "lib/**/*.ts"]
-  patterns: []
-
-  # Glob patterns to exclude from outline generation
-  # Type: string[]
-  # Default: []
-  # Example: ["**/generated/**", "**/migrations/**"]
-  exclude: []
-
-  # Exclude common non-source directories from outline file detection.
-  # Same behavior as build.exclude_common but independent — controls outline walking only.
-  # When true, the following directories are skipped at any depth:
-  #   node_modules, __pycache__, .git, .svn, .hg, venv, .venv, env, .env, .tox,
-  #   site-packages, dist, build, .eggs, .mypy_cache, .pytest_cache, .ruff_cache,
-  #   target, bin, obj
-  # Type: boolean
-  # Default: true
-  exclude_common: true
 
 # ── Server ────────────────────────────────────────────────────────────────────
 # MCP server options (reserved for future use)
@@ -738,14 +713,13 @@ repos:
 models:
   gpu: auto                 # auto-detect GPU, falls back to CPU
   download_on_first_use: true
-build:
-  community_summaries:
-    enabled: true
-    model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"   # ~350MB download
-  node_descriptions:
-    enabled: true
-    threshold: 0.5          # describe top 50% nodes by degree
-    model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"   # same model, auto-shared
+community_summaries:
+  enabled: true
+  model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"   # ~350MB download
+node_descriptions:
+  enabled: true
+  threshold: 0.5          # describe top 50% nodes by degree
+  model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"   # same model, auto-shared
 ```
 
 > When `community_summaries.model` and `node_descriptions.model` resolve to the same file, RepoNova shares a single engine instance — no double memory usage.
@@ -759,20 +733,19 @@ output: ../reponova-out
 repos:
   - name: my-project
     path: ..
-build:
-  patterns:                    # only include files matching these globs
-    - "src/**/*.py"
-    - "lib/**/*.ts"
-  exclude:                     # exclude files matching these globs
-    - "**/test/**"
-    - "**/tests/**"
-    - "**/migrations/**"
-    - "**/*.generated.ts"
+patterns:                      # only include files matching these globs
+  - "src/**/*.py"
+  - "lib/**/*.ts"
+exclude:                       # exclude files matching these globs
+  - "**/test/**"
+  - "**/tests/**"
+  - "**/migrations/**"
+  - "**/*.generated.ts"
 ```
 
-> When `patterns` is empty (default) for any subsystem (`build`, `docs`, `images`, `outlines`), RepoNova auto-detects files by extension using the corresponding registry. No configuration needed for standard project layouts.
+> When `patterns` is empty (default) for any subsystem (`docs`, `images`), RepoNova auto-detects files by extension using the corresponding registry. Source code and outlines share the top-level `patterns` / `exclude` / `exclude_common`. No configuration needed for standard project layouts.
 > The configured output directory is **automatically excluded** from all file detection — no need to add it to `exclude` patterns manually.
-> Both `build` and `outlines` have their own independent `exclude_common` setting (default: `true`). When enabled, the following directories are skipped at any depth: `node_modules`, `__pycache__`, `.git`, `.svn`, `.hg`, `venv`, `.venv`, `env`, `.env`, `.tox`, `site-packages`, `dist`, `build`, `.eggs`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `target`, `bin`, `obj`.
+> `exclude_common` (default: `true`) skips the following directories at any depth: `node_modules`, `__pycache__`, `.git`, `.svn`, `.hg`, `venv`, `.venv`, `env`, `.env`, `.tox`, `site-packages`, `dist`, `build`, `.eggs`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `target`, `bin`, `obj`.
 > Set `exclude_common: false` to disable this behavior and use explicit `exclude` patterns instead.
 
 ---
@@ -787,12 +760,12 @@ Sentence-transformer models for semantic similarity search (`graph_similar`, `gr
 
 | Property | Value |
 |----------|-------|
-| **Config field** | `build.embeddings.model` |
+| **Config field** | `embeddings.model` |
 | **Notation** | Plain model name (e.g., `all-MiniLM-L6-v2`) |
 | **Source** | `huggingface.co/sentence-transformers/{model}` |
 | **Cache path** | `{models.cache_dir}/{model-name}/` |
 | **Files downloaded** | `model.onnx`, `vocab.txt`, `tokenizer_config.json` |
-| **Required when** | `build.embeddings.method: onnx` |
+| **Required when** | `embeddings.method: onnx` |
 
 Compatible models (all 384-dim, must match `embeddings.dimensions`):
 
@@ -811,7 +784,7 @@ Local language models for richer community summaries and node descriptions, powe
 
 | Property | Value |
 |----------|-------|
-| **Config field** | `build.community_summaries.model`, `build.node_descriptions.model` |
+| **Config field** | `community_summaries.model`, `node_descriptions.model` |
 | **Notation** | `hf:` URI (e.g., `hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M`) |
 | **Format** | `hf:{user}/{repo}:{quantization}` |
 | **Cache path** | `{models.cache_dir}/llm/` |
@@ -973,7 +946,7 @@ import {
 // Smart context assembly (search + vectors + graph expansion)
 const { config } = loadConfig("./reponova.yml");
 const builder = new ContextBuilder(db, graphData, "./reponova-out");
-await builder.initialize(config.build.embeddings);
+await builder.initialize(config.embeddings);
 const context = await builder.buildContext({
   query: "authentication flow",
   maxTokens: 4000,

@@ -65,41 +65,51 @@ repos:
   - name: my-project
     path: ..
 
-build:
-  # patterns: []                  # source files (empty = auto-detect by extension)
-  # exclude: []                   # e.g. ["**/generated/**", "**/*.test.ts"]
-  # exclude_common: true          # skip node_modules, __pycache__, .git, venv, dist, build, ...
-  # incremental: true
-  # html: true
-  # html_min_degree: 3            # min degree for HTML visualization (unset = all nodes)
-  docs:
-    enabled: true
-    # patterns: []                # empty = auto-detect (.md, .txt, .rst)
-    # exclude: []                 # e.g. ["**/CHANGELOG.md"]
-    # max_file_size_kb: 500
-  images:
-    enabled: true
-    # patterns: []                # empty = auto-detect (.puml, .plantuml, .svg, ...)
-    # exclude: []
-    # parse_puml: true
-    # parse_svg_text: true
-  embeddings:
-    enabled: true
-    # method: tfidf               # "tfidf" (fast, no download) or "onnx" (MiniLM, ~86MB)
-    # model: all-MiniLM-L6-v2     # set method to "onnx" and uncomment for MiniLM embeddings
-  community_summaries:
-    enabled: true
-    # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM summaries
-  node_descriptions:
-    enabled: true
-    # threshold: 0.8              # top 20% of nodes by degree
-    # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM descriptions
+# ── Source Code File Filters (shared by graph + outlines) ──
+# patterns: []                    # source files (empty = auto-detect by extension)
+# exclude: []                     # e.g. ["**/generated/**", "**/*.test.ts"]
+# exclude_common: true            # skip node_modules, __pycache__, .git, venv, dist, build, ...
+# incremental: true
 
+# ── Documentation ──
+docs:
+  enabled: true
+  # patterns: []                  # empty = auto-detect (.md, .txt, .rst)
+  # exclude: []                   # e.g. ["**/CHANGELOG.md"]
+  # max_file_size_kb: 500
+
+# ── Diagrams / Images ──
+images:
+  enabled: true
+  # patterns: []                  # empty = auto-detect (.puml, .plantuml, .svg, ...)
+  # exclude: []
+  # parse_puml: true
+  # parse_svg_text: true
+
+# ── Embeddings ──
+embeddings:
+  enabled: true
+  # method: tfidf                 # "tfidf" (fast, no download) or "onnx" (MiniLM, ~86MB)
+  # model: all-MiniLM-L6-v2      # set method to "onnx" and uncomment for MiniLM embeddings
+
+# ── Community Summaries ──
+community_summaries:
+  enabled: true
+  # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM summaries
+
+# ── Node Descriptions ──
+node_descriptions:
+  enabled: true
+  # threshold: 0.8                # top 20% of nodes by degree
+  # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM descriptions
+
+# ── HTML ──
+# html: true
+# html_min_degree: 3              # min degree for HTML visualization (unset = all nodes)
+
+# ── Outlines ──
 outlines:
   enabled: true
-  # patterns: []                  # empty = auto-detect by outline language registry
-  # exclude: []                   # e.g. ["**/generated/**", "**/migrations/**"]
-  # exclude_common: true          # skip node_modules, __pycache__, .git, venv, dist, build, ...
 `;
 
 /**

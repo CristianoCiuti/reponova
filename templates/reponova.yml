@@ -18,60 +18,57 @@ models:
   threads: 0                      # 0 = auto-detect
   download_on_first_use: true
 
-# Build options
-build:
-  mode: monorepo                  # "monorepo" (default) or "separate"
-  patterns: []                    # glob patterns for source files (empty = auto-detect by extension)
-  exclude: []                     # glob patterns to exclude (e.g. ["**/generated/**", "**/*.test.ts"])
-  incremental: true               # incremental builds using file hash cache
-  html: true                      # generate graph.html and graph_communities.html visualizations
-  # html_min_degree: 3            # if set, only include nodes with degree >= this value in HTML
-  docs:
-    enabled: true                 # extract documentation files (.md, .txt, .rst)
-    patterns:
-      - "**/*.md"
-      - "**/*.txt"
-      - "**/*.rst"
-    exclude:
-      - "**/CHANGELOG.md"
-      - "**/node_modules/**"
-    max_file_size_kb: 500
-  images:
-    enabled: true                 # extract diagram files (.puml, .svg)
-    patterns:
-      - "**/*.puml"
-      - "**/*.plantuml"
-      - "**/*.svg"
-    exclude:
-      - "**/node_modules/**"
-    parse_puml: true
-    parse_svg_text: true
-  embeddings:
-    enabled: true
-    method: tfidf                 # "tfidf" (fast, default) or "onnx" (MiniLM, more accurate)
-  community_summaries:
-    enabled: true
-    max_number: 0                 # 0 = no limit
-    # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM-enhanced summaries
-    context_size: 512
-  node_descriptions:
-    enabled: true
-    threshold: 0.8                # top 20% of nodes by degree
-    # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM-enhanced descriptions
-    context_size: 512
+# ── Source Code File Filters (shared by graph + outlines) ─────────────────────
+patterns: []                      # glob patterns for source files (empty = auto-detect by extension)
+exclude: []                       # glob patterns to exclude (e.g. ["**/generated/**", "**/*.test.ts"])
+exclude_common: true              # skip node_modules, __pycache__, .git, venv, dist, build, ...
+incremental: true                 # incremental builds using file hash cache
 
-# Outline generation (auto-detects language from file extension)
+# ── HTML Visualizations ──────────────────────────────────────────────────────
+html: true                        # generate graph.html and graph_communities.html visualizations
+# html_min_degree: 3              # if set, only include nodes with degree >= this value in HTML
+
+# ── Documentation ────────────────────────────────────────────────────────────
+docs:
+  enabled: true                   # extract documentation files (.md, .txt, .rst)
+  patterns: []                    # empty = auto-detect (.md, .txt, .rst)
+  exclude: []                     # e.g. ["**/CHANGELOG.md"]
+  max_file_size_kb: 500
+
+# ── Diagrams / Images ───────────────────────────────────────────────────────
+images:
+  enabled: true                   # extract diagram files (.puml, .svg)
+  patterns: []                    # empty = auto-detect (.puml, .plantuml, .svg, ...)
+  exclude: []
+  parse_puml: true
+  parse_svg_text: true
+
+# ── Embeddings ───────────────────────────────────────────────────────────────
+embeddings:
+  enabled: true
+  method: tfidf                   # "tfidf" (fast, default) or "onnx" (MiniLM, more accurate)
+  # model: all-MiniLM-L6-v2      # set method to "onnx" and uncomment for MiniLM embeddings
+  # dimensions: 384
+  # batch_size: 128
+
+# ── Community Summaries ──────────────────────────────────────────────────────
+community_summaries:
+  enabled: true
+  max_number: 0                   # 0 = no limit
+  # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM-enhanced summaries
+  context_size: 512
+
+# ── Node Descriptions ────────────────────────────────────────────────────────
+node_descriptions:
+  enabled: true
+  threshold: 0.8                  # top 20% of nodes by degree
+  # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM-enhanced descriptions
+  context_size: 512
+
+# ── Outlines ─────────────────────────────────────────────────────────────────
 outlines:
   enabled: true
-  patterns:                        # glob patterns for files to outline (relative to repo root)
-    - "src/**/*.py"
-    - "src/**/*.ts"
-    - "src/**/*.js"
-  exclude:
-    - "**/__pycache__/**"
-    - "**/node_modules/**"
-    - "**/.git/**"
-    - "**/dist/**"
+  # File selection comes from top-level patterns / exclude / exclude_common.
 
-# MCP server options
+# ── MCP Server ───────────────────────────────────────────────────────────────
 server: {}
