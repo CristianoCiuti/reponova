@@ -43,7 +43,7 @@ AI agents read files one at a time. They don't understand how your codebase fits
 
 - **Zero external dependencies** — no Python, no Docker, no database servers. Pure Node.js
 - **Multi-repo support** — build one graph spanning multiple repositories
-- **Smart incremental builds** — SHA256 file hashing, config change detection, semantic graph diffing, selective subsystem regeneration
+- **Smart incremental builds** — SHA256 file hashing, per-phase config change detection, selective subsystem regeneration
 - **Local LLM-enhanced** — optional local LLM for richer community summaries and node descriptions (runs on CPU)
 - **11 MCP tools** — from text search to weighted Dijkstra, semantic similarity to structural queries
 - **Works with any MCP client** — OpenCode, Cursor, Claude Code, VS Code Copilot
@@ -56,13 +56,15 @@ AI agents read files one at a time. They don't understand how your codebase fits
   Your Codebase                      reponova build                    AI Agent
   ─────────────                      ──────────────                    ────────
 
-  Python / TS / JS                   1. tree-sitter AST parsing        graph_search
+  Python ¹                           1. tree-sitter AST parsing        graph_search
   Markdown / Docs    ──────────►     2. Symbol + edge extraction   ──► graph_impact
   Diagrams / SVG                     3. Louvain communities            graph_path
   Multi-repo                         4. TF-IDF / ONNX embeddings       graph_similar
                                      5. Community summaries
                                      6. HTML visualizations            ... (11 tools)
 ```
+
+¹ More languages coming soon — [contributions welcome](#contributing).
 
 ---
 
@@ -177,7 +179,7 @@ The `reponova install` command installs a **skill file** and a **hook/rule** tha
 # Incremental rebuild — only processes changed files
 reponova build
 
-# Full clean rebuild
+# Force rebuild — ignores all caches, reruns every phase
 reponova build --force
 ```
 
@@ -192,13 +194,12 @@ RepoNova's incremental build goes beyond simple file-change detection. It minimi
 | **File hashing** | SHA256 per file — only re-parse changed/added files. Detects removed files too. | Every incremental build |
 | **Config fingerprinting** | Compares a hash of build-relevant config fields across builds. | When `reponova.yml` changes between builds |
 | **Selective subsystem regeneration** | Only reruns the subsystems affected by config changes (e.g. switching `embeddings.method` reruns embeddings but not parsing). | Config-only changes (no file changes) |
-| **Semantic graph hash** | SHA256 of the full graph structure (sorted nodes + edges). Skips downstream steps when the graph didn't change. | After graph construction |
 | **Incremental embeddings** | Tracks text content per node. Only re-embeds nodes whose text changed. | Every incremental build with embeddings enabled |
 | **Outline hashing** | SHA256 per source file for outlines. Skips outline regeneration for unchanged files. | Every incremental build with outlines enabled |
 | **Stale artifact cleanup** | Removes outdated artifacts when config changes invalidate them (e.g. deletes `tfidf_idf.json` after switching to ONNX). | After config change detection |
-| **Early return** | If no files changed, no files removed, and no config changed — exits immediately. | Every incremental build |
+| **Per-phase skip** | Each phase independently checks its cache and config fingerprint. If nothing relevant changed, the phase is skipped. | Every incremental build |
 
-The build config fingerprint is stored in `graph.json` metadata, so it persists across builds without extra files.
+The build config fingerprint is stored in `graph.json` metadata. Each phase also stores its own config hash in `.cache/` for per-phase change detection.
 
 ---
 
@@ -228,7 +229,7 @@ reponova build [--config <path>] [--force] [--target <phase>]
 | Option | Required | Description |
 |--------|----------|-------------|
 | `--config` | No | Path to `reponova.yml`. Default: auto-detected (see [Config Resolution](#config-resolution)) |
-| `--force` | No | Delete output directory and rebuild from scratch. Default: `false` |
+| `--force` | No | Ignore all caches and rerun every phase. Default: `false` |
 | `--target` | No | Run only this phase and its transitive dependencies. Useful for selective rebuilds without running the full pipeline. |
 
 **Target examples:**
@@ -242,22 +243,32 @@ reponova build --target embeddings  # file-detection → graph → communities �
 
 When `--target` is omitted, all 10 phases run in DAG order.
 
-**Build pipeline:**
+**Build pipeline (10 DAG phases, 5 levels):**
 
-1. Detect source files, documentation, and diagrams (with centralized glob matching via [picomatch](https://github.com/micromatch/picomatch))
-2. Diff files against previous build — detect changed, added, and **removed** files
-3. Compare build config fingerprint — detect config-only changes (e.g. switching `embeddings.method`)
-4. Parse changed files with tree-sitter WASM — extract symbols, calls, imports, inheritance (cached extractions reused for unchanged files)
-5. Build directed graph with cross-file / cross-repo edges
-6. Compute semantic graph hash — skip downstream steps when graph structure is unchanged
-7. Clean up stale artifacts when config changes invalidate them (e.g. old TF-IDF files after switching to ONNX)
-8. Detect communities (Louvain algorithm)
-9. Generate embeddings incrementally — only re-embed nodes whose text content changed (TF-IDF or ONNX MiniLM)
-10. Selectively regenerate subsystems affected by config changes (embeddings, summaries, descriptions, outlines, HTML)
-11. Generate community summaries + node descriptions (algorithmic or LLM-enhanced)
-12. Generate `graph.html` and `graph_communities.html` interactive visualizations
-13. Generate SQLite search index (`graph_search.db`)
-14. Generate code outlines (SHA256 per-file hashing — skip unchanged) and `report.md`
+The pipeline executes as a directed acyclic graph — phases within the same level run in parallel:
+
+```
+Level 0: file-detection
+Level 1: graph, outlines                                       (parallel)
+Level 2: communities
+Level 3: community-summaries, node-descriptions, search-index  (parallel)
+Level 4: embeddings, html, report                              (parallel)
+```
+
+| Phase | What it does |
+|-------|-------------|
+| **file-detection** | Detect source files, documentation, and diagrams (centralized glob matching via [picomatch](https://github.com/micromatch/picomatch)) |
+| **graph** | Diff files against previous build, parse changed files with tree-sitter WASM, extract symbols/calls/imports/inheritance, build directed graph with cross-file/cross-repo edges |
+| **outlines** | Generate tree-sitter code outlines per file (SHA256 per-file hashing — skip unchanged) |
+| **communities** | Detect communities (Louvain algorithm) and write final `graph.json` with community assignments |
+| **community-summaries** | Generate community summaries (algorithmic or LLM-enhanced) |
+| **node-descriptions** | Generate descriptions for high-degree nodes (algorithmic or LLM-enhanced) |
+| **search-index** | Generate SQLite search index (`graph_search.db`) |
+| **embeddings** | Generate embeddings incrementally — only re-embed nodes whose text content changed (TF-IDF or ONNX MiniLM). Clean up stale artifacts on config change. |
+| **html** | Generate `graph.html` and `graph_communities.html` interactive visualizations |
+| **report** | Generate `report.md` build report |
+
+Each phase internally handles its own incremental logic: file diffing, config fingerprint comparison, cache invalidation, and stale artifact cleanup.
 
 ### `reponova mcp`
 
@@ -300,11 +311,13 @@ reponova check [--graph <path>]
 | `--graph` | No | Path to `reponova-out/` directory. Default: auto-detected |
 
 Checks performed:
-- Graph file exists and is loadable
-- Node/edge counts and repo list
-- Build metadata presence (`build_config` fingerprint, reponova version)
+- Graph file (`graph.json`) exists and is readable
+- Build metadata presence (`build_config` fingerprint)
 - Embedding artifacts consistency (TF-IDF IDF file, ONNX vectors)
 - Warns if embedding method in config doesn't match the built artifacts
+- Search index (`graph_search.db`) existence
+- Outlines directory existence
+- tree-sitter WASM availability
 
 ---
 
@@ -315,8 +328,8 @@ Checks performed:
 | Language | Extensions | Parser | Node Types |
 |----------|-----------|--------|------------|
 | Python | `.py`, `.pyw` | tree-sitter-python (WASM) | `function`, `class`, `method`, `module`, `constant` |
-| Markdown | `.md`, `.txt`, `.rst` | Built-in | `document`, `section`, `heading` |
-| Diagrams | `.puml`, `.plantuml`, `.svg` | Built-in | `diagram`, `component` |
+| Markdown | `.md`, `.txt`, `.rst` | Built-in | `document`, `section` |
+| Diagrams | `.puml`, `.plantuml`, `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif` | Built-in | `diagram`, `component`, `interface`, `section` |
 
 ### Outline (tree-sitter code outline)
 
@@ -814,26 +827,33 @@ After `reponova build`, the output directory contains:
 
 ```
 reponova-out/
-├── graph.json                          # Full graph: nodes, edges, community assignments, metadata
-│                                       #   metadata.build_config: config fingerprint for change detection
-│                                       #   nodes include: docstring, signature, bases (when available)
-├── graph.html                          # Interactive visualization (vis.js) — click, search, filter
-├── graph_communities.html              # Community-focused visualization with summary labels
-├── graph_search.db                     # SQLite search index (sql.js WASM) — structural queries
-├── report.md                           # Build report: stats, hotspots, community breakdown
-├── community_summaries.json            # Community summaries (algorithmic or LLM-enhanced)
-├── node_descriptions.json              # Descriptions for high-degree nodes
-├── tfidf_idf.json                      # TF-IDF vocabulary weights (for query-time embedding)
-├── vectors/                            # LanceDB vector store — semantic similarity search
-│   └── (LanceDB internal files)        #   fallback: vectors.json when @lancedb/lancedb unavailable
-├── outlines/                           # Pre-computed code outlines per file
+├── graph.json                                # Full graph: nodes, edges, community assignments, metadata
+│                                             #   metadata.build_config: config fingerprint for change detection
+│                                             #   nodes include: docstring, signature, bases (when available)
+├── graph-nodes.json                          # Intermediate graph (pre-community detection, no Louvain assignments)
+├── detected-files.json                       # Detected file list (intermediate, consumed by graph + outlines)
+├── graph.html                                # Interactive visualization (vis.js) — click, search, filter
+├── graph_communities.html                    # Community-focused visualization with summary labels
+├── graph_search.db                           # SQLite search index (sql.js WASM) — structural queries
+├── report.md                                 # Build report: stats, hotspots, community breakdown
+├── community_summaries.json                  # Community summaries (algorithmic or LLM-enhanced)
+├── node_descriptions.json                    # Descriptions for high-degree nodes
+├── tfidf_idf.json                            # TF-IDF vocabulary weights (for query-time embedding)
+├── vectors/                                  # LanceDB vector store — semantic similarity search
+│   └── (LanceDB internal files)              #   fallback: vectors.json when @lancedb/lancedb unavailable
+├── outlines/                                 # Pre-computed code outlines per file
 │   └── <repo>/<path>.outline.json
-└── .cache/                             # Incremental build cache (SHA256 content hashing)
-    ├── hashes.json                     #   file path → SHA256 hex map
-    ├── semantic-graph-hash.txt         #   SHA256 of graph structure (nodes + edges)
-    ├── outline-hashes.json             #   file path → SHA256 map for outline generation
-    ├── node-texts.json                 #   node id → text hash map for incremental embeddings
-    └── extractions/                    #   cached FileExtraction per file
+└── .cache/                                   # Incremental build cache
+    ├── hashes.json                           # file path → SHA256 hex map (source code hashing)
+    ├── outline-hashes.json                   # file path → SHA256 map for outline generation
+    ├── node-texts.json                       # node id → text hash map for incremental embeddings
+    ├── graph-nodes-hash.txt                  # SHA256 of graph-nodes.json (skip community detection)
+    ├── embeddings-config-hash.txt            # config fingerprint for embeddings phase
+    ├── community-summaries-config-hash.txt   # config fingerprint for community summaries phase
+    ├── community-summary-fingerprints.json   # per-community content fingerprint (incremental)
+    ├── node-descriptions-config-hash.txt     # config fingerprint for node descriptions phase
+    ├── node-description-fingerprints.json    # per-node content fingerprint (incremental)
+    └── extractions/                          # cached FileExtraction per file
         └── <hash>.json
 ```
 
@@ -855,12 +875,15 @@ Run the full build pipeline programmatically — useful for CI integrations, cus
 import { build } from "reponova";
 
 const result = await build("./reponova.yml");
-console.log(`Built: ${result.nodeCount} nodes, ${result.edgeCount} edges`);
 console.log(`Output: ${result.outputDir}`);
+console.log(`Total processed: ${result.totalProcessed}`);
+for (const [phase, r] of result.phases) {
+  console.log(`  ${phase}: ${r.skipped ? `skipped (${r.skipReason})` : `${r.processed} items`}`);
+}
 ```
 
 ```typescript
-// Force rebuild (deletes output and rebuilds from scratch)
+// Force rebuild — ignores all caches, reruns every phase
 const result = await build("./reponova.yml", { force: true });
 ```
 
@@ -869,10 +892,8 @@ const result = await build("./reponova.yml", { force: true });
 | Field | Type | Description |
 |-------|------|-------------|
 | `outputDir` | `string` | Absolute path to the output directory |
-| `fileCount` | `number` | Number of source files processed |
-| `nodeCount` | `number` | Number of nodes in the graph |
-| `edgeCount` | `number` | Number of edges in the graph |
-| `communityCount` | `number` | Number of detected communities |
+| `phases` | `Map<string, PhaseResult>` | Per-phase results (processed count, skip status, skip reason) |
+| `totalProcessed` | `number` | Total items processed across all phases |
 
 If `configPath` is omitted, config is auto-detected from standard locations (see [Config Resolution](#config-resolution)).
 
