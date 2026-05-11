@@ -47,7 +47,7 @@ export const communitySummariesPhase: Phase = {
       }
 
       // Config invalidation
-      const currentConfigHash = hashConfigFields(csConfig.model ?? null, csConfig.context_size);
+      const currentConfigHash = hashConfigFields(csConfig.provider);
       const configChanged = checkConfigChanged(configHashPath, currentConfigHash);
       const effectiveForce = force || configChanged;
 
@@ -95,15 +95,9 @@ export const communitySummariesPhase: Phase = {
         return { processed: 0, skipped: true, skipReason: "up to date" };
       }
 
-      // Acquire LLM if configured
-      const modelUri = csConfig.model ?? null;
-      let llm = null;
-
-      if (modelUri) {
-        llm = await ctx.llmPool.acquire(modelUri, csConfig.context_size);
-        if (!llm) {
-          log.info("  Community summaries LLM not available — using algorithmic");
-        }
+      const llm = await ctx.providerRegistry.acquireLlm(csConfig.provider);
+      if (csConfig.provider && !llm) {
+        log.info("  Community summaries LLM not available — using algorithmic");
       }
 
       const generator = new CommunitySummaryGenerator(csConfig, llm);
@@ -163,8 +157,8 @@ function computeCommunityFingerprint(nodes: GraphNode[]): string {
   return createHash("sha256").update(nodeHashes.join(",")).digest("hex");
 }
 
-function hashConfigFields(model: string | null, contextSize: number): string {
-  return createHash("sha256").update(JSON.stringify({ model, contextSize })).digest("hex");
+function hashConfigFields(provider?: string): string {
+  return createHash("sha256").update(JSON.stringify({ provider: provider ?? null })).digest("hex");
 }
 
 function checkConfigChanged(hashPath: string, currentHash: string): boolean {

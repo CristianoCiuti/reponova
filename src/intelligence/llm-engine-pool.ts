@@ -6,7 +6,7 @@
  *
  * Lifecycle:
  * 1. Build entry point (build.ts) creates pool and injects it into PhaseContext
- * 2. Each phase calls ctx.llmPool.acquire(uri, contextSize)
+ * 2. Provider registry calls pool.acquire(uri, contextSize)
  * 3. Pool returns cached engine or creates a new one
  * 4. Build entry point calls pool.disposeAll() after all phases complete
  *
@@ -14,8 +14,9 @@
  * than the cached engine, the pool re-creates with the larger size.
  */
 import { log } from "../shared/utils.js";
-import { LlmEngine, areModelsEquivalent, type LlmEngineOptions } from "./llm-engine.js";
+import { LlmEngine, areModelsEquivalent, type LlmEngineOptions } from "./local-llm-engine.js";
 import type { ModelsConfig } from "../shared/types.js";
+import type { LlmProvider } from "./llm-provider.js";
 
 interface PoolEntry {
   engine: LlmEngine;
@@ -27,7 +28,7 @@ interface PoolEntry {
 export class LlmEnginePool {
   private entries: PoolEntry[] = [];
   private modelsConfig: ModelsConfig;
-  private inFlightAcquires = new Map<string, Promise<LlmEngine | null>>();
+  private inFlightAcquires = new Map<string, Promise<LlmProvider | null>>();
 
   constructor(modelsConfig: ModelsConfig) {
     this.modelsConfig = modelsConfig;
@@ -41,7 +42,7 @@ export class LlmEnginePool {
    * creating a duplicate engine.
    * Returns null if the engine fails to initialize.
    */
-  async acquire(modelUri: string, contextSize: number): Promise<LlmEngine | null> {
+  async acquire(modelUri: string, contextSize: number): Promise<LlmProvider | null> {
     // Check if we already have an equivalent engine
     for (const entry of this.entries) {
       const same = await areModelsEquivalent(modelUri, entry.modelUri, this.modelsConfig.cache_dir);
@@ -73,7 +74,7 @@ export class LlmEnginePool {
     }
 
     // No cached engine — create new with in-flight tracking
-    const promise = (async (): Promise<LlmEngine | null> => {
+    const promise = (async (): Promise<LlmProvider | null> => {
       const engine = this.createEngine(modelUri, contextSize);
       const ready = await engine.initialize();
       if (!ready) return null;

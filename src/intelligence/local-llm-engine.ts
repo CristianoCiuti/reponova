@@ -1,10 +1,14 @@
 /**
- * LLM engine for generating text completions via node-llama-cpp.
+ * Local LLM engine for generating text completions via node-llama-cpp.
+ * Implements the LlmProvider interface for use by the provider registry.
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { log, errorMessage } from "../shared/utils.js";
 import { resolveCacheDir } from "./cache-dir.js";
+import type { LlmProvider, LlmCompletionOptions } from "./llm-provider.js";
+
+export type { LlmCompletionOptions };
 
 export interface LlmEngineOptions {
   modelUri: string;
@@ -13,13 +17,6 @@ export interface LlmEngineOptions {
   contextSize: number;
   threads: number;
   downloadOnFirstUse: boolean;
-}
-
-export interface LlmCompletionOptions {
-  systemPrompt: string;
-  userPrompt: string;
-  maxTokens?: number;
-  temperature?: number;
 }
 
 interface LlamaInstance {
@@ -48,7 +45,7 @@ interface LlamaChatSessionInstance {
 
 type LlamaChatSessionConstructor = new (opts: unknown) => LlamaChatSessionInstance;
 
-export class LlmEngine {
+export class LlmEngine implements LlmProvider {
   private llama: LlamaInstance | null = null;
   private model: LlamaModel | null = null;
   private context: LlamaContext | null = null;

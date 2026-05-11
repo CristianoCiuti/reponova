@@ -9,8 +9,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { posixBasename } from "../shared/paths.js";
 import { log, errorMessage, ProgressTimer } from "../shared/utils.js";
-import type { EmbeddingsConfig } from "../shared/types.js";
 import { resolveCacheDir } from "./cache-dir.js";
+import type { EmbeddingProvider } from "./llm-provider.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -124,23 +124,18 @@ class BertTokenizer {
 export class EmbeddingEngine {
   private session: OnnxSession | null = null;
   private tokenizer: BertTokenizer | null = null;
-  private config: EmbeddingsConfig;
+  private modelName: string;
   private cacheDir: string;
   private downloadOnFirstUse: boolean;
   private available = false;
 
-  constructor(config: EmbeddingsConfig, cacheDir: string, downloadOnFirstUse = true) {
-    this.config = config;
+  constructor(modelName: string, cacheDir: string, downloadOnFirstUse = true) {
+    this.modelName = modelName;
     this.cacheDir = resolveCacheDir(cacheDir);
     this.downloadOnFirstUse = downloadOnFirstUse;
   }
 
   async initialize(): Promise<boolean> {
-    if (!this.config.enabled) {
-      log.info("Embeddings disabled in config");
-      return false;
-    }
-
     let ort: OrtModule;
     try {
       ort = await import("onnxruntime-node") as unknown as OrtModule;
@@ -149,17 +144,16 @@ export class EmbeddingEngine {
       return false;
     }
 
-    const modelName = this.config.model;
-    const modelDir = join(this.cacheDir, modelName);
+    const modelDir = join(this.cacheDir, this.modelName);
     const modelPath = join(modelDir, "model.onnx");
     const vocabPath = join(modelDir, "vocab.txt");
 
     if (!existsSync(modelPath) || !existsSync(vocabPath)) {
       if (!this.downloadOnFirstUse) {
-        log.warn(`Embedding model "${modelName}" not found and download_on_first_use is false`);
+        log.warn(`Embedding model "${this.modelName}" not found and download_on_first_use is false`);
         return false;
       }
-      log.info(`Downloading embedding model (${modelName})...`);
+      log.info(`Downloading embedding model (${this.modelName})...`);
       try {
         await this.downloadModel(modelDir);
       } catch (err) {
@@ -178,7 +172,7 @@ export class EmbeddingEngine {
         graphOptimizationLevel: "all",
       }) as unknown as OnnxSession;
       this.available = true;
-      log.info(`Embedding engine initialized (${this.config.model}, ${EMBEDDING_DIM}-dim)`);
+      log.info(`Embedding engine initialized (${this.modelName}, ${EMBEDDING_DIM}-dim)`);
       return true;
     } catch (err) {
       const msg = errorMessage(err);
@@ -191,7 +185,7 @@ export class EmbeddingEngine {
     if (!this.available || !this.session || !this.tokenizer) return [];
 
     const results: EmbeddingResult[] = [];
-    const batchSize = this.config.batch_size;
+    const batchSize = items.length > 0 ? items.length : 1;
     const total = items.length;
     const timer = new ProgressTimer(total);
     const progressInterval = Math.max(batchSize * 10, Math.floor(total / 10));
@@ -285,7 +279,7 @@ export class EmbeddingEngine {
   private async downloadModel(modelDir: string): Promise<void> {
     if (!existsSync(modelDir)) mkdirSync(modelDir, { recursive: true });
 
-    const baseUrl = `https://huggingface.co/sentence-transformers/${this.config.model}/resolve/main`;
+    const baseUrl = `https://huggingface.co/sentence-transformers/${this.modelName}/resolve/main`;
 
     for (const [key, relativePath] of Object.entries(MODEL_FILES)) {
       const url = `${baseUrl}/${relativePath}`;
@@ -315,6 +309,30 @@ export class EmbeddingEngine {
 
   get isAvailable(): boolean {
     return this.available;
+  }
+}
+
+export class OnnxEmbeddingAdapter implements EmbeddingProvider {
+  private engine: EmbeddingEngine;
+
+  constructor(modelName: string, cacheDir: string, downloadOnFirstUse: boolean) {
+    this.engine = new EmbeddingEngine(modelName, cacheDir, downloadOnFirstUse);
+  }
+
+  get isAvailable(): boolean {
+    return this.engine.isAvailable;
+  }
+
+  async initialize(): Promise<boolean> {
+    return this.engine.initialize();
+  }
+
+  async embedBatch(items: Array<{ id: string; text: string }>): Promise<EmbeddingResult[]> {
+    return this.engine.embedBatch(items);
+  }
+
+  async dispose(): Promise<void> {
+    return this.engine.dispose();
   }
 }
 

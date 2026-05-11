@@ -22,12 +22,18 @@ export function verifyGraphArtifacts(graphDir: string, graphJsonPath: string): C
   checks.push({ label: "Build metadata", status: "build_config present ✓", ok: true });
 
   const tfidfIdfPath = join(graphDir, "tfidf_idf.json");
-  if (buildConfig.embeddings.enabled && buildConfig.embeddings.method === "tfidf" && !existsSync(tfidfIdfPath)) {
+  const vectorsDir = join(graphDir, "vectors");
+
+  if (buildConfig.embeddings.enabled && !buildConfig.embeddings.provider && !existsSync(tfidfIdfPath)) {
     checks.push({ label: "Embeddings artifacts", status: "ERROR: TF-IDF build missing tfidf_idf.json ✗", ok: false });
   }
 
-  if (buildConfig.embeddings.enabled && buildConfig.embeddings.method === "onnx" && existsSync(tfidfIdfPath)) {
-    checks.push({ label: "Embeddings artifacts", status: "WARNING: tfidf_idf.json exists but build_config.embeddings.method is onnx", ok: true });
+  if (buildConfig.embeddings.enabled && buildConfig.embeddings.provider && !existsSync(vectorsDir)) {
+    checks.push({ label: "Embeddings artifacts", status: `ERROR: provider build missing vectors/ for provider ${buildConfig.embeddings.provider} ✗`, ok: false });
+  }
+
+  if (buildConfig.embeddings.enabled && buildConfig.embeddings.provider && existsSync(tfidfIdfPath)) {
+    checks.push({ label: "Embeddings artifacts", status: `WARNING: tfidf_idf.json exists but build_config.embeddings.provider is ${buildConfig.embeddings.provider}`, ok: true });
   }
 
   return checks;

@@ -19,9 +19,7 @@ export function requireBuildConfigFingerprint(graphJsonPath: string): BuildConfi
 export function embeddingsConfigFromFingerprint(fingerprint: BuildConfigFingerprint): EmbeddingsConfig {
   return {
     enabled: fingerprint.embeddings.enabled,
-    method: fingerprint.embeddings.method,
-    model: fingerprint.embeddings.model,
-    dimensions: fingerprint.embeddings.dimensions,
+    provider: fingerprint.embeddings.provider,
     batch_size: 128,
   };
 }

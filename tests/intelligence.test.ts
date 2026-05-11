@@ -11,7 +11,7 @@ vi.mock("@lancedb/lancedb", () => ({
 }));
 import { CommunitySummaryGenerator, type CommunityData } from "../src/intelligence/community-summary-generator.js";
 import { NodeDescriptionGenerator } from "../src/intelligence/node-description-generator.js";
-import { LlmEngine } from "../src/intelligence/llm-engine.js";
+import { LlmEngine } from "../src/intelligence/local-llm-engine.js";
 import type { GraphNode, CommunitySummariesConfig, NodeDescriptionsConfig } from "../src/shared/types.js";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -145,7 +145,6 @@ describe("CommunitySummaryGenerator (algorithmic)", () => {
   const defaultSummariesConfig: CommunitySummariesConfig = {
     enabled: true,
     max_number: 50,
-    context_size: 512,
   };
 
   it("generates algorithmic community summaries", async () => {
@@ -190,7 +189,6 @@ describe("NodeDescriptionGenerator (algorithmic)", () => {
   const defaultDescriptionsConfig: NodeDescriptionsConfig = {
     enabled: true,
     threshold: 0.8,
-    context_size: 512,
   };
 
   it("generates algorithmic node descriptions", async () => {
@@ -239,33 +237,9 @@ vi.mock("onnxruntime-node", () => ({
 }));
 
 describe("EmbeddingEngine", () => {
-  it("should report unavailable when disabled", async () => {
-    const engine = new EmbeddingEngine(
-      {
-        enabled: false,
-        method: "onnx",
-        model: "all-MiniLM-L6-v2",
-        dimensions: 384,
-        batch_size: 128,
-      },
-      "~/.cache/reponova/models",
-    );
-
-    const ready = await engine.initialize();
-    expect(ready).toBe(false);
-    expect(engine.isAvailable).toBe(false);
-    await engine.dispose();
-  });
-
   it("should gracefully handle unavailable onnxruntime-node", async () => {
     const engine = new EmbeddingEngine(
-      {
-        enabled: true,
-        method: "onnx",
-        model: "all-MiniLM-L6-v2",
-        dimensions: 384,
-        batch_size: 128,
-      },
+      "all-MiniLM-L6-v2",
       join(tmpdir(), `gmt-test-nonexistent-${Date.now()}`),
       false, // downloadOnFirstUse = false — no network I/O
     );

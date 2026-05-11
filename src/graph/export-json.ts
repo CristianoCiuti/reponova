@@ -113,9 +113,7 @@ export function exportJson(options: ExportJsonOptions): void {
         build_config: {
           embeddings: {
             enabled: config.embeddings.enabled,
-            method: config.embeddings.method,
-            model: config.embeddings.model,
-            dimensions: config.embeddings.dimensions,
+            provider: config.embeddings.provider,
           },
           outlines: { enabled: config.outlines.enabled },
           community_summaries: { enabled: config.community_summaries.enabled },

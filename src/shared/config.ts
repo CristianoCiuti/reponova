@@ -2,7 +2,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { z } from "zod";
 import yaml from "js-yaml";
-import type { Config } from "../shared/types.js";
+import type { Config, ProviderConfig } from "../shared/types.js";
 import { DEFAULT_CONFIG } from "../shared/types.js";
 import { log } from "../shared/utils.js";
 
@@ -33,26 +33,31 @@ const ImagesConfigSchema = z.object({
   parse_svg_text: z.boolean().default(true),
 });
 
+const ProviderConfigSchema = z.object({
+  type: z.enum(["openai", "llama-cpp", "onnx"]),
+  model: z.string().optional(),
+  base_url: z.string().optional(),
+  api_key: z.string().optional(),
+  timeout: z.number().min(1).default(30).optional(),
+  context_size: z.number().optional(),
+});
+
 const EmbeddingsConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  method: z.enum(["tfidf", "onnx"]).default("tfidf"),
-  model: z.string().default("all-MiniLM-L6-v2"),
-  dimensions: z.number().default(384),
+  provider: z.string().optional(),
   batch_size: z.number().default(128),
 });
 
 const CommunitySummariesConfigSchema = z.object({
   enabled: z.boolean().default(true),
   max_number: z.number().min(0).default(0),
-  model: z.string().nullable().optional(),
-  context_size: z.number().default(512),
+  provider: z.string().optional(),
 });
 
 const NodeDescriptionsConfigSchema = z.object({
   enabled: z.boolean().default(true),
   threshold: z.number().min(0).max(1).default(0.8),
-  model: z.string().nullable().optional(),
-  context_size: z.number().default(512),
+  provider: z.string().optional(),
 });
 
 const OutlineConfigSchema = z.object({
@@ -72,6 +77,7 @@ const ConfigSchema = z.object({
   output: z.string().default("reponova-out"),
   repos: z.array(RepoConfigSchema).default([]),
   models: ModelsConfigSchema.default({}),
+  providers: z.record(z.string(), ProviderConfigSchema).default({}),
   patterns: z.array(z.string()).default([]),
   exclude: z.array(z.string()).default([]),
   exclude_common: z.boolean().default(true),
@@ -135,6 +141,7 @@ export function loadConfig(configPath?: string): { config: Config; configDir: st
   // Migrate legacy configs with `build` nesting
   const migrated = migrateLegacyConfig(parsed ?? {});
   const validated = ConfigSchema.parse(migrated);
+  validateProviderReferences(validated as Config);
 
   return {
     config: validated as Config,
@@ -167,6 +174,67 @@ function resolveConfigPath(explicitPath?: string): string | null {
   }
 
   return null;
+}
+
+function validateProviderReferences(config: Config): void {
+  for (const [providerName, provider] of Object.entries(config.providers)) {
+    validateProviderRequirements(providerName, provider);
+  }
+
+  validateEmbeddingProvider(config);
+  validateLlmProvider(config, "community_summaries", config.community_summaries.provider);
+  validateLlmProvider(config, "node_descriptions", config.node_descriptions.provider);
+}
+
+function validateEmbeddingProvider(config: Config): void {
+  const providerName = config.embeddings.provider;
+  if (!providerName) return;
+
+  const provider = getNamedProvider(config.providers, providerName, "embeddings.provider");
+  if (provider.type !== "openai" && provider.type !== "onnx") {
+    throw new Error(
+      `Invalid embeddings.provider \"${providerName}\": provider type \"${provider.type}\" is not supported for embeddings (expected openai or onnx)`,
+    );
+  }
+}
+
+function validateLlmProvider(config: Config, fieldName: string, providerName?: string): void {
+  if (!providerName) return;
+
+  const provider = getNamedProvider(config.providers, providerName, `${fieldName}.provider`);
+  if (provider.type !== "openai" && provider.type !== "llama-cpp") {
+    throw new Error(
+      `Invalid ${fieldName}.provider \"${providerName}\": provider type \"${provider.type}\" is not supported for LLM features (expected openai or llama-cpp)`,
+    );
+  }
+}
+
+function getNamedProvider(
+  providers: Record<string, ProviderConfig>,
+  providerName: string,
+  fieldName: string,
+): ProviderConfig {
+  const provider = providers[providerName];
+  if (!provider) {
+    throw new Error(`Invalid ${fieldName}: provider \"${providerName}\" is not defined in config.providers`);
+  }
+  return provider;
+}
+
+function validateProviderRequirements(providerName: string, provider: ProviderConfig): void {
+  if (provider.type === "openai") {
+    if (!provider.base_url) {
+      throw new Error(`Provider \"${providerName}\" (openai) requires base_url`);
+    }
+    if (!provider.model) {
+      throw new Error(`Provider \"${providerName}\" (openai) requires model`);
+    }
+    return;
+  }
+
+  if ((provider.type === "llama-cpp" || provider.type === "onnx") && !provider.model) {
+    throw new Error(`Provider \"${providerName}\" (${provider.type}) requires model`);
+  }
 }
 
 export { ConfigSchema };

@@ -4,7 +4,7 @@
 import { toPosix } from "../shared/paths.js";
 import { log, ProgressTimer } from "../shared/utils.js";
 import type { CommunitySummariesConfig, GraphNode } from "../shared/types.js";
-import type { LlmEngine } from "./llm-engine.js";
+import type { LlmProvider } from "./llm-provider.js";
 
 export interface CommunitySummary {
   id: string;
@@ -22,9 +22,9 @@ export interface CommunityData {
 
 export class CommunitySummaryGenerator {
   private config: CommunitySummariesConfig;
-  private llm: LlmEngine | null;
+  private llm: LlmProvider | null;
 
-  constructor(config: CommunitySummariesConfig, llm: LlmEngine | null) {
+  constructor(config: CommunitySummariesConfig, llm: LlmProvider | null) {
     this.config = config;
     this.llm = llm;
   }

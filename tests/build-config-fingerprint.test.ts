@@ -88,9 +88,7 @@ describe("BuildConfigFingerprint", () => {
 
     const bc = raw.metadata.build_config as BuildConfigFingerprint;
     expect(bc.embeddings.enabled).toBe(true);
-    expect(bc.embeddings.method).toBe("tfidf");
-    expect(bc.embeddings.model).toBe("all-MiniLM-L6-v2");
-    expect(bc.embeddings.dimensions).toBe(384);
+    expect(bc.embeddings.provider).toBeUndefined();
     expect(bc.outlines.enabled).toBe(true);
     expect(bc.community_summaries.enabled).toBe(true);
     expect(bc.node_descriptions.enabled).toBe(true);
@@ -104,9 +102,7 @@ describe("BuildConfigFingerprint", () => {
     const config = makeConfig();
     config.embeddings = {
       enabled: true,
-      method: "onnx",
-      model: "multi-qa-MiniLM-L6-cos-v1",
-      dimensions: 384,
+      provider: "my-onnx",
       batch_size: 64,
     };
 
@@ -120,8 +116,7 @@ describe("BuildConfigFingerprint", () => {
 
     const raw = JSON.parse(readFileSync(tmpPath, "utf-8"));
     const bc = raw.metadata.build_config;
-    expect(bc.embeddings.method).toBe("onnx");
-    expect(bc.embeddings.model).toBe("multi-qa-MiniLM-L6-cos-v1");
+    expect(bc.embeddings.provider).toBe("my-onnx");
   });
 
   it("should write build_config with LLM model URIs", () => {
@@ -133,14 +128,12 @@ describe("BuildConfigFingerprint", () => {
     config.community_summaries = {
       enabled: true,
       max_number: 10,
-      model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M",
-      context_size: 1024,
+      provider: "my-llm",
     };
     config.node_descriptions = {
       enabled: true,
       threshold: 0.5,
-      model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M",
-      context_size: 512,
+      provider: "my-llm",
     };
 
     exportJson({
@@ -212,7 +205,8 @@ describe("BuildConfigFingerprint", () => {
     expect(graphData.metadata!.build_config).toBeDefined();
 
     const bc = graphData.metadata!.build_config!;
-    expect(bc.embeddings.method).toBe("tfidf");
+    expect(bc.embeddings.enabled).toBe(true);
+    expect(bc.embeddings.provider).toBeUndefined();
     expect(bc.outlines.enabled).toBe(true);
     expect(bc.community_summaries.enabled).toBe(true);
     expect(bc.node_descriptions.enabled).toBe(true);

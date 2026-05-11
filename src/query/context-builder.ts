@@ -12,7 +12,6 @@ import type { Database } from "./db.js";
 import { queryAll, queryOne } from "./db.js";
 import { searchNodes } from "./search.js";
 import { VectorStore } from "./vector-store.js";
-import { EmbeddingEngine } from "../intelligence/embeddings.js";
 import { TfidfEmbeddingEngine } from "../intelligence/tfidf-embeddings.js";
 import type {
   CommunitySummaryEntry,
@@ -93,7 +92,6 @@ export class ContextBuilder {
   private db: Database;
   private graphDir: string;
   private vectorStore: VectorStore | null = null;
-  private embeddingEngine: EmbeddingEngine | null = null;
   private tfidfEngine: TfidfEmbeddingEngine | null = null;
   private communitySummaries: Map<string, string> = new Map();
   private nodeDescriptions: Map<string, string> = new Map();
@@ -107,7 +105,7 @@ export class ContextBuilder {
    * Initialize optional components (vector store, community summaries).
    * Non-blocking: works in degraded mode without them.
    */
-  async initialize(embeddingsConfig?: EmbeddingsConfig, cacheDir?: string): Promise<void> {
+  async initialize(embeddingsConfig?: EmbeddingsConfig, _cacheDir?: string): Promise<void> {
     // Load community summaries if available
     const summariesPath = join(this.graphDir, "community_summaries.json");
     if (existsSync(summariesPath)) {
@@ -139,14 +137,10 @@ export class ContextBuilder {
 
     // Initialize embedding engine for query encoding
     if (embeddingsConfig && embeddingsConfig.enabled) {
-      if (embeddingsConfig.method === "tfidf") {
-        const engine = new TfidfEmbeddingEngine(embeddingsConfig);
+      if (!embeddingsConfig.provider) {
+        const engine = new TfidfEmbeddingEngine();
         const loaded = engine.loadVocabulary(this.graphDir);
         if (loaded) this.tfidfEngine = engine;
-      } else {
-        this.embeddingEngine = new EmbeddingEngine(embeddingsConfig, cacheDir ?? "~/.cache/reponova/models");
-        const ready = await this.embeddingEngine.initialize();
-        if (!ready) this.embeddingEngine = null;
       }
     }
   }
@@ -351,14 +345,11 @@ export class ContextBuilder {
     }
 
     // Vector search (if available)
-    if (this.vectorStore && (this.embeddingEngine || this.tfidfEngine)) {
+    if (this.vectorStore && this.tfidfEngine) {
       let queryVector: number[] | Float32Array | null = null;
 
       if (this.tfidfEngine) {
         queryVector = this.tfidfEngine.embedQuery(query);
-      } else if (this.embeddingEngine) {
-        const queryEmbeddings = await this.embeddingEngine.embedBatch([{ id: "_q", text: query }]);
-        if (queryEmbeddings.length > 0) queryVector = queryEmbeddings[0]!.vector;
       }
 
       if (queryVector) {
@@ -607,7 +598,6 @@ export class ContextBuilder {
    * Dispose resources.
    */
   async dispose(): Promise<void> {
-    if (this.embeddingEngine) await this.embeddingEngine.dispose();
     if (this.tfidfEngine) this.tfidfEngine.dispose();
     if (this.vectorStore) await this.vectorStore.dispose();
   }

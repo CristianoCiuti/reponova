@@ -18,14 +18,24 @@ afterEach(() => {
 describe("FIX-010v2: MCP build_config metadata", () => {
   it("resolves embeddings config from graph.json metadata", () => {
     const graphJsonPath = writeGraphJson(makeTempDir(), {
-      embeddings: { enabled: true, method: "onnx", model: "multi-qa-MiniLM-L6-cos-v1", dimensions: 384 },
+      embeddings: { enabled: true, provider: "my-onnx" },
     });
 
     expect(resolveEmbeddingsConfig(graphJsonPath)).toEqual({
       enabled: true,
-      method: "onnx",
-      model: "multi-qa-MiniLM-L6-cos-v1",
-      dimensions: 384,
+      provider: "my-onnx",
+      batch_size: 128,
+    });
+  });
+
+  it("resolves default embeddings config (no provider)", () => {
+    const graphJsonPath = writeGraphJson(makeTempDir(), {
+      embeddings: { enabled: true },
+    });
+
+    expect(resolveEmbeddingsConfig(graphJsonPath)).toEqual({
+      enabled: true,
+      provider: undefined,
       batch_size: 128,
     });
   });
@@ -40,20 +50,37 @@ describe("FIX-010v2: MCP build_config metadata", () => {
     );
   });
 
-  it("formats build_config status lines from graph.json metadata", () => {
+  it("formats build_config status lines from graph.json metadata (TF-IDF default)", () => {
     const graphJsonPath = writeGraphJson(makeTempDir(), {
-      embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-      outlines: { enabled: false, patterns: [], exclude: [], exclude_common: true },
-      community_summaries: { enabled: true, max_number: 3, model: null, context_size: 512 },
-      node_descriptions: { enabled: false, threshold: 0.8, model: null, context_size: 512 },
+      embeddings: { enabled: true },
+      outlines: { enabled: false },
+      community_summaries: { enabled: true },
+      node_descriptions: { enabled: false },
     });
 
     expect(readBuildConfigStatusLines(graphJsonPath)).toEqual([
       "Build config:",
-      "  Embeddings: tfidf (all-MiniLM-L6-v2, 384d)",
+      "  Embeddings: TF-IDF (default)",
       "  Outlines: disabled",
       "  Community summaries: enabled",
       "  Node descriptions: disabled",
+    ]);
+  });
+
+  it("formats build_config status lines with provider", () => {
+    const graphJsonPath = writeGraphJson(makeTempDir(), {
+      embeddings: { enabled: true, provider: "my-openai" },
+      outlines: { enabled: true },
+      community_summaries: { enabled: true },
+      node_descriptions: { enabled: true },
+    });
+
+    expect(readBuildConfigStatusLines(graphJsonPath)).toEqual([
+      "Build config:",
+      "  Embeddings: provider: my-openai",
+      "  Outlines: enabled",
+      "  Community summaries: enabled",
+      "  Node descriptions: enabled",
     ]);
   });
 
@@ -73,12 +100,14 @@ describe("FIX-010v2: MCP build_config metadata", () => {
     ]);
   });
 
-  it("warns when onnx metadata conflicts with stale tfidf artifacts", () => {
+  it("warns when provider metadata conflicts with stale tfidf artifacts", () => {
     const dir = makeTempDir();
     const graphJsonPath = writeGraphJson(dir, {
-      embeddings: { enabled: true, method: "onnx", model: "all-MiniLM-L6-v2", dimensions: 384 },
+      embeddings: { enabled: true, provider: "my-onnx" },
     });
     writeFileSync(join(dir, "tfidf_idf.json"), "{}");
+    // Create vectors/ so the "missing vectors/" error doesn't fire — we're testing the stale artifact warning
+    mkdirSync(join(dir, "vectors"), { recursive: true });
 
     const checks = verifyGraphArtifacts(dir, graphJsonPath);
 
@@ -86,7 +115,7 @@ describe("FIX-010v2: MCP build_config metadata", () => {
       { label: "Build metadata", status: "build_config present ✓", ok: true },
       {
         label: "Embeddings artifacts",
-        status: "WARNING: tfidf_idf.json exists but build_config.embeddings.method is onnx",
+        status: "WARNING: tfidf_idf.json exists but build_config.embeddings.provider is my-onnx",
         ok: true,
       },
     ]);
@@ -95,7 +124,7 @@ describe("FIX-010v2: MCP build_config metadata", () => {
   it("errors when tfidf metadata is missing the required idf artifact", () => {
     const dir = makeTempDir();
     const graphJsonPath = writeGraphJson(dir, {
-      embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
+      embeddings: { enabled: true },
     });
 
     const checks = verifyGraphArtifacts(dir, graphJsonPath);
@@ -121,10 +150,10 @@ function makeTempDir(): string {
 function writeGraphJson(dir: string, overrides: Partial<BuildConfigFingerprint> = {}): string {
   const graphJsonPath = join(dir, "graph.json");
   const buildConfig: BuildConfigFingerprint = {
-    embeddings: { enabled: true, method: "tfidf", model: "all-MiniLM-L6-v2", dimensions: 384 },
-    outlines: { enabled: true, patterns: ["src/**/*.ts"], exclude: ["**/dist/**"], exclude_common: true },
-    community_summaries: { enabled: true, max_number: 0, model: null, context_size: 512 },
-    node_descriptions: { enabled: true, threshold: 0.8, model: null, context_size: 512 },
+    embeddings: { enabled: true },
+    outlines: { enabled: true },
+    community_summaries: { enabled: true },
+    node_descriptions: { enabled: true },
     ...overrides,
   };
 

@@ -70,9 +70,7 @@ export interface GraphMetadata {
 export interface BuildConfigFingerprint {
   embeddings: {
     enabled: boolean;
-    method: "tfidf" | "onnx";
-    model: string;
-    dimensions: number;
+    provider?: string;
   };
   outlines: { enabled: boolean };
   community_summaries: { enabled: boolean };
@@ -101,6 +99,7 @@ export interface Config {
   output: string;
   repos: RepoConfig[];
   models: ModelsConfig;
+  providers: Record<string, ProviderConfig>;
   /** Glob patterns for source code files (empty = auto-detect) */
   patterns: string[];
   /** Glob patterns to exclude from source code detection */
@@ -150,11 +149,20 @@ export interface ImagesConfig {
   parse_svg_text: boolean;
 }
 
+export type ProviderType = "openai" | "llama-cpp" | "onnx";
+
+export interface ProviderConfig {
+  type: ProviderType;
+  model?: string;
+  base_url?: string;
+  api_key?: string;
+  timeout?: number;
+  context_size?: number;
+}
+
 export interface EmbeddingsConfig {
   enabled: boolean;
-  method: "tfidf" | "onnx";
-  model: string;
-  dimensions: number;
+  provider?: string;
   batch_size: number;
 }
 
@@ -162,9 +170,7 @@ export interface EmbeddingsConfig {
 export interface CommunitySummariesConfig {
   enabled: boolean;
   max_number: number;
-  /** HF URI, local path, or null/omitted for algorithmic */
-  model?: string | null;
-  context_size: number;
+  provider?: string;
 }
 
 /** Node descriptions — independent from community summaries */
@@ -172,9 +178,7 @@ export interface NodeDescriptionsConfig {
   enabled: boolean;
   /** Degree percentile threshold: 0.8 = top 20%, 0.0 = all */
   threshold: number;
-  /** HF URI, local path, or null/omitted for algorithmic */
-  model?: string | null;
-  context_size: number;
+  provider?: string;
 }
 
 /** Outline config — simplified. File selection comes from top-level patterns. */
@@ -369,6 +373,7 @@ export const DEFAULT_CONFIG: Config = {
     threads: 0,
     download_on_first_use: true,
   },
+  providers: {},
   patterns: [],
   exclude: [],
   exclude_common: true,
@@ -389,20 +394,15 @@ export const DEFAULT_CONFIG: Config = {
   },
   embeddings: {
     enabled: true,
-    method: "tfidf",
-    model: "all-MiniLM-L6-v2",
-    dimensions: 384,
     batch_size: 128,
   },
   community_summaries: {
     enabled: true,
     max_number: 0,
-    context_size: 512,
   },
   node_descriptions: {
     enabled: true,
     threshold: 0.8,
-    context_size: 512,
   },
   outlines: {
     enabled: true,

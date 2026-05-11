@@ -15,7 +15,7 @@ import { createDefaultRegistry } from "./engine/registry.js";
 import { orchestrate, type BuildResult, type OrchestratorOptions } from "./engine/orchestrator.js";
 import type { PhaseContext } from "./engine/phase.js";
 import { BuildManifest } from "./engine/manifest.js";
-import { LlmEnginePool } from "../intelligence/llm-engine-pool.js";
+import { ProviderRegistry } from "../intelligence/provider-registry.js";
 
 export interface BuildOptions {
   force?: boolean;
@@ -67,7 +67,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
     log.info(`Build${config.incremental && !options.force ? " (incremental)" : ""} [${pathContext.mode}-repo mode]...`);
 
     // Create phase context
-    const llmPool = new LlmEnginePool(config.models);
+    const providerRegistry = new ProviderRegistry(config.providers, config.models);
     const ctx: PhaseContext = {
       config,
       configDir,
@@ -75,7 +75,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
       workspace,
       force: options.force ?? false,
       manifest: new BuildManifest(outputDir),
-      llmPool,
+      providerRegistry,
     };
 
     // Create registry with all phases
@@ -98,7 +98,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
 
       return result;
     } finally {
-      await llmPool.disposeAll();
+      await providerRegistry.disposeAll();
     }
   } finally {
     try {

@@ -17,7 +17,7 @@ export function readBuildConfigStatusLines(graphJsonPath: string | null): string
 
   return [
     "Build config:",
-    `  Embeddings: ${buildConfig.embeddings.enabled ? `${buildConfig.embeddings.method} (${buildConfig.embeddings.model}, ${buildConfig.embeddings.dimensions}d)` : "disabled"}`,
+    `  Embeddings: ${buildConfig.embeddings.enabled ? (buildConfig.embeddings.provider ? `provider: ${buildConfig.embeddings.provider}` : "TF-IDF (default)") : "disabled"}`,
     `  Outlines: ${buildConfig.outlines.enabled ? "enabled" : "disabled"}`,
     `  Community summaries: ${buildConfig.community_summaries.enabled ? "enabled" : "disabled"}`,
     `  Node descriptions: ${buildConfig.node_descriptions.enabled ? "enabled" : "disabled"}`,

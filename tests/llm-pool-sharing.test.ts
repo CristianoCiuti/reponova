@@ -23,7 +23,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 let engineInstanceCount = 0;
 let initShouldFail = false;
 
-vi.mock("../src/intelligence/llm-engine.js", () => {
+vi.mock("../src/intelligence/local-llm-engine.js", () => {
   class MockLlmEngine {
     instanceId: number;
     disposed = false;

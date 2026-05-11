@@ -6,18 +6,18 @@ import { existsSync, readdirSync, statSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { EmbeddingEngine } from "../intelligence/embeddings.js";
-import { LlmEngine, resolveModelPath } from "../intelligence/llm-engine.js";
+import { LlmEngine, resolveModelPath } from "../intelligence/local-llm-engine.js";
 import { loadConfig } from "../shared/config.js";
 import { posixBasename } from "../shared/paths.js";
-import type { Config, ModelsConfig } from "../shared/types.js";
+import type { Config, ModelsConfig, ProviderConfig } from "../shared/types.js";
 import { errorMessage, log } from "../shared/utils.js";
 
 const DEFAULT_CACHE_DIR = join(homedir(), ".cache", "reponova", "models");
 
-type ModelKind = "onnx" | "llm";
+type ModelKind = "onnx" | "llm" | "openai";
 
 interface CachedModel {
-  kind: ModelKind;
+  kind: Exclude<ModelKind, "openai">;
   name: string;
   path: string;
   sizeBytes: number;
@@ -25,11 +25,12 @@ interface CachedModel {
 
 interface ConfiguredModelStatus {
   kind: ModelKind;
+  providerName: string;
   displayName: string;
   downloaded: boolean;
   sizeBytes: number;
   path: string | null;
-  usedBy: string;
+  features: string[];
 }
 
 interface CliContext {
@@ -156,16 +157,23 @@ function findFallbackLlmModel(modelUri: string, cacheDir: string): CachedModel |
   return looseMatches.length === 1 ? looseMatches[0] ?? null : null;
 }
 
-async function getConfiguredLlmStatus(modelUri: string, cacheDir: string, usedBy: string): Promise<ConfiguredModelStatus> {
+async function getConfiguredLlmStatus(
+  providerName: string,
+  provider: ProviderConfig,
+  cacheDir: string,
+  features: string[],
+): Promise<ConfiguredModelStatus> {
+  const modelUri = provider.model!;
   const resolvedPath = await resolveModelPath(modelUri, cacheDir);
   if (resolvedPath && existsSync(resolvedPath)) {
     return {
       kind: "llm",
+      providerName,
       displayName: modelUri,
       downloaded: true,
       sizeBytes: statSync(resolvedPath).size,
       path: resolvedPath,
-      usedBy,
+      features,
     };
   }
 
@@ -173,60 +181,83 @@ async function getConfiguredLlmStatus(modelUri: string, cacheDir: string, usedBy
   if (fallbackModel) {
     return {
       kind: "llm",
+      providerName,
       displayName: modelUri,
       downloaded: true,
       sizeBytes: fallbackModel.sizeBytes,
       path: fallbackModel.path,
-      usedBy,
+      features,
     };
   }
 
   return {
     kind: "llm",
+    providerName,
     displayName: modelUri,
     downloaded: false,
     sizeBytes: 0,
     path: null,
-    usedBy,
+    features,
   };
 }
 
-async function getConfiguredModels(config: Config, cacheDir: string): Promise<{
-  models: ConfiguredModelStatus[];
-  sharedNodeDescriptionsModel: string | null;
-}> {
+function getProviderFeatureRefs(config: Config): Map<string, string[]> {
+  const refs = new Map<string, string[]>();
+
+  const add = (providerName: string | undefined, feature: string, enabled: boolean) => {
+    if (!providerName || !enabled) return;
+    const existing = refs.get(providerName) ?? [];
+    existing.push(feature);
+    refs.set(providerName, existing);
+  };
+
+  add(config.embeddings.provider, "embeddings.provider", config.embeddings.enabled);
+  add(config.community_summaries.provider, "community_summaries.provider", config.community_summaries.enabled);
+  add(config.node_descriptions.provider, "node_descriptions.provider", config.node_descriptions.enabled);
+
+  return refs;
+}
+
+async function getConfiguredModels(config: Config, cacheDir: string): Promise<ConfiguredModelStatus[]> {
   const models: ConfiguredModelStatus[] = [];
-  const embeddings = config.embeddings;
-  const communitySummaries = config.community_summaries;
-  const nodeDescriptions = config.node_descriptions;
+  const featureRefs = getProviderFeatureRefs(config);
 
-  if (embeddings.enabled && embeddings.method === "onnx") {
-    const modelDir = join(cacheDir, embeddings.model);
-    const modelPath = join(modelDir, "model.onnx");
-    models.push({
-      kind: "onnx",
-      displayName: embeddings.model,
-      downloaded: existsSync(modelPath),
-      sizeBytes: existsSync(modelPath) ? getDirSize(modelDir) : 0,
-      path: existsSync(modelPath) ? modelDir : null,
-      usedBy: "embeddings.model",
-    });
+  for (const [providerName, provider] of Object.entries(config.providers)) {
+    const features = featureRefs.get(providerName) ?? [];
+    if (features.length === 0) continue;
+
+    if (provider.type === "openai") {
+      models.push({
+        kind: "openai",
+        providerName,
+        displayName: provider.model ?? providerName,
+        downloaded: true,
+        sizeBytes: 0,
+        path: provider.base_url ?? null,
+        features,
+      });
+      continue;
+    }
+
+    if (provider.type === "onnx") {
+      const modelDir = join(cacheDir, provider.model!);
+      const modelPath = join(modelDir, "model.onnx");
+      models.push({
+        kind: "onnx",
+        providerName,
+        displayName: provider.model!,
+        downloaded: existsSync(modelPath),
+        sizeBytes: existsSync(modelPath) ? getDirSize(modelDir) : 0,
+        path: existsSync(modelPath) ? modelDir : null,
+        features,
+      });
+      continue;
+    }
+
+    models.push(await getConfiguredLlmStatus(providerName, provider, cacheDir, features));
   }
 
-  const communityModel = communitySummaries.enabled ? (communitySummaries.model ?? null) : null;
-  const nodeModel = nodeDescriptions.enabled ? (nodeDescriptions.model ?? null) : null;
-
-  if (communityModel) {
-    models.push(await getConfiguredLlmStatus(communityModel, cacheDir, "community_summaries.model"));
-  }
-
-  const sharedNodeDescriptionsModel = communityModel && nodeModel && communityModel === nodeModel ? nodeModel : null;
-
-  if (nodeModel && nodeModel !== communityModel) {
-    models.push(await getConfiguredLlmStatus(nodeModel, cacheDir, "node_descriptions.model"));
-  }
-
-  return { models, sharedNodeDescriptionsModel };
+  return models;
 }
 
 function printSection(title: string): void {
@@ -234,10 +265,14 @@ function printSection(title: string): void {
 }
 
 function printConfiguredModel(model: ConfiguredModelStatus): void {
-  const status = model.downloaded ? "✅ Downloaded" : "❌ Not downloaded";
+  const status = model.kind === "openai"
+    ? "🌐 Remote"
+    : model.downloaded
+      ? "✅ Downloaded"
+      : "❌ Not downloaded";
   const size = model.downloaded && model.sizeBytes > 0 ? `   ${formatSize(model.sizeBytes)}` : "";
-  console.log(`  [${model.kind}] ${model.displayName}  ${status}${size}`);
-  console.log(`         Used by: ${model.usedBy}`);
+  console.log(`  [${model.kind}] ${model.providerName} → ${model.displayName}  ${status}${size}`);
+  console.log(`         Features: ${model.features.join(", ")}`);
   if (model.path) {
     console.log(`         Path: ${model.path}`);
   }
@@ -252,7 +287,7 @@ function printCachedModel(model: CachedModel): void {
 
 async function statusAction(context: CliContext): Promise<void> {
   const { config, cacheDir } = context;
-  const { models, sharedNodeDescriptionsModel } = await getConfiguredModels(config, cacheDir);
+  const models = await getConfiguredModels(config, cacheDir);
   const configuredOnnxNames = new Set(models.filter((model) => model.kind === "onnx").map((model) => model.displayName));
   const configuredLlmPaths = new Set(
     models
@@ -271,10 +306,6 @@ async function statusAction(context: CliContext): Promise<void> {
   } else {
     for (const model of models) {
       printConfiguredModel(model);
-    }
-    if (sharedNodeDescriptionsModel) {
-      console.log(`  build.node_descriptions.model: same model as community_summaries (${sharedNodeDescriptionsModel})`);
-      console.log("");
     }
   }
 
@@ -296,10 +327,10 @@ async function statusAction(context: CliContext): Promise<void> {
   console.log(`── Total: ${formatSize(getDirSize(cacheDir))} ─────────────────────────────────────────`);
 }
 
-async function downloadEmbeddingModel(config: Config, cacheDir: string): Promise<void> {
-  const engine = new EmbeddingEngine(config.embeddings, cacheDir, true);
+async function downloadEmbeddingModel(modelName: string, cacheDir: string): Promise<void> {
+  const engine = new EmbeddingEngine(modelName, cacheDir, true);
   try {
-    log.info(`Downloading embedding model: ${config.embeddings.model}`);
+    log.info(`Downloading embedding model: ${modelName}`);
     const ready = await engine.initialize();
     if (ready) {
       log.info("  ✓ Embedding model ready");
@@ -336,40 +367,32 @@ async function downloadLlmModel(modelUri: string, contextSize: number, cacheDir:
 
 async function downloadAction(context: CliContext): Promise<void> {
   const { config, cacheDir } = context;
-  const embeddings = config.embeddings;
-  const communitySummaries = config.community_summaries;
-  const nodeDescriptions = config.node_descriptions;
   let requiredModels = 0;
 
   log.info(`Downloading configured models to: ${cacheDir}`);
 
-  if (embeddings.enabled && embeddings.method === "onnx") {
-    requiredModels += 1;
-    await downloadEmbeddingModel(config, cacheDir);
-  }
+  for (const [providerName, provider] of Object.entries(config.providers)) {
+    if (provider.type === "openai") {
+      log.info(`Skipping provider ${providerName} — remote OpenAI-compatible provider`);
+      continue;
+    }
 
-  const communityModel = communitySummaries.enabled ? (communitySummaries.model ?? null) : null;
-  const nodeModel = nodeDescriptions.enabled ? (nodeDescriptions.model ?? null) : null;
+    if (provider.type === "onnx") {
+      requiredModels += 1;
+      await downloadEmbeddingModel(provider.model!, cacheDir);
+      continue;
+    }
 
-  if (communityModel) {
     requiredModels += 1;
-    await downloadLlmModel(communityModel, communitySummaries.context_size, cacheDir, config.models);
-  }
-
-  if (nodeModel && nodeModel !== communityModel) {
-    requiredModels += 1;
-    await downloadLlmModel(nodeModel, nodeDescriptions.context_size, cacheDir, config.models);
-  } else if (nodeModel && communityModel && nodeModel === communityModel) {
-    log.info("Skipping node descriptions model download — same model as community_summaries");
+    await downloadLlmModel(provider.model!, provider.context_size ?? 512, cacheDir, config.models);
   }
 
   if (requiredModels === 0) {
-    log.info("No models required by current configuration.");
+    log.info("No downloadable local models required by current configuration.");
   }
 }
 
 function removeAction(cacheDir: string, name: string): void {
-  // Safety: reject path traversal
   if (name.includes("/") || name.includes("\\") || name.includes("..") || name.startsWith(".")) {
     throw new Error(`Invalid model name: "${name}". Use the model name as shown by 'reponova models status'.`);
   }

@@ -3,7 +3,7 @@
  */
 import { log, ProgressTimer } from "../shared/utils.js";
 import type { NodeDescriptionsConfig, GraphNode } from "../shared/types.js";
-import type { LlmEngine } from "./llm-engine.js";
+import type { LlmProvider } from "./llm-provider.js";
 
 export interface NodeDescription {
   id: string;
@@ -12,9 +12,9 @@ export interface NodeDescription {
 
 export class NodeDescriptionGenerator {
   private config: NodeDescriptionsConfig;
-  private llm: LlmEngine | null;
+  private llm: LlmProvider | null;
 
-  constructor(config: NodeDescriptionsConfig, llm: LlmEngine | null) {
+  constructor(config: NodeDescriptionsConfig, llm: LlmProvider | null) {
     this.config = config;
     this.llm = llm;
   }

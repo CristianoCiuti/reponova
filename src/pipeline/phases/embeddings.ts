@@ -13,10 +13,10 @@ import type { GraphData } from "../../shared/types.js";
 import { atomicWriteJson, atomicWriteText } from "../../shared/atomic-write.js";
 import { readJsonSafe } from "../../shared/fs.js";
 import { log, errorMessage } from "../../shared/utils.js";
-import { EmbeddingEngine, composeNodeText } from "../../intelligence/embeddings.js";
+import { composeNodeText } from "../../intelligence/embeddings.js";
 import { TfidfEmbeddingEngine } from "../../intelligence/tfidf-embeddings.js";
 import { VectorStore, type VectorRecord } from "../../query/vector-store.js";
-import { resolveCacheDir } from "../../intelligence/cache-dir.js";
+import type { EmbeddingProvider } from "../../intelligence/llm-provider.js";
 
 export const embeddingsPhase: Phase = {
   id: "embeddings",
@@ -49,7 +49,7 @@ export const embeddingsPhase: Phase = {
       }
 
       // Config invalidation
-      const currentConfigHash = hashConfigFields(embConfig.method, embConfig.model, embConfig.dimensions);
+      const currentConfigHash = hashConfigFields(embConfig.provider);
       const configChanged = checkConfigChanged(configHashPath, currentConfigHash);
       const effectiveForce = force || configChanged;
 
@@ -117,7 +117,7 @@ export const embeddingsPhase: Phase = {
         }
 
         if (itemsNeedingEmbeddings.length === 0) {
-          if (embConfig.method === "tfidf" && staleVectorIds.size > 0 && items.length > 0) {
+          if (!embConfig.provider && staleVectorIds.size > 0 && items.length > 0) {
             const result = await generateTfidf(ctx, graphData, items, items, [], currentTexts, vectorStore);
             const finishedAt = new Date();
             const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
@@ -143,10 +143,11 @@ export const embeddingsPhase: Phase = {
         }
 
         let result: PhaseResult;
-        if (embConfig.method === "tfidf") {
+        const embeddingProvider = await ctx.providerRegistry.acquireEmbedding(embConfig.provider);
+        if (!embeddingProvider) {
           result = await generateTfidf(ctx, graphData, items, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
         } else {
-          result = await generateOnnx(ctx, graphData, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
+          result = await generateWithProvider(ctx, embeddingProvider, graphData, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
         }
 
         const finishedAt = new Date();
@@ -182,7 +183,7 @@ async function generateTfidf(
   currentTexts: Map<string, string>,
   vectorStore: VectorStore,
 ): Promise<PhaseResult> {
-  const engine = new TfidfEmbeddingEngine(ctx.config.embeddings);
+  const engine = new TfidfEmbeddingEngine();
   try {
     log.info(`Generating TF-IDF embeddings (${itemsToEmbed.length} nodes)...`);
     engine.buildVocabulary(allItems.map((item) => item.text));
@@ -198,30 +199,29 @@ async function generateTfidf(
   }
 }
 
-async function generateOnnx(
+async function generateWithProvider(
   ctx: PhaseContext,
+  provider: EmbeddingProvider,
   graphData: GraphData,
   items: Array<{ id: string; text: string }>,
   existingRecords: VectorRecord[],
   currentTexts: Map<string, string>,
   vectorStore: VectorStore,
 ): Promise<PhaseResult> {
-  const cacheDir = resolveCacheDir(ctx.config.models.cache_dir);
-  const engine = new EmbeddingEngine(ctx.config.embeddings, cacheDir, ctx.config.models.download_on_first_use);
   try {
-    const ready = await engine.initialize();
+    const ready = await provider.initialize();
     if (!ready) return { processed: 0, skipped: true, skipReason: "embedding engine unavailable" };
 
-    log.info(`Generating ONNX embeddings (${items.length} nodes)...`);
-    const embeddings = await engine.embedBatch(items);
+    log.info(`Generating provider embeddings (${items.length} nodes)...`);
+    const embeddings = await provider.embedBatch(items);
     await storeEmbeddings({ graphData, embeddings, existingRecords, currentTexts, vectorStore, outputDir: ctx.outputDir });
     return { processed: embeddings.length, skipped: false };
   } catch (err) {
     const msg = errorMessage(err);
-    log.warn(`ONNX embeddings failed (non-blocking): ${msg}`);
+    log.warn(`Provider embeddings failed (non-blocking): ${msg}`);
     return { processed: 0, skipped: true, skipReason: msg };
   } finally {
-    await engine.dispose();
+    await provider.dispose();
   }
 }
 
@@ -304,8 +304,8 @@ function loadNodeDescriptions(outputDir: string): Map<string, string> {
   return descs ? new Map(descs.map((d) => [d.id, d.description])) : new Map();
 }
 
-function hashConfigFields(method: string, model: string, dimensions: number): string {
-  return createHash("sha256").update(JSON.stringify({ method, model, dimensions })).digest("hex");
+function hashConfigFields(provider?: string): string {
+  return createHash("sha256").update(JSON.stringify({ provider: provider ?? null })).digest("hex");
 }
 
 function checkConfigChanged(hashPath: string, currentHash: string): boolean {

@@ -7,16 +7,16 @@
 import { join } from "node:path";
 import { readJsonSafe } from "../shared/fs.js";
 import { log } from "../shared/utils.js";
-import type { EmbeddingsConfig } from "../shared/types.js";
 import type { EmbeddingResult } from "./embeddings.js";
 
 export class TfidfEmbeddingEngine {
+  private static readonly DIMENSIONS = 384;
   private dimensions: number;
   private idf: Map<string, number> = new Map();
   private ready = false;
 
-  constructor(config: EmbeddingsConfig) {
-    this.dimensions = config.dimensions;
+  constructor() {
+    this.dimensions = TfidfEmbeddingEngine.DIMENSIONS;
   }
 
   buildVocabulary(texts: string[]): void {

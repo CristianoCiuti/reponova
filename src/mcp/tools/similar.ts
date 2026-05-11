@@ -2,13 +2,13 @@
  * graph_similar MCP tool — semantic similarity search via vector embeddings.
  */
 import { VectorStore } from "../../query/vector-store.js";
-import { EmbeddingEngine } from "../../intelligence/embeddings.js";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { TfidfEmbeddingEngine } from "../../intelligence/tfidf-embeddings.js";
 import type { EmbeddingsConfig } from "../../shared/types.js";
 import type { PathResolver } from "../../shared/path-resolver.js";
 
 let vectorStore: VectorStore | null = null;
-let embeddingEngine: EmbeddingEngine | null = null;
 let tfidfEngine: TfidfEmbeddingEngine | null = null;
 let _initPromise: Promise<boolean> | null = null;
 
@@ -22,7 +22,7 @@ export function initSimilaritySearch(graphDir: string, embeddingsConfig: Embeddi
   return _initPromise;
 }
 
-async function _doInitSimilaritySearch(graphDir: string, embeddingsConfig: EmbeddingsConfig, cacheDir: string): Promise<boolean> {
+async function _doInitSimilaritySearch(graphDir: string, embeddingsConfig: EmbeddingsConfig, _cacheDir: string): Promise<boolean> {
   vectorStore = new VectorStore(graphDir);
   await vectorStore.initialize();
   const hasData = await vectorStore.loadExisting();
@@ -32,11 +32,11 @@ async function _doInitSimilaritySearch(graphDir: string, embeddingsConfig: Embed
     return false;
   }
 
-  const method = embeddingsConfig.method;
+  const tfidfIdfPath = join(graphDir, "tfidf_idf.json");
 
-  if (method === "tfidf") {
+  if (!embeddingsConfig.provider && existsSync(tfidfIdfPath)) {
     // Load pre-built IDF table for query-time embedding
-    const engine = new TfidfEmbeddingEngine(embeddingsConfig);
+    const engine = new TfidfEmbeddingEngine();
     const loaded = engine.loadVocabulary(graphDir);
     if (!loaded) {
       vectorStore = null;
@@ -46,16 +46,7 @@ async function _doInitSimilaritySearch(graphDir: string, embeddingsConfig: Embed
     return true;
   }
 
-  // ONNX method
-  embeddingEngine = new EmbeddingEngine(embeddingsConfig, cacheDir);
-  const engineReady = await embeddingEngine.initialize();
-
-  if (!engineReady) {
-    embeddingEngine = null;
-    return false;
-  }
-
-  return true;
+  return embeddingsConfig.provider ? true : false;
 }
 
 /**
@@ -76,7 +67,7 @@ export async function handleSimilar(
     return { content: [{ type: "text" as const, text: "Error: 'query' is required" }], isError: true };
   }
 
-  if (!vectorStore || (!embeddingEngine && !tfidfEngine)) {
+  if (!vectorStore || !tfidfEngine) {
     return {
       content: [{
         type: "text" as const,
@@ -91,20 +82,7 @@ export async function handleSimilar(
   const repoFilter = args.repo as string | undefined;
 
   // Embed the query using whatever method was configured
-  let queryVector: number[] | Float32Array;
-
-  if (tfidfEngine) {
-    queryVector = tfidfEngine.embedQuery(query);
-  } else {
-    const queryResults = await embeddingEngine!.embedBatch([{ id: "_query", text: query }]);
-    if (queryResults.length === 0) {
-      return {
-        content: [{ type: "text" as const, text: "Failed to generate query embedding." }],
-        isError: true,
-      };
-    }
-    queryVector = queryResults[0]!.vector;
-  }
+  const queryVector = tfidfEngine.embedQuery(query);
 
   // Search
   const results = await vectorStore.query(queryVector, {
@@ -142,10 +120,8 @@ export async function handleSimilar(
  * Cleanup resources.
  */
 export async function disposeSimilaritySearch(): Promise<void> {
-  if (embeddingEngine) await embeddingEngine.dispose();
   if (vectorStore) await vectorStore.dispose();
   if (tfidfEngine) tfidfEngine.dispose();
-  embeddingEngine = null;
   vectorStore = null;
   tfidfEngine = null;
 }

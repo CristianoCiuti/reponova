@@ -43,7 +43,7 @@ export const nodeDescriptionsPhase: Phase = {
       }
 
       // Config invalidation
-      const currentConfigHash = hashConfigFields(ndConfig.model ?? null, ndConfig.context_size, ndConfig.threshold);
+      const currentConfigHash = hashConfigFields(ndConfig.provider, ndConfig.threshold);
       const configChanged = checkConfigChanged(configHashPath, currentConfigHash);
       const effectiveForce = force || configChanged;
 
@@ -109,15 +109,9 @@ export const nodeDescriptionsPhase: Phase = {
         return { processed: 0, skipped: true, skipReason: "up to date" };
       }
 
-      // Acquire LLM if configured
-      const modelUri = ndConfig.model ?? null;
-      let llm = null;
-
-      if (modelUri) {
-        llm = await ctx.llmPool.acquire(modelUri, ndConfig.context_size);
-        if (!llm) {
-          log.info("  Node descriptions LLM not available — using algorithmic");
-        }
+      const llm = await ctx.providerRegistry.acquireLlm(ndConfig.provider);
+      if (ndConfig.provider && !llm) {
+        log.info("  Node descriptions LLM not available — using algorithmic");
       }
 
       const generator = new NodeDescriptionGenerator(ndConfig, llm);
@@ -174,8 +168,8 @@ function computeNodeFingerprint(node: GraphNode, degree: number): string {
   return createHash("sha256").update(input).digest("hex");
 }
 
-function hashConfigFields(model: string | null, contextSize: number, threshold: number): string {
-  return createHash("sha256").update(JSON.stringify({ model, contextSize, threshold })).digest("hex");
+function hashConfigFields(provider: string | undefined, threshold: number): string {
+  return createHash("sha256").update(JSON.stringify({ provider: provider ?? null, threshold })).digest("hex");
 }
 
 function checkConfigChanged(hashPath: string, currentHash: string): boolean {
