@@ -168,7 +168,7 @@ export class MarkdownExtractor implements LanguageExtractor {
           references.push({
             name,
             fromSymbol: currentSection,
-            kind: "call", // Reuse "call" for code reference
+            kind: "references", // Code reference from doc
             line: lineNum,
           });
         }
@@ -187,7 +187,7 @@ export class MarkdownExtractor implements LanguageExtractor {
           references.push({
             name: path,
             fromSymbol: currentSection,
-            kind: "attribute_access", // Reuse for file references
+            kind: "references", // File reference from doc
             line: lineNum,
           });
         }

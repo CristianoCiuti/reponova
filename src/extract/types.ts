@@ -120,8 +120,8 @@ export interface SymbolReference {
   name: string;
   /** Context: which symbol contains this reference */
   fromSymbol: string;
-  /** Type of reference */
-  kind: "call" | "type_annotation" | "attribute_access" | "inheritance";
+  /** Edge type to create in the graph — extractor decides, builder uses as-is */
+  kind: "calls" | "extends" | "references";
   /** Line number (1-indexed) */
   line: number;
 }

@@ -202,7 +202,7 @@ describe("BUG-006: multi:true graph + addEdgeSafe", () => {
         { module: "models", names: ["User"], isWildcard: false, line: 1 },
       ],
       references: [
-        { name: "User", fromSymbol: "service.create", kind: "call", line: 1 },
+        { name: "User", fromSymbol: "service.create", kind: "calls", line: 1 },
       ],
     };
 
@@ -250,7 +250,7 @@ describe("BUG-006: multi:true graph + addEdgeSafe", () => {
       ],
       imports: [],
       references: [
-        { name: "target_fn", fromSymbol: "repeat.caller", kind: "call", line: 7 },
+        { name: "target_fn", fromSymbol: "repeat.caller", kind: "calls", line: 7 },
       ],
     };
     const { graph } = buildGraph({ extractions: [ext] });
@@ -318,7 +318,7 @@ describe("BUG-006: multi:true graph + addEdgeSafe", () => {
       ],
       imports: [],
       references: [
-        { name: "recurse", fromSymbol: "loop.recurse", kind: "call", line: 1 },
+        { name: "recurse", fromSymbol: "loop.recurse", kind: "calls", line: 1 },
       ],
     };
     const { graph } = buildGraph({ extractions: [ext] });
@@ -344,7 +344,7 @@ describe("BUG-006: multi:true graph + addEdgeSafe", () => {
       ],
       imports: [],
       references: [
-        { name: "nonexistent_function", fromSymbol: "missing.caller", kind: "call", line: 1 },
+        { name: "nonexistent_function", fromSymbol: "missing.caller", kind: "calls", line: 1 },
       ],
     };
     const { graph } = buildGraph({ extractions: [ext] });
@@ -509,7 +509,7 @@ describe("BUG-009: No 'method' edge type — class→method uses 'contains'", ()
       ],
       imports: [],
       references: [
-        { name: "Child", fromSymbol: "app.main", kind: "call", line: 1 },
+        { name: "Child", fromSymbol: "app.main", kind: "calls", line: 1 },
       ],
     };
     const consumer: FileExtraction = {
@@ -523,7 +523,7 @@ describe("BUG-009: No 'method' edge type — class→method uses 'contains'", ()
         { module: "models", names: ["Child"], isWildcard: false, line: 1 },
       ],
       references: [
-        { name: "Child", fromSymbol: "app.main", kind: "call", line: 1 },
+        { name: "Child", fromSymbol: "app.main", kind: "calls", line: 1 },
       ],
     };
     const { graph } = buildGraph({ extractions: [models, consumer] });
@@ -589,7 +589,7 @@ describe("resolveCall: no global resolution (simpleNameToIds removed)", () => {
       ],
       imports: [],
       references: [
-        { name: "helper", fromSymbol: "local.main", kind: "call", line: 7 },
+        { name: "helper", fromSymbol: "local.main", kind: "calls", line: 7 },
       ],
     };
     const { graph } = buildGraph({ extractions: [ext] });
@@ -617,7 +617,7 @@ describe("resolveCall: no global resolution (simpleNameToIds removed)", () => {
       ],
       imports: [{ module: "lib", names: ["utility"], isWildcard: false, line: 1 }],
       references: [
-        { name: "utility", fromSymbol: "app.run", kind: "call", line: 1 },
+        { name: "utility", fromSymbol: "app.run", kind: "calls", line: 1 },
       ],
     };
     const { graph } = buildGraph({ extractions: [lib, app] });
@@ -645,7 +645,7 @@ describe("resolveCall: no global resolution (simpleNameToIds removed)", () => {
       ],
       imports: [], // No import! simpleNameToIds would have resolved this, but it's removed
       references: [
-        { name: "unique_fn", fromSymbol: "app.run", kind: "call", line: 1 },
+        { name: "unique_fn", fromSymbol: "app.run", kind: "calls", line: 1 },
       ],
     };
     const { graph } = buildGraph({ extractions: [lib, app] });
@@ -666,7 +666,7 @@ describe("resolveCall: no global resolution (simpleNameToIds removed)", () => {
       ],
       imports: [],
       references: [
-        { name: "self.validate", fromSymbol: "cls.MyClass.process", kind: "call", line: 3 },
+        { name: "self.validate", fromSymbol: "cls.MyClass.process", kind: "calls", line: 3 },
       ],
     };
     const { graph } = buildGraph({ extractions: [ext] });
@@ -695,7 +695,7 @@ describe("resolveCall: no global resolution (simpleNameToIds removed)", () => {
       ],
       imports: [{ module: "lib", names: ["Service"], isWildcard: false, line: 1 }],
       references: [
-        { name: "Service.start", fromSymbol: "app.main", kind: "call", line: 1 },
+        { name: "Service.start", fromSymbol: "app.main", kind: "calls", line: 1 },
       ],
     };
     const { graph } = buildGraph({ extractions: [lib, app] });

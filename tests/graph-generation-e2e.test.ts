@@ -74,8 +74,8 @@ describe("Graph Generation E2E: Python modules", () => {
       { module: "src.models", names: ["User"], isWildcard: false, line: 1 },
     ],
     references: [
-      { name: "validate_token", fromSymbol: "src/auth.py/authenticate", kind: "call", line: 10 },
-      { name: "get_user", fromSymbol: "src/auth.py/authenticate", kind: "call", line: 12 },
+      { name: "validate_token", fromSymbol: "src/auth.py/authenticate", kind: "calls", line: 10 },
+      { name: "get_user", fromSymbol: "src/auth.py/authenticate", kind: "calls", line: 12 },
     ],
   };
 
@@ -192,8 +192,8 @@ describe("Graph Generation E2E: Class hierarchy & inheritance", () => {
     ],
     imports: [],
     references: [
-      { name: "BaseModel", fromSymbol: "models.py/User", kind: "inheritance", line: 12 },
-      { name: "validate", fromSymbol: "models.py/User.save", kind: "call", line: 20 },
+      { name: "BaseModel", fromSymbol: "models.py/User", kind: "extends", line: 12 },
+      { name: "validate", fromSymbol: "models.py/User.save", kind: "calls", line: 20 },
     ],
   };
 
@@ -290,7 +290,7 @@ describe("Graph Generation E2E: Cross-file imports", () => {
       { module: "models", names: ["User", "Role"], isWildcard: false, line: 1 },
     ],
     references: [
-      { name: "User", fromSymbol: "service.py/create_user", kind: "call", line: 10 },
+      { name: "User", fromSymbol: "service.py/create_user", kind: "calls", line: 10 },
     ],
   };
 
@@ -356,7 +356,7 @@ describe("Graph Generation E2E: Markdown documents", () => {
     ],
     imports: [],
     references: [
-      { name: "ConfigLoader", fromSymbol: "docs.architecture.Components", kind: "call", line: 10 },
+      { name: "ConfigLoader", fromSymbol: "docs.architecture.Components", kind: "references", line: 10 },
     ],
   };
 
@@ -430,8 +430,8 @@ describe("Graph Generation E2E: Diagrams", () => {
     ],
     imports: [],
     references: [
-      { name: "Processor", fromSymbol: "diagrams/flow.puml/InputReader", kind: "call", line: 7 },
-      { name: "IOutput", fromSymbol: "diagrams/flow.puml/Processor", kind: "call", line: 8 },
+      { name: "Processor", fromSymbol: "diagrams/flow.puml/InputReader", kind: "references", line: 7 },
+      { name: "IOutput", fromSymbol: "diagrams/flow.puml/Processor", kind: "references", line: 8 },
     ],
   };
 
@@ -620,7 +620,7 @@ describe("Graph Generation E2E: Multi-repo", () => {
       { module: "core.services", names: ["UserService"], isWildcard: false, line: 1 },
     ],
     references: [
-      { name: "UserService", fromSymbol: "api/routes.py/get_users", kind: "call", line: 5 },
+      { name: "UserService", fromSymbol: "api/routes.py/get_users", kind: "calls", line: 5 },
     ],
   };
 
@@ -737,7 +737,7 @@ describe("Graph Generation E2E: Edge cases", () => {
       ],
       imports: [],
       references: [
-        { name: "factorial", fromSymbol: "recursive.py/factorial", kind: "call", line: 3 },
+        { name: "factorial", fromSymbol: "recursive.py/factorial", kind: "calls", line: 3 },
       ],
     };
 
@@ -850,7 +850,7 @@ describe("Graph Generation E2E: Edge cases", () => {
     const references = Array.from({ length: 99 }, (_, i) => ({
       name: `fn_${i}`,
       fromSymbol: `big.py/fn_${i + 1}`,
-      kind: "call" as const,
+      kind: "calls" as const,
       line: (i + 1) * 5 + 2,
     }));
     const manySymbols: FileExtraction = {
@@ -911,8 +911,8 @@ describe("Graph Generation E2E: Edge cases", () => {
       ],
       imports: [],
       references: [
-        { name: "target", fromSymbol: "dup.py/caller_a", kind: "call", line: 9 },
-        { name: "target", fromSymbol: "dup.py/caller_b", kind: "call", line: 16 },
+{ name: "target", fromSymbol: "dup.py/caller_a", kind: "calls", line: 9 },
+      { name: "target", fromSymbol: "dup.py/caller_b", kind: "calls", line: 16 },
       ],
     };
 
@@ -959,7 +959,7 @@ describe("Graph Generation E2E: Node ID determinism", () => {
       ],
       imports: [{ module: "b", names: ["fn_b"], isWildcard: false, line: 1 }],
       references: [
-        { name: "fn_b", fromSymbol: "a.py/fn_a", kind: "call", line: 3 },
+        { name: "fn_b", fromSymbol: "a.py/fn_a", kind: "calls", line: 3 },
       ],
     };
 
@@ -1019,7 +1019,7 @@ describe("Graph Generation E2E: Unified reference edge creation", () => {
         {
           name: "src/core.py/initialize",
           fromSymbol: "docs/guide.md/Setup_Guide",
-          kind: "call",
+          kind: "references",
           line: 5,
         },
       ],
@@ -1074,7 +1074,7 @@ describe("Graph Generation E2E: Unified reference edge creation", () => {
         {
           name: "target_fn",
           fromSymbol: "src/a.py/caller",
-          kind: "call",
+          kind: "calls",
           line: 3,
         },
       ],
@@ -1138,7 +1138,7 @@ describe("Graph Generation E2E: Unified reference edge creation", () => {
         {
           name: "BaseModel",
           fromSymbol: "src/models.py/UserModel",
-          kind: "inheritance",
+          kind: "extends",
           line: 12,
         },
       ],
@@ -1171,7 +1171,7 @@ describe("Graph Generation E2E: Unified reference edge creation", () => {
         {
           name: "src/auth.py/validate_token",
           fromSymbol: "diagrams/arch.puml/AuthService",
-          kind: "call",
+          kind: "references",
           line: 3,
         },
       ],
@@ -1226,7 +1226,7 @@ describe("Graph Generation E2E: Unified reference edge creation", () => {
         {
           name: "src/utils.py/format_output",
           fromSymbol: "docs/api.md/API_Reference",
-          kind: "call",
+          kind: "references",
           line: 5,
         },
       ],
@@ -1284,7 +1284,7 @@ describe("Graph Generation E2E: Unified reference edge creation", () => {
         {
           name: "Config",
           fromSymbol: "src/service.py/run_service",
-          kind: "type_annotation",
+          kind: "references",
           line: 13,
         },
       ],

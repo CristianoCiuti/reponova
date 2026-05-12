@@ -147,7 +147,7 @@ describe("Python Extractor", () => {
 
   it("should extract function calls as references", () => {
     const callRefs = extraction.references.filter(
-      (r) => r.kind === "call" && r.fromSymbol.includes("load_config"),
+      (r) => r.kind === "calls" && r.fromSymbol.includes("load_config"),
     );
     const callNames = callRefs.map((r) => r.name);
     expect(callNames).toContain("validate_config");
@@ -205,12 +205,12 @@ describe("Python Extractor", () => {
 
   it("should extract call references", () => {
     expect(extraction.references.length).toBeGreaterThan(0);
-    const callRefs = extraction.references.filter((r) => r.kind === "call");
+    const callRefs = extraction.references.filter((r) => r.kind === "calls");
     expect(callRefs.length).toBeGreaterThan(0);
   });
 
   it("should extract inheritance references", () => {
-    const inhRefs = extraction.references.filter((r) => r.kind === "inheritance");
+    const inhRefs = extraction.references.filter((r) => r.kind === "extends");
     expect(inhRefs.length).toBeGreaterThan(0);
     const dpInheritance = inhRefs.find((r) => r.fromSymbol.includes("DataProcessor"));
     expect(dpInheritance).toBeDefined();

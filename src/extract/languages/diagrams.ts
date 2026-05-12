@@ -88,7 +88,7 @@ export class DiagramExtractor implements LanguageExtractor {
           references.push({
             name: to,
             fromSymbol: `${moduleName}.${from}`,
-            kind: "inheritance",
+            kind: "extends",
             line: i + 1,
           });
         }

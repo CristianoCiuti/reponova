@@ -541,7 +541,7 @@ describe("Cross-file import resolution integration", () => {
       ],
       imports: [{ module: "a", names: ["FnA"], isWildcard: false, line: 1 }],
       references: [
-        { name: "FnA", fromSymbol: "b.FnB", kind: "call", line: 1 },
+        { name: "FnA", fromSymbol: "b.FnB", kind: "calls", line: 1 },
       ],
     };
     const fileC: FileExtraction = {
@@ -553,7 +553,7 @@ describe("Cross-file import resolution integration", () => {
       ],
       imports: [{ module: "b", names: ["FnB"], isWildcard: false, line: 1 }],
       references: [
-        { name: "FnB", fromSymbol: "c.FnC", kind: "call", line: 1 },
+        { name: "FnB", fromSymbol: "c.FnC", kind: "calls", line: 1 },
       ],
     };
 

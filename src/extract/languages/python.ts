@@ -208,7 +208,7 @@ export class PythonExtractor implements LanguageExtractor {
       references.push({
         name: call,
         fromSymbol: qualifiedName,
-        kind: "call",
+        kind: "calls",
         line: node.startPosition.row + 1,
       });
     }
@@ -258,7 +258,7 @@ export class PythonExtractor implements LanguageExtractor {
       references.push({
         name: base,
         fromSymbol: qualifiedName,
-        kind: "inheritance",
+        kind: "extends",
         line: node.startPosition.row + 1,
       });
     }

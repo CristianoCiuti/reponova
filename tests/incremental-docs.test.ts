@@ -140,7 +140,7 @@ describe("Markdown Extractor", () => {
   });
 
   it("should extract code references from backtick spans", () => {
-    const refs = extraction.references.filter((r) => r.kind === "call");
+    const refs = extraction.references.filter((r) => r.kind === "references");
     const refNames = refs.map((r) => r.name);
     expect(refNames).toContain("ConfigLoader");
     expect(refNames).toContain("DataProcessor");
@@ -149,7 +149,7 @@ describe("Markdown Extractor", () => {
   });
 
   it("should extract file path references", () => {
-    const fileRefs = extraction.references.filter((r) => r.kind === "attribute_access");
+    const fileRefs = extraction.references.filter((r) => r.kind === "references");
     const paths = fileRefs.map((r) => r.name);
     expect(paths).toContain("src/input/reader.py");
     expect(paths).toContain("src/output/writer.py");

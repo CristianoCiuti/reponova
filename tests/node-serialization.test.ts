@@ -246,7 +246,7 @@ describe("FIX-016: Serialize docstring/signature/bases", () => {
       references: [{
         name: "db.query",
         fromSymbol: "service.UserService.get_user",
-        kind: "call",
+        kind: "calls",
         line: 10,
       }],
     };

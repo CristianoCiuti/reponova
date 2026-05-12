@@ -157,7 +157,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
     }
   }
 
-  // ── 4. Resolve references → CALLS / EXTENDS / REFERENCES edges ─────────
+  // ── 4. Resolve references → edges (type determined by extractor) ───────
 
   // Build import mapping: for each file, which imported names → which target node IDs
   const importedNames = new Map<string, Map<string, string>>(); // filePath → (name → targetNodeId)
@@ -184,7 +184,6 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
   for (const extraction of extractions) {
     const filePath = toPosix(extraction.filePath);
     const fileImports = importedNames.get(filePath) ?? new Map<string, string>();
-    const isDoc = extraction.fileNode.kind !== "module";
 
     for (const ref of extraction.references) {
       const sourceId = ref.fromSymbol;
@@ -198,8 +197,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
         graph,
       );
       if (targetId && targetId !== sourceId) {
-        const edgeType = mapReferenceKind(ref.kind, isDoc);
-        addEdgeSafe(graph, sourceId, targetId, edgeType);
+        addEdgeSafe(graph, sourceId, targetId, ref.kind);
         if (!isSameFile(graph, sourceId, targetId)) {
           crossFileEdges++;
         }
@@ -283,24 +281,6 @@ function resolveReference(
   }
 
   return null;
-}
-
-/**
- * Map a SymbolReference kind to a graph edge type.
- * Doc/diagram sources produce "references" for calls (semantically distinct from code calls).
- */
-function mapReferenceKind(kind: string, isDoc: boolean): string {
-  switch (kind) {
-    case "call":
-      return isDoc ? "references" : "calls";
-    case "inheritance":
-      return "extends";
-    case "type_annotation":
-    case "attribute_access":
-      return "references";
-    default:
-      return "references";
-  }
 }
 
 function isSameFile(graph: Graph, callerId: string, targetId: string): boolean {
