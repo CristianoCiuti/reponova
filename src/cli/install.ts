@@ -65,6 +65,23 @@ repos:
   - name: my-project
     path: ..
 
+# ── Providers (optional — AI backends for embeddings, summaries, descriptions) ──
+# Define named providers here, then reference them from features below.
+# Default (no provider) = algorithmic mode (TF-IDF embeddings, rule-based summaries).
+# providers:
+#   my-openai:
+#     type: openai
+#     base_url: https://api.openai.com/v1
+#     model: text-embedding-3-small
+#     api_key: \${OPENAI_API_KEY}
+#   local-llm:
+#     type: llama-cpp
+#     model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
+#   ollama:
+#     type: openai
+#     base_url: http://localhost:11434/v1
+#     model: nomic-embed-text
+
 # ── Source Code File Filters (shared by graph + outlines) ──
 # patterns: []                    # source files (empty = auto-detect by extension)
 # exclude: []                     # e.g. ["**/generated/**", "**/*.test.ts"]
@@ -87,21 +104,21 @@ images:
   # parse_svg_text: true
 
 # ── Embeddings ──
+# Default: TF-IDF (fast, no download). Set provider for ONNX or remote embeddings.
 embeddings:
   enabled: true
-  # method: tfidf                 # "tfidf" (fast, no download) or "onnx" (MiniLM, ~86MB)
-  # model: all-MiniLM-L6-v2      # set method to "onnx" and uncomment for MiniLM embeddings
+  # provider: my-openai           # reference a provider defined above
 
 # ── Community Summaries ──
 community_summaries:
   enabled: true
-  # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM summaries
+  # provider: local-llm           # uncomment for LLM-enhanced summaries
 
 # ── Node Descriptions ──
 node_descriptions:
   enabled: true
   # threshold: 0.8                # top 20% of nodes by degree
-  # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM descriptions
+  # provider: local-llm           # uncomment for LLM-enhanced descriptions
 
 # ── HTML ──
 # html: true

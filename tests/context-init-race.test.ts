@@ -96,9 +96,6 @@ describe("FIX-012: initContextBuilder race handling", () => {
     const db = {} as unknown;
     const initPromise = mod.initContextBuilder(db as never, "/graph", {
       enabled: true,
-      method: "tfidf",
-      model: "all-MiniLM-L6-v2",
-      dimensions: 384,
       batch_size: 128,
     }, "~/.cache/reponova/models");
 

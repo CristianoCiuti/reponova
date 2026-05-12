@@ -44,7 +44,7 @@ AI agents read files one at a time. They don't understand how your codebase fits
 - **Zero external dependencies** — no Python, no Docker, no database servers. Pure Node.js
 - **Multi-repo support** — build one graph spanning multiple repositories
 - **Smart incremental builds** — SHA256 file hashing, per-phase config change detection, selective subsystem regeneration
-- **Local LLM-enhanced** — optional local LLM for richer community summaries and node descriptions (runs on CPU)
+- **Provider-based AI** — optional local or remote AI providers for embeddings, summaries, and descriptions (local CPU/GPU or OpenAI-compatible APIs)
 - **11 MCP tools** — from text search to weighted Dijkstra, semantic similarity to structural queries
 - **Works with any MCP client** — OpenCode, Cursor, Claude Code, VS Code Copilot
 
@@ -53,15 +53,15 @@ AI agents read files one at a time. They don't understand how your codebase fits
 ## How it works
 
 ```
-  Your Codebase                      reponova build                    AI Agent
-  ─────────────                      ──────────────                    ────────
+  Your Codebase                      reponova build                         AI Agent
+  ─────────────                      ──────────────                         ────────
 
-  Python ¹                           1. tree-sitter AST parsing        graph_search
-  Markdown / Docs    ──────────►     2. Symbol + edge extraction   ──► graph_impact
-  Diagrams / SVG                     3. Louvain communities            graph_path
-  Multi-repo                         4. TF-IDF / ONNX embeddings       graph_similar
+  Python ¹                           1. tree-sitter AST parsing             graph_search
+  Markdown / Docs    ──────────►     2. Symbol + edge extraction        ──► graph_impact
+  Diagrams / SVG                     3. Louvain communities            g    raph_path
+  Multi-repo                         4. TF-IDF / ONNX / API embeddings      graph_similar
                                      5. Community summaries
-                                     6. HTML visualizations            ... (11 tools)
+                                     6. HTML visualizations                 ... (11 tools)
 ```
 
 ¹ More languages coming soon — [contributions welcome](#contributing).
@@ -123,7 +123,7 @@ Agent: [calls graph_impact] → shows upstream/downstream blast radius across re
 | `graph_impact` | 💥 Blast radius analysis — find all upstream/downstream dependents of any symbol. |
 | `graph_path` | 🛤️ Weighted shortest path (Dijkstra) between two symbols. Filter by edge type. |
 | `graph_explain` | 📋 Full detail on a node: edges, community, centrality metrics, signature, docstring. |
-| `graph_similar` | 🧲 Semantic similarity search using TF-IDF or ONNX vector embeddings. |
+| `graph_similar` | 🧲 Semantic similarity search using vector embeddings (TF-IDF, ONNX, or remote provider). |
 | `graph_context` | 🧠 Smart context builder with token budget — combines search + vectors + graph expansion. |
 | `graph_community` | 🏘️ List all nodes in a community, ranked by degree centrality. |
 | `graph_hotspots` | 🔥 God nodes / architectural bottlenecks — most connected symbols in the graph. |
@@ -193,10 +193,10 @@ RepoNova's incremental build goes beyond simple file-change detection. It minimi
 |-------|-------------|-----------------|
 | **File hashing** | SHA256 per file — only re-parse changed/added files. Detects removed files too. | Every incremental build |
 | **Config fingerprinting** | Compares a hash of build-relevant config fields across builds. | When `reponova.yml` changes between builds |
-| **Selective subsystem regeneration** | Only reruns the subsystems affected by config changes (e.g. switching `embeddings.method` reruns embeddings but not parsing). | Config-only changes (no file changes) |
+| **Selective subsystem regeneration** | Only reruns the subsystems affected by config changes (e.g. changing `embeddings.provider` reruns embeddings but not parsing). | Config-only changes (no file changes) |
 | **Incremental embeddings** | Tracks text content per node. Only re-embeds nodes whose text changed. | Every incremental build with embeddings enabled |
 | **Outline hashing** | SHA256 per source file for outlines. Skips outline regeneration for unchanged files. | Every incremental build with outlines enabled |
-| **Stale artifact cleanup** | Removes outdated artifacts when config changes invalidate them (e.g. deletes `tfidf_idf.json` after switching to ONNX). | After config change detection |
+| **Stale artifact cleanup** | Removes outdated artifacts when config changes invalidate them (e.g. deletes `tfidf_idf.json` after switching to a different embedding provider). | After config change detection |
 | **Per-phase skip** | Each phase independently checks its cache and config fingerprint. If nothing relevant changed, the phase is skipped. | Every incremental build |
 
 The build config fingerprint is stored in `graph.json` metadata. Each phase also stores its own config hash in `.cache/` for per-phase change detection.
@@ -261,10 +261,10 @@ Level 4: embeddings, html, report                              (parallel)
 | **graph** | Diff files against previous build, parse changed files with tree-sitter WASM, extract symbols/calls/imports/inheritance, build directed graph with cross-file/cross-repo edges |
 | **outlines** | Generate tree-sitter code outlines per file (SHA256 per-file hashing — skip unchanged) |
 | **communities** | Detect communities (Louvain algorithm) and write final `graph.json` with community assignments |
-| **community-summaries** | Generate community summaries (algorithmic or LLM-enhanced) |
-| **node-descriptions** | Generate descriptions for high-degree nodes (algorithmic or LLM-enhanced) |
+| **community-summaries** | Generate community summaries (algorithmic or provider-enhanced) |
+| **node-descriptions** | Generate descriptions for high-degree nodes (algorithmic or provider-enhanced) |
 | **search-index** | Generate SQLite search index (`graph_search.db`) |
-| **embeddings** | Generate embeddings incrementally — only re-embed nodes whose text content changed (TF-IDF or ONNX MiniLM). Clean up stale artifacts on config change. |
+| **embeddings** | Generate embeddings incrementally — only re-embed nodes whose text content changed (TF-IDF, ONNX, or remote provider). Clean up stale artifacts on config change. |
 | **html** | Generate `graph.html` and `graph_communities.html` interactive visualizations |
 | **report** | Generate `report.md` build report |
 
@@ -313,8 +313,8 @@ reponova check [--graph <path>]
 Checks performed:
 - Graph file (`graph.json`) exists and is readable
 - Build metadata presence (`build_config` fingerprint)
-- Embedding artifacts consistency (TF-IDF IDF file, ONNX vectors)
-- Warns if embedding method in config doesn't match the built artifacts
+- Embedding artifacts consistency (TF-IDF IDF file, vector store)
+- Warns if embedding provider in config doesn't match the built artifacts
 - Search index (`graph_search.db`) existence
 - Outlines directory existence
 - tree-sitter WASM availability
@@ -452,10 +452,33 @@ repos:
   - name: core-lib
     path: ../services/core
 
+# ── Providers (optional — AI backends) ────────────────────────────────────────
+# Define named providers here, then reference them from features below.
+# Default (no provider) = algorithmic mode (TF-IDF embeddings, rule-based summaries).
+# Type: Record<string, ProviderConfig>
+# Default: {} (empty — fully algorithmic)
+# providers:
+#   my-openai:
+#     type: openai                  # "openai" (remote), "llama-cpp" (local LLM), "onnx" (local embeddings)
+#     base_url: https://api.openai.com/v1
+#     model: text-embedding-3-small
+#     api_key: ${OPENAI_API_KEY}    # env var reference (resolved at runtime)
+#     timeout: 30                   # seconds (default: 30)
+#   local-llm:
+#     type: llama-cpp
+#     model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
+#     context_size: 512
+#   local-embeddings:
+#     type: onnx
+#     model: all-MiniLM-L6-v2
+#   ollama:
+#     type: openai                  # Ollama is OpenAI-compatible
+#     base_url: http://localhost:11434/v1
+#     model: nomic-embed-text
+
 # ── Centralized Model Management ─────────────────────────────────────────────
-# Shared settings for all models (LLM, ONNX embeddings).
-# Individual features (community_summaries, node_descriptions) can specify
-# their own model via a `model` field. These settings apply to all of them.
+# Shared settings for local AI models (ONNX embeddings + GGUF LLM weights).
+# These apply to providers of type "onnx" and "llama-cpp".
 models:
   # Directory to cache downloaded models (ONNX embeddings + LLM weights)
   # Type: string
@@ -571,33 +594,21 @@ images:
 
 # ── Embeddings ────────────────────────────────────────────────────────────────
 # Vector representations for semantic search (graph_similar, graph_context)
+# Default (no provider): TF-IDF (384-dim, fast, no download required)
+# With provider: uses the named provider for embedding generation
 embeddings:
   # Enable/disable embedding generation
   # Type: boolean
   # Default: true
   enabled: true
 
-  # Embedding method
-  # Values: "tfidf" | "onnx"
-  #   - tfidf:  Feature-hashed TF-IDF (384-dim). Fast (milliseconds). No model download.
-  #   - onnx:   MiniLM-L6-v2 via ONNX Runtime (384-dim). More accurate. ~86MB model download.
-  # Default: "tfidf"
-  method: tfidf
+  # Reference a named provider from the `providers` section above
+  # When omitted: uses built-in TF-IDF (384-dim, no download)
+  # Type: string | undefined
+  # Default: (none — algorithmic TF-IDF)
+  # provider: my-openai
 
-  # ONNX model name (only used when method: "onnx")
-  # Must be a sentence-transformers/ model on HuggingFace with ONNX export
-  # and BERT-compatible tokenizer. Dimensions must match 'dimensions' below.
-  # See the "Models" section for compatible models and details.
-  # Type: string
-  # Default: "all-MiniLM-L6-v2"
-  model: all-MiniLM-L6-v2
-
-  # Embedding vector dimensions
-  # Type: number
-  # Default: 384
-  dimensions: 384
-
-  # Batch size for ONNX inference
+  # Batch size for embedding generation
   # Type: number
   # Default: 128
   batch_size: 128
@@ -605,6 +616,8 @@ embeddings:
 # ── Community Summaries ───────────────────────────────────────────────────────
 # Natural-language summaries for each detected community (cluster of related symbols).
 # Independent from node descriptions — can enable one without the other.
+# Default (no provider): algorithmic summaries (rule-based, still useful)
+# With provider: uses LLM for richer natural-language summaries
 community_summaries:
   # Enable/disable community summary generation
   # Type: boolean
@@ -619,20 +632,17 @@ community_summaries:
   # Communities with fewer than 3 nodes are always excluded.
   max_number: 0
 
-  # LLM model for richer summaries (optional)
-  # Uses hf: URI notation — see the "Models" section for details.
-  # Type: string | null
-  # Default: null (algorithmic summaries — still useful, just less prose)
-  # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
-
-  # Context window size for LLM inference (only used when model is set)
-  # Type: number
-  # Default: 512
-  context_size: 512
+  # Provider name — references a provider defined in the top-level `providers` map
+  # When omitted: uses algorithmic summaries (rule-based)
+  # The referenced provider must be type "openai" or "llama-cpp" (LLM-capable)
+  # Type: string (optional)
+  # provider: local-llm
 
 # ── Node Descriptions ────────────────────────────────────────────────────────
 # Natural-language descriptions for high-degree (important) nodes.
 # Independent from community summaries — can enable one without the other.
+# Default (no provider): algorithmic descriptions
+# With provider: uses LLM for richer descriptions
 node_descriptions:
   # Enable/disable node description generation
   # Type: boolean
@@ -649,16 +659,11 @@ node_descriptions:
   #   - 1.0 = no nodes
   threshold: 0.8
 
-  # LLM model for richer descriptions (optional)
-  # Uses hf: URI notation — see the "Models" section for details.
-  # Type: string | null
-  # Default: null (algorithmic descriptions)
-  # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
-
-  # Context window size for LLM inference (only used when model is set)
-  # Type: number
-  # Default: 512
-  context_size: 512
+  # Provider name — references a provider defined in the top-level `providers` map
+  # When omitted: uses algorithmic descriptions
+  # The referenced provider must be type "openai" or "llama-cpp" (LLM-capable)
+  # Type: string (optional)
+  # provider: local-llm
 
 # ── HTML Visualizations ──────────────────────────────────────────────────────
 
@@ -714,28 +719,54 @@ repos:
     path: ../libs/shared
 ```
 
-### LLM-enhanced Config
+### Provider-based Config
 
-For richer, natural-language community summaries and node descriptions:
+For richer AI-enhanced summaries, descriptions, or embeddings, define providers and reference them from features:
 
 ```yaml
 output: ../reponova-out
 repos:
   - name: my-project
     path: ..
+providers:
+  local-llm:
+    type: llama-cpp
+    model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"   # ~350MB download
+    context_size: 512
 models:
   gpu: auto                 # auto-detect GPU, falls back to CPU
   download_on_first_use: true
 community_summaries:
   enabled: true
-  model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"   # ~350MB download
+  provider: local-llm       # use local LLM for richer summaries
 node_descriptions:
   enabled: true
-  threshold: 0.5          # describe top 50% nodes by degree
-  model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"   # same model, auto-shared
+  threshold: 0.5            # describe top 50% nodes by degree
+  provider: local-llm       # same provider — engine instance is shared
 ```
 
-> When `community_summaries.model` and `node_descriptions.model` resolve to the same file, RepoNova shares a single engine instance — no double memory usage.
+> When multiple features reference the same `llama-cpp` provider, RepoNova shares a single engine instance — no double memory usage.
+
+#### Using OpenAI-compatible APIs (including Ollama)
+
+```yaml
+providers:
+  openai-embed:
+    type: openai
+    base_url: https://api.openai.com/v1
+    model: text-embedding-3-small
+    api_key: ${OPENAI_API_KEY}
+  ollama-llm:
+    type: openai
+    base_url: http://localhost:11434/v1
+    model: llama3.2
+embeddings:
+  enabled: true
+  provider: openai-embed
+community_summaries:
+  enabled: true
+  provider: ollama-llm
+```
 
 ### File Filtering Config
 
@@ -763,24 +794,32 @@ exclude:                       # exclude files matching these globs
 
 ---
 
-## Models
+## Models & Providers
 
-RepoNova uses two types of AI models, both downloaded automatically on first use and cached locally. No API keys, no cloud services.
+RepoNova supports three provider types for AI-enhanced features. By default (no providers configured), everything is algorithmic — no downloads, no API keys.
 
-### ONNX Embeddings
+### Provider Types
+
+| Type | Purpose | Downloads | Requires |
+|------|---------|-----------|----------|
+| `onnx` | Local ONNX embeddings (sentence-transformers) | ~86 MB model | Nothing (bundled runtime) |
+| `llama-cpp` | Local LLM (GGUF format) for summaries/descriptions | ~350 MB model | `node-llama-cpp` (optional peer dep) |
+| `openai` | Remote OpenAI-compatible API (embeddings or LLM) | None | API key or local server (e.g. Ollama) |
+
+### ONNX Embeddings (local)
 
 Sentence-transformer models for semantic similarity search (`graph_similar`, `graph_context`).
 
 | Property | Value |
 |----------|-------|
-| **Config field** | `embeddings.model` |
-| **Notation** | Plain model name (e.g., `all-MiniLM-L6-v2`) |
+| **Provider type** | `onnx` |
+| **Config** | `providers.<name>.model` (plain model name, e.g., `all-MiniLM-L6-v2`) |
 | **Source** | `huggingface.co/sentence-transformers/{model}` |
 | **Cache path** | `{models.cache_dir}/{model-name}/` |
 | **Files downloaded** | `model.onnx`, `vocab.txt`, `tokenizer_config.json` |
-| **Required when** | `embeddings.method: onnx` |
+| **Used when** | `embeddings.provider` references an `onnx` provider |
 
-Compatible models (all 384-dim, must match `embeddings.dimensions`):
+Compatible models (384-dim output):
 
 | Model | Size | Notes |
 |-------|------|-------|
@@ -789,24 +828,38 @@ Compatible models (all 384-dim, must match `embeddings.dimensions`):
 | `paraphrase-MiniLM-L6-v2` | ~86 MB | Optimized for paraphrase detection |
 | `multi-qa-MiniLM-L6-cos-v1` | ~86 MB | Optimized for Q&A |
 
-Any model under the `sentence-transformers/` org on HuggingFace that provides an ONNX export with BERT-compatible tokenizer (WordPiece) should work. The `dimensions` config field **must** match the model's output dimension.
+Any model under the `sentence-transformers/` org on HuggingFace that provides an ONNX export with BERT-compatible tokenizer (WordPiece) should work.
 
-### LLM (GGUF)
+### LLM / GGUF (local)
 
 Local language models for richer community summaries and node descriptions, powered by [node-llama-cpp](https://github.com/withcatai/node-llama-cpp).
 
 | Property | Value |
 |----------|-------|
-| **Config field** | `community_summaries.model`, `node_descriptions.model` |
-| **Notation** | `hf:` URI (e.g., `hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M`) |
+| **Provider type** | `llama-cpp` |
+| **Config** | `providers.<name>.model` — `hf:` URI (e.g., `hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M`) |
 | **Format** | `hf:{user}/{repo}:{quantization}` |
 | **Cache path** | `{models.cache_dir}/llm/` |
-| **Required when** | `community_summaries.model` or `node_descriptions.model` is set |
+| **Used when** | `community_summaries.provider` or `node_descriptions.provider` references a `llama-cpp` provider |
 | **Dependency** | `node-llama-cpp` (optional peer dependency) |
 
-When both `community_summaries.model` and `node_descriptions.model` resolve to the same file, RepoNova shares a single engine instance — no double memory usage.
+When multiple features reference the same `llama-cpp` provider, RepoNova shares a single engine instance — no double memory usage.
 
 > **Why different notations?** ONNX embeddings use direct HTTP fetch from a fixed HuggingFace org (`sentence-transformers/`), downloading specific files (model.onnx, vocab.txt). LLM models delegate entirely to node-llama-cpp's `resolveModelFile()`, which handles the `hf:` URI protocol, download, and caching. The two systems are technically incompatible — the notation reflects this.
+
+### OpenAI-compatible (remote)
+
+Any OpenAI-compatible API — including OpenAI itself, Azure OpenAI, Ollama, LM Studio, vLLM, etc.
+
+| Property | Value |
+|----------|-------|
+| **Provider type** | `openai` |
+| **Config** | `providers.<name>.base_url`, `.model`, `.api_key`, `.timeout` |
+| **Used for** | Embeddings (`embeddings.provider`) or LLM (`community_summaries.provider`, `node_descriptions.provider`) |
+| **Retry policy** | 3 retries with exponential backoff (1s/2s/4s) on HTTP 429 (embeddings only) |
+| **Timeout** | Configurable per provider (default: 30s) |
+
+Environment variable references (e.g., `${OPENAI_API_KEY}`) are resolved at runtime.
 
 ### Model Management CLI
 
@@ -836,7 +889,7 @@ reponova-out/
 ├── graph_communities.html                    # Community-focused visualization with summary labels
 ├── graph_search.db                           # SQLite search index (sql.js WASM) — structural queries
 ├── report.md                                 # Build report: stats, hotspots, community breakdown
-├── community_summaries.json                  # Community summaries (algorithmic or LLM-enhanced)
+├── community_summaries.json                  # Community summaries (algorithmic or provider-enhanced)
 ├── node_descriptions.json                    # Descriptions for high-degree nodes
 ├── tfidf_idf.json                            # TF-IDF vocabulary weights (for query-time embedding)
 ├── vectors/                                  # LanceDB vector store — semantic similarity search
@@ -980,15 +1033,15 @@ const context = await builder.buildContext({
 
 ### Do I need an API key?
 
-No. Everything runs locally. The optional LLM is a local model (Qwen 0.5B) — no cloud, no API keys, no data leaves your machine.
+No. By default, RepoNova is fully algorithmic — no models, no downloads, no API keys. If you configure an `openai` provider pointing to a remote service, you'll need an API key for that service. Local providers (`onnx`, `llama-cpp`) run entirely on your machine.
 
 ### How big are the models?
 
 | Model | Size | When downloaded |
 |-------|------|----------------|
-| TF-IDF embeddings | None (computed in-process) | Never |
-| ONNX embeddings | ~86 MB (MiniLM-L6-v2) | First build with `method: onnx` |
-| LLM (Qwen 0.5B Q4_K_M) | ~350 MB | When `community_summaries.model` or `node_descriptions.model` is set |
+| TF-IDF embeddings | None (computed in-process) | Never (default) |
+| ONNX embeddings | ~86 MB (MiniLM-L6-v2) | When `embeddings.provider` references an `onnx` provider |
+| LLM (Qwen 0.5B Q4_K_M) | ~350 MB | When a `llama-cpp` provider is configured and referenced |
 
 ### How long does a build take?
 
@@ -996,7 +1049,7 @@ Depends on codebase size. Rough benchmarks:
 - Small project (500 files): ~5-10 seconds
 - Medium project (5,000 files): ~30-60 seconds
 - Large monorepo (20,000+ files): 2-5 minutes
-- LLM summaries add ~2-3 seconds per community
+- LLM-provider summaries add ~2-3 seconds per community
 
 ### Can I use it without an editor?
 

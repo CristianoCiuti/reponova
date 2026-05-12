@@ -11,6 +11,28 @@ repos:
   - name: my-project
     path: ..
 
+# ── Providers (optional — AI backends for embeddings, summaries, descriptions) ─
+# Define named providers here, then reference them from features below.
+# Default (no provider) = algorithmic mode (TF-IDF embeddings, rule-based summaries).
+# providers:
+#   my-openai:
+#     type: openai                  # "openai" (remote), "llama-cpp" (local LLM), "onnx" (local embeddings)
+#     base_url: https://api.openai.com/v1
+#     model: text-embedding-3-small
+#     api_key: ${OPENAI_API_KEY}    # env var reference (resolved at runtime)
+#     timeout: 30                   # seconds
+#   local-llm:
+#     type: llama-cpp
+#     model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
+#     context_size: 512
+#   local-embeddings:
+#     type: onnx
+#     model: all-MiniLM-L6-v2
+#   ollama:
+#     type: openai                  # Ollama is OpenAI-compatible
+#     base_url: http://localhost:11434/v1
+#     model: nomic-embed-text
+
 # ── Centralized model management ─────────────────────────────────────────────
 models:
   cache_dir: ~/.cache/reponova/models
@@ -44,26 +66,28 @@ images:
   parse_svg_text: true
 
 # ── Embeddings ───────────────────────────────────────────────────────────────
+# Default (no provider): TF-IDF (384-dim, fast, no download required)
+# With provider: uses the named provider for embedding generation
 embeddings:
   enabled: true
-  method: tfidf                   # "tfidf" (fast, default) or "onnx" (MiniLM, more accurate)
-  # model: all-MiniLM-L6-v2      # set method to "onnx" and uncomment for MiniLM embeddings
-  # dimensions: 384
-  # batch_size: 128
+  # provider: my-openai           # reference a provider defined above
+  # batch_size: 128               # batch size for embedding generation
 
 # ── Community Summaries ──────────────────────────────────────────────────────
+# Default (no provider): algorithmic summaries (rule-based, still useful)
+# With provider: uses LLM for richer natural-language summaries
 community_summaries:
   enabled: true
-  max_number: 0                   # 0 = no limit
-  # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM-enhanced summaries
-  context_size: 512
+  max_number: 0                   # 0 = no limit; N = only top N largest communities
+  # provider: local-llm           # reference a provider defined above
 
 # ── Node Descriptions ────────────────────────────────────────────────────────
+# Default (no provider): algorithmic descriptions
+# With provider: uses LLM for richer descriptions
 node_descriptions:
   enabled: true
   threshold: 0.8                  # top 20% of nodes by degree
-  # model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"  # uncomment for LLM-enhanced descriptions
-  context_size: 512
+  # provider: local-llm           # reference a provider defined above
 
 # ── Outlines ─────────────────────────────────────────────────────────────────
 outlines:
