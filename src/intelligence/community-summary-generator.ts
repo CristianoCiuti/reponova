@@ -74,6 +74,10 @@ export class CommunitySummaryGenerator {
           "You are a software architect. For a code community (cluster of related symbols), provide:\n" +
           "1. A short label (3-5 words max) that names the community's purpose\n" +
           "2. A concise 1-2 sentence summary focusing on architecture role\n\n" +
+          "IMPORTANT: Do NOT reference the community by name, ID, or label in your response.\n" +
+          "Write the summary as a direct description, not \"Community X is/does...\".\n" +
+          "Good: \"Handles JWT authentication and session lifecycle.\"\n" +
+          "Bad: \"Community 0 is responsible for authentication.\"\n\n" +
           "Format your response exactly as:\n" +
           "Label: <short label>\n" +
           "Summary: <summary text>",
