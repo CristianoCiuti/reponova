@@ -20,6 +20,10 @@ import {
   atomicWriteText,
   atomicWriteBuffer,
 } from "../src/shared/atomic-write.js";
+import {
+  formatCommunityName,
+  loadCommunityLabels,
+} from "../src/shared/community-labels.js";
 
 let tmpDir: string;
 
@@ -306,6 +310,62 @@ describe("shared/atomic-write", () => {
       atomicWriteBuffer(filePath, bytes);
 
       expect(readFileSync(filePath)).toEqual(Buffer.from(bytes));
+    });
+  });
+});
+
+describe("shared/community-labels", () => {
+  describe("formatCommunityName", () => {
+    it("returns algorithmic label as-is", () => {
+      expect(formatCommunityName("0", "Community 0")).toBe("Community 0");
+    });
+
+    it("appends ID to LLM-generated label", () => {
+      expect(formatCommunityName("0", "Auth & Session")).toBe("Auth & Session (community 0)");
+    });
+
+    it("works with numeric ID", () => {
+      expect(formatCommunityName(3, "Community 3")).toBe("Community 3");
+      expect(formatCommunityName(3, "Data Pipeline")).toBe("Data Pipeline (community 3)");
+    });
+
+    it("handles multi-digit IDs", () => {
+      expect(formatCommunityName("12", "Community 12")).toBe("Community 12");
+      expect(formatCommunityName("12", "Logging Utils")).toBe("Logging Utils (community 12)");
+    });
+  });
+
+  describe("loadCommunityLabels", () => {
+    it("loads labels from community_summaries.json", () => {
+      const summaries = [
+        { id: "0", label: "Auth & Session", summary: "Auth module" },
+        { id: "1", label: "Community 1", summary: "Misc" },
+      ];
+      writeFileSync(join(tmpDir, "community_summaries.json"), JSON.stringify(summaries));
+
+      const labels = loadCommunityLabels(tmpDir);
+      expect(labels.get("0")).toBe("Auth & Session");
+      expect(labels.get("1")).toBe("Community 1");
+      expect(labels.size).toBe(2);
+    });
+
+    it("coerces numeric IDs to strings", () => {
+      const summaries = [{ id: 5, label: "Numeric ID", summary: "test" }];
+      writeFileSync(join(tmpDir, "community_summaries.json"), JSON.stringify(summaries));
+
+      const labels = loadCommunityLabels(tmpDir);
+      expect(labels.get("5")).toBe("Numeric ID");
+    });
+
+    it("returns empty map when file does not exist", () => {
+      const labels = loadCommunityLabels(join(tmpDir, "nonexistent"));
+      expect(labels.size).toBe(0);
+    });
+
+    it("returns empty map on invalid JSON", () => {
+      writeFileSync(join(tmpDir, "community_summaries.json"), "{broken");
+      const labels = loadCommunityLabels(tmpDir);
+      expect(labels.size).toBe(0);
     });
   });
 });

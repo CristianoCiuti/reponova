@@ -9,6 +9,7 @@ import { atomicWriteText } from "../shared/atomic-write.js";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import Graph from "graphology";
 import type { CommunityResult } from "./community.js";
+import { formatCommunityName } from "../shared/community-labels.js";
 
 /** Summary data for a community (from intelligence layer) */
 export interface CommunitySummaryInfo {
@@ -138,6 +139,7 @@ export function exportHtml(options: ExportHtmlOptions): void {
     const nodeType = (attrs.type as string) ?? "unknown";
     const sourceFile = (attrs.source_file as string) ?? "";
     const communityLabel = communityLabelMap.get(community) ?? `Community ${community}`;
+    const communityName = formatCommunityName(String(community), communityLabel);
 
     nodeTypes.add(nodeType);
     nodes.push({
@@ -151,7 +153,7 @@ export function exportHtml(options: ExportHtmlOptions): void {
         nodeType,
         sourceFile,
         community,
-        communityLabel,
+        communityLabel: communityName,
         degree,
       },
     });
@@ -190,11 +192,9 @@ export function exportCommunityHtml(options: ExportHtmlOptions): void {
   const edges: SigmaEdge[] = [];
   const edgeCounts = new Map<string, number>();
 
-  const summaryMap = new Map<string, string>();
   const labelMap = new Map<string, string>();
   if (communitySummaries) {
     for (const s of communitySummaries) {
-      summaryMap.set(String(s.id), s.summary);
       labelMap.set(String(s.id), s.label);
     }
   }
@@ -203,8 +203,8 @@ export function exportCommunityHtml(options: ExportHtmlOptions): void {
   let i = 0;
 
   for (const [communityId, members] of communities.communities.entries()) {
-    const communityLabel = labelMap.get(String(communityId));
-    const displayLabel = communityLabel ?? `Community ${communityId}`;
+    const label = labelMap.get(String(communityId)) ?? `Community ${communityId}`;
+    const displayLabel = formatCommunityName(String(communityId), label);
 
     // Initial circular positions (refined by ForceAtlas2 after all nodes/edges are built)
     const angle = (2 * Math.PI * i) / communityCount;
@@ -275,7 +275,6 @@ export function exportCommunityHtml(options: ExportHtmlOptions): void {
     title: "Code Knowledge Graph — Communities",
     nodes,
     edges,
-    summaryMap,
   });
   atomicWriteText(outputPath, html);
 }
@@ -678,7 +677,7 @@ function generateNodeGraphHtml(options: {
     infoDetails.innerHTML =
       row('Type', attrs.nodeType) +
       row('File', attrs.sourceFile || '-') +
-      row('Community', (attrs.communityLabel || 'Community ' + attrs.community) + ' (ID: ' + attrs.community + ')') +
+      row('Community', attrs.communityLabel) +
       row('Degree', attrs.degree);
     infoPanel.classList.add('visible');
   }
@@ -738,7 +737,6 @@ function generateCommunityGraphHtml(options: {
   title: string;
   nodes: SigmaNode[];
   edges: SigmaEdge[];
-  summaryMap: Map<string, string>;
 }): string {
   const graphDataJson = serializeForHtml({
     nodes: options.nodes,
@@ -1015,10 +1013,9 @@ function generateCommunityGraphHtml(options: {
 
   function showCommunityInfo(nodeId) {
     var attrs = graph.getNodeAttributes(nodeId);
-    infoLabel.textContent = attrs.label || ('Community ' + attrs.community);
+    infoLabel.textContent = attrs.label;
     infoSummary.textContent = '';
-    infoDetails.innerHTML = '<div class="detail-row"><span class="label">Members</span><span class="value">' + attrs.degree + '</span></div>' +
-      '<div class="detail-row"><span class="label">ID</span><span class="value">' + attrs.community + '</span></div>';
+    infoDetails.innerHTML = '<div class="detail-row"><span class="label">Members</span><span class="value">' + attrs.degree + '</span></div>';
     infoPanel.classList.add('visible');
   }
 

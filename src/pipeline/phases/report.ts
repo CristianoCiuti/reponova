@@ -4,13 +4,14 @@
  * Reads graph.json and community_summaries.json.
  * Skip logic: mtime comparison of inputs vs report.md.
  */
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { atomicWriteText } from "../../shared/atomic-write.js";
 import { extname, join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import type { GraphData, GraphNode } from "../../shared/types.js";
 import { loadGraphData } from "../../graph/loader.js";
 import { log, errorMessage } from "../../shared/utils.js";
+import { formatCommunityName, loadCommunityLabels } from "../../shared/community-labels.js";
 
 interface RankedCommunity {
   id: string;
@@ -18,13 +19,6 @@ interface RankedCommunity {
   name: string;
   repos: string[];
   keyMembers: string[];
-}
-
-interface LoadedCommunitySummary {
-  id: string | number;
-  label: string;
-  summary: string;
-  hub_nodes: string[];
 }
 
 export const reportPhase: Phase = {
@@ -135,7 +129,7 @@ export function generateGraphReport(options: {
     .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label))
     .slice(0, 15);
 
-  const summaryMap = loadCommunitySummaries(outputDir);
+  const summaryMap = loadCommunityLabels(outputDir);
   const groupedCommunities = buildCommunityGroups(graphData.nodes);
   const rankedCommunities: RankedCommunity[] = [...groupedCommunities.entries()]
     .map(([id, members]) => buildRankedCommunity(id, members, nodeMap, degreeMap, summaryMap))
@@ -158,7 +152,7 @@ export function generateGraphReport(options: {
     ...renderTableRows(topGodNodes.map((n) => [n.label, n.type, n.repo, String(n.degree)])), "",
     "## Community Breakdown", "",
     ...rankedCommunities.flatMap((c) => [
-      `### ${escMd(c.name)} (Community ${c.id})`, "",
+      `### ${escMd(formatCommunityName(c.id, c.name))}`, "",
       `- Size: ${c.members.length}`,
       `- Repos: ${c.repos.length > 0 ? c.repos.join(", ") : "-"}`,
       `- Key members: ${c.keyMembers.length > 0 ? c.keyMembers.join(", ") : "-"}`, "",
@@ -202,7 +196,7 @@ function buildCommunityGroups(nodes: GraphNode[]): Map<string, string[]> {
 }
 
 function buildRankedCommunity(
-  id: string, members: string[], nodeMap: Map<string, GraphNode>, degreeMap: Map<string, number>, summaryMap: Map<string, string>,
+  id: string, members: string[], nodeMap: Map<string, GraphNode>, degreeMap: Map<string, number>, labelMap: Map<string, string>,
 ): RankedCommunity {
   const ranked = members
     .map((nid) => nodeMap.get(nid))
@@ -211,41 +205,9 @@ function buildRankedCommunity(
     .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label));
 
   const repos = Array.from(new Set(ranked.map((m) => m.repo).filter(Boolean) as string[])).sort();
-  const llmSummary = summaryMap.get(String(id));
-  const name = llmSummary ??
-    (ranked.filter((m) => m.type !== "module" && m.type !== "document").slice(0, 2).map((m) => m.label).join(" / ") || `Community ${id}`);
+  const name = labelMap.get(String(id)) ?? `Community ${id}`;
 
   return { id, members, name, repos, keyMembers: ranked.slice(0, 5).map((m) => `${m.label} (${m.degree})`) };
-}
-
-function loadCommunitySummaries(outputDir: string): Map<string, string> {
-  const p = join(outputDir, "community_summaries.json");
-  if (!existsSync(p)) return new Map();
-  try {
-    const raw = readFileSync(p, "utf-8");
-    const summaries = JSON.parse(raw) as LoadedCommunitySummary[];
-    const map = new Map<string, string>();
-    for (const s of summaries) {
-      // Prefer explicit label field; fall back to parsing summary for older formats
-      if (s.label && !s.label.startsWith("Community ")) {
-        map.set(String(s.id), s.label.length > 80 ? s.label.slice(0, 77) + "..." : s.label);
-      } else {
-        const centeredMatch = s.summary.match(/Centered around ([^.]+)/);
-        let name: string;
-        if (centeredMatch) {
-          name = centeredMatch[1]!.trim();
-        } else {
-          let cleaned = s.summary.replace(/^Community\s+\d+[\s,—-]+(?:is\s+)?/i, "");
-          cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-          name = cleaned.split(/[.!?\n]/)[0]?.trim() ?? "";
-        }
-        if (name.length > 0) {
-          map.set(String(s.id), name.length > 80 ? name.slice(0, 77) + "..." : name);
-        }
-      }
-    }
-    return map;
-  } catch { return new Map(); }
 }
 
 function renderCountTable(counts: Map<string, number>): string[] {

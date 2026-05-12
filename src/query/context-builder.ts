@@ -25,6 +25,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { resolveOutlinePath } from "../shared/path-resolver.js";
 import { readJsonSafe } from "../shared/fs.js";
+import { formatCommunityName } from "../shared/community-labels.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -254,7 +255,7 @@ export class ContextBuilder {
         relationships,
         communities: [...touchedCommunities].map<CommunitySummaryEntry>(id => ({
           community_id: id,
-          label: this.communityLabels.get(id) ?? `Community ${id}`,
+          label: formatCommunityName(id, this.communityLabels.get(id) ?? `Community ${id}`),
           summary: this.communitySummaries.get(id) ?? "",
         })).filter(c => c.summary),
         source_snippets: sourceSnippets,
@@ -573,7 +574,7 @@ export class ContextBuilder {
       if (!summary) continue;
 
       const label = this.communityLabels.get(id) ?? `Community ${id}`;
-      const line = `**${label}** (community ${id}): ${summary}`;
+      const line = `**${formatCommunityName(id, label)}**: ${summary}`;
       const lineTokens = countTokens(line);
       if (tokens + lineTokens > budget) break;
       lines.push(line);
