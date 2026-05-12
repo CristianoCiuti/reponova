@@ -114,7 +114,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
         case "graph_outline": return handleOutline(db, graphDir, args as Record<string, unknown>, resolvePaths);
         case "graph_path": return handlePath(db, args as Record<string, unknown>, resolvePaths);
         case "graph_explain": return handleExplain(db, graphDir, args as Record<string, unknown>, resolvePaths);
-        case "graph_community": return handleCommunity(db, args as Record<string, unknown>, resolvePaths);
+        case "graph_community": return handleCommunity(db, graphDir, args as Record<string, unknown>, resolvePaths);
         case "graph_hotspots": return handleHotspots(db, args as Record<string, unknown>, resolvePaths);
         case "graph_similar": return await handleSimilar(db, args as Record<string, unknown>, resolvePaths);
         case "graph_context": return await handleContext(db, graphDir, args as Record<string, unknown>, resolvePaths);

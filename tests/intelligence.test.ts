@@ -9,7 +9,7 @@ import { VectorStore, type VectorRecord } from "../src/query/vector-store.js";
 vi.mock("@lancedb/lancedb", () => ({
   connect: async () => { throw new Error("mock: lancedb unavailable"); },
 }));
-import { CommunitySummaryGenerator, type CommunityData } from "../src/intelligence/community-summary-generator.js";
+import { CommunitySummaryGenerator, type CommunityData, parseLlmResponse } from "../src/intelligence/community-summary-generator.js";
 import { NodeDescriptionGenerator } from "../src/intelligence/node-description-generator.js";
 import { LlmEngine } from "../src/intelligence/local-llm-engine.js";
 import type { GraphNode, CommunitySummariesConfig, NodeDescriptionsConfig } from "../src/shared/types.js";
@@ -164,6 +164,7 @@ describe("CommunitySummaryGenerator (algorithmic)", () => {
 
     const summaries = await generator.generate(communities);
     expect(summaries).toHaveLength(1);
+    expect(summaries[0].label).toBe("Community 0");
     expect(summaries[0].nodeCount).toBe(4);
     expect(summaries[0].summary).toContain("4 nodes cluster");
     expect(summaries[0].hub_nodes.length).toBeGreaterThan(0);
@@ -180,6 +181,94 @@ describe("CommunitySummaryGenerator (algorithmic)", () => {
     // But let's test with an empty community list (mirrors what step would pass)
     const summaries = await generator.generate([]);
     expect(summaries).toHaveLength(0);
+  });
+
+  it("generates LLM label and summary when provider available", async () => {
+    const mockLlm = {
+      isAvailable: true,
+      generate: async () => "Label: Auth & Session\nSummary: Handles user authentication and session lifecycle.",
+      dispose: async () => {},
+    };
+
+    const generator = new CommunitySummaryGenerator(defaultSummariesConfig, mockLlm as any);
+
+    const communities: CommunityData[] = [
+      {
+        id: "5",
+        nodes: [
+          { id: "1", label: "AuthService", type: "class", source_file: "src/auth/service.py" },
+          { id: "2", label: "login", type: "function", source_file: "src/auth/handlers.py" },
+          { id: "3", label: "validate_token", type: "function", source_file: "src/auth/token.py" },
+        ] as GraphNode[],
+      },
+    ];
+
+    const summaries = await generator.generate(communities);
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0].label).toBe("Auth & Session");
+    expect(summaries[0].summary).toBe("Handles user authentication and session lifecycle.");
+  });
+
+  it("falls back to algorithmic label when LLM response has no Label line", async () => {
+    const mockLlm = {
+      isAvailable: true,
+      generate: async () => "This community handles authentication and session management.",
+      dispose: async () => {},
+    };
+
+    const generator = new CommunitySummaryGenerator(defaultSummariesConfig, mockLlm as any);
+
+    const communities: CommunityData[] = [
+      {
+        id: "3",
+        nodes: [
+          { id: "1", label: "AuthService", type: "class", source_file: "src/auth/service.py" },
+          { id: "2", label: "login", type: "function", source_file: "src/auth/handlers.py" },
+          { id: "3", label: "validate_token", type: "function", source_file: "src/auth/token.py" },
+        ] as GraphNode[],
+      },
+    ];
+
+    const summaries = await generator.generate(communities);
+    expect(summaries).toHaveLength(1);
+    // No Label line parsed, falls back to algorithmic
+    expect(summaries[0].label).toBe("Community 3");
+    // No Summary line parsed either, algorithmic summary is kept
+    expect(summaries[0].summary).toContain("3 nodes cluster");
+  });
+});
+
+// ─── parseLlmResponse ────────────────────────────────────────────────────────
+
+describe("parseLlmResponse", () => {
+  it("parses well-formatted Label + Summary response", () => {
+    const result = parseLlmResponse("Label: Auth & Session\nSummary: Handles user authentication and session lifecycle.");
+    expect(result.label).toBe("Auth & Session");
+    expect(result.summary).toBe("Handles user authentication and session lifecycle.");
+  });
+
+  it("parses multi-line summary", () => {
+    const result = parseLlmResponse("Label: Data Pipeline\nSummary: Processes raw input data through multiple\ntransformation stages before persistence.");
+    expect(result.label).toBe("Data Pipeline");
+    expect(result.summary).toBe("Processes raw input data through multiple\ntransformation stages before persistence.");
+  });
+
+  it("returns undefined for missing Label line", () => {
+    const result = parseLlmResponse("Summary: Just a summary without a label.");
+    expect(result.label).toBeUndefined();
+    expect(result.summary).toBe("Just a summary without a label.");
+  });
+
+  it("returns undefined for missing Summary line", () => {
+    const result = parseLlmResponse("Label: My Label\nSome text without Summary prefix.");
+    expect(result.label).toBe("My Label");
+    expect(result.summary).toBeUndefined();
+  });
+
+  it("returns both undefined for unstructured text", () => {
+    const result = parseLlmResponse("Just some unstructured text about the community.");
+    expect(result.label).toBeUndefined();
+    expect(result.summary).toBeUndefined();
   });
 });
 

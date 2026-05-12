@@ -22,6 +22,7 @@ interface RankedCommunity {
 
 interface LoadedCommunitySummary {
   id: string | number;
+  label: string;
   summary: string;
   hub_nodes: string[];
 }
@@ -157,7 +158,7 @@ export function generateGraphReport(options: {
     ...renderTableRows(topGodNodes.map((n) => [n.label, n.type, n.repo, String(n.degree)])), "",
     "## Community Breakdown", "",
     ...rankedCommunities.flatMap((c) => [
-      `### Community ${c.id} — ${escMd(c.name)}`, "",
+      `### ${escMd(c.name)} (Community ${c.id})`, "",
       `- Size: ${c.members.length}`,
       `- Repos: ${c.repos.length > 0 ? c.repos.join(", ") : "-"}`,
       `- Key members: ${c.keyMembers.length > 0 ? c.keyMembers.join(", ") : "-"}`, "",
@@ -225,17 +226,22 @@ function loadCommunitySummaries(outputDir: string): Map<string, string> {
     const summaries = JSON.parse(raw) as LoadedCommunitySummary[];
     const map = new Map<string, string>();
     for (const s of summaries) {
-      const centeredMatch = s.summary.match(/Centered around ([^.]+)/);
-      let name: string;
-      if (centeredMatch) {
-        name = centeredMatch[1]!.trim();
+      // Prefer explicit label field; fall back to parsing summary for older formats
+      if (s.label && !s.label.startsWith("Community ")) {
+        map.set(String(s.id), s.label.length > 80 ? s.label.slice(0, 77) + "..." : s.label);
       } else {
-        let cleaned = s.summary.replace(/^Community\s+\d+[\s,—-]+(?:is\s+)?/i, "");
-        cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-        name = cleaned.split(/[.!?\n]/)[0]?.trim() ?? "";
-      }
-      if (name.length > 0) {
-        map.set(String(s.id), name.length > 80 ? name.slice(0, 77) + "..." : name);
+        const centeredMatch = s.summary.match(/Centered around ([^.]+)/);
+        let name: string;
+        if (centeredMatch) {
+          name = centeredMatch[1]!.trim();
+        } else {
+          let cleaned = s.summary.replace(/^Community\s+\d+[\s,—-]+(?:is\s+)?/i, "");
+          cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+          name = cleaned.split(/[.!?\n]/)[0]?.trim() ?? "";
+        }
+        if (name.length > 0) {
+          map.set(String(s.id), name.length > 80 ? name.slice(0, 77) + "..." : name);
+        }
       }
     }
     return map;

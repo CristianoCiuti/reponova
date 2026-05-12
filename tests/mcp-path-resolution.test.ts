@@ -155,7 +155,7 @@ describe("MCP tools include resolved paths in responses (e2e sandbox)", () => {
   });
 
   it("graph_community includes resolved paths", () => {
-    const result = handleCommunity(db, { community_id: "0" }, resolvePaths);
+    const result = handleCommunity(db, graphDir, { community_id: "0" }, resolvePaths);
     const text = result.content[0]!.text;
 
     expect(text).toContain("Graph path:");

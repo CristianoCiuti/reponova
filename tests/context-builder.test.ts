@@ -27,8 +27,8 @@ describe("ContextBuilder", () => {
 
     // Write mock community summaries
     const summaries = [
-      { community_id: "0", summary: "Core authentication and user management module" },
-      { community_id: "1", summary: "Data processing and transformation pipeline" },
+      { id: "0", label: "Auth & User Management", summary: "Core authentication and user management module" },
+      { id: "1", label: "Data Processing", summary: "Data processing and transformation pipeline" },
     ];
     writeFileSync(join(graphDir, "community_summaries.json"), JSON.stringify(summaries));
 

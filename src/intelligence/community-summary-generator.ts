@@ -8,6 +8,7 @@ import type { LlmProvider } from "./llm-provider.js";
 
 export interface CommunitySummary {
   id: string;
+  label: string;
   nodeCount: number;
   summary: string;
   hub_nodes: string[];
@@ -62,24 +63,35 @@ export class CommunitySummaryGenerator {
     const repos = [...new Set(nodes.filter((n) => n.repo).map((n) => n.repo!))];
 
     const algorithmicSummary = buildAlgorithmicSummary(nodes.length, hubNodes, primaryPath, repos);
+    const algorithmicLabel = `Community ${community.id}`;
 
     let summary = algorithmicSummary;
+    let label = algorithmicLabel;
+
     if (this.llm?.isAvailable && nodes.length >= 3) {
-      const llmSummary = await this.llm.generate({
+      const llmResult = await this.llm.generate({
         systemPrompt:
-          "You are a software architect. Generate a concise 1-2 sentence summary of a code community (cluster of related symbols). Focus on the community's purpose and role in the architecture.",
+          "You are a software architect. For a code community (cluster of related symbols), provide:\n" +
+          "1. A short label (3-5 words max) that names the community's purpose\n" +
+          "2. A concise 1-2 sentence summary focusing on architecture role\n\n" +
+          "Format your response exactly as:\n" +
+          "Label: <short label>\n" +
+          "Summary: <summary text>",
         userPrompt: composeCommunityPrompt(community),
-        maxTokens: 150,
+        maxTokens: 200,
         temperature: 0.5,
       });
 
-      if (llmSummary) {
-        summary = llmSummary.trim();
+      if (llmResult) {
+        const parsed = parseLlmResponse(llmResult.trim());
+        if (parsed.summary) summary = parsed.summary;
+        if (parsed.label) label = parsed.label;
       }
     }
 
     return {
       id: community.id,
+      label,
       nodeCount: nodes.length,
       summary,
       hub_nodes: hubNodes.map((n) => n.label),
@@ -98,6 +110,17 @@ function buildAlgorithmicSummary(
   const hubNames = hubs.slice(0, 3).map((n) => n.label).join(", ");
   const repoStr = repos.length > 0 ? ` Spans ${repos.join(", ")}.` : "";
   return `${nodeCount} nodes cluster. Centered around ${hubNames} in ${primaryPath}.${repoStr}`;
+}
+
+/** Parse LLM response that should contain "Label: ..." and "Summary: ..." lines. */
+export function parseLlmResponse(text: string): { label?: string; summary?: string } {
+  const labelMatch = text.match(/^Label:\s*(.+)$/m);
+  const summaryMatch = text.match(/^Summary:\s*(.+(?:\n(?!Label:).+)*)$/m);
+
+  return {
+    label: labelMatch?.[1]?.trim() || undefined,
+    summary: summaryMatch?.[1]?.trim() || undefined,
+  };
 }
 
 function composeCommunityPrompt(community: CommunityData): string {

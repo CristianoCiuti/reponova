@@ -69,6 +69,7 @@ export const htmlPhase: Phase = {
         communities,
         outputPath: htmlPath,
         minDegree: config.html_min_degree,
+        communitySummaries,
       });
 
       exportCommunityHtml({

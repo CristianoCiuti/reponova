@@ -94,6 +94,7 @@ export class ContextBuilder {
   private vectorStore: VectorStore | null = null;
   private tfidfEngine: TfidfEmbeddingEngine | null = null;
   private communitySummaries: Map<string, string> = new Map();
+  private communityLabels: Map<string, string> = new Map();
   private nodeDescriptions: Map<string, string> = new Map();
 
   constructor(db: Database, graphDir: string) {
@@ -109,10 +110,11 @@ export class ContextBuilder {
     // Load community summaries if available
     const summariesPath = join(this.graphDir, "community_summaries.json");
     if (existsSync(summariesPath)) {
-      const raw = readJsonSafe<Array<{ id: string; summary: string }>>(summariesPath);
+      const raw = readJsonSafe<Array<{ id: string; label: string; summary: string }>>(summariesPath);
       if (raw) {
         for (const s of raw) {
           this.communitySummaries.set(String(s.id), s.summary);
+          this.communityLabels.set(String(s.id), s.label);
         }
       }
     }
@@ -252,6 +254,7 @@ export class ContextBuilder {
         relationships,
         communities: [...touchedCommunities].map<CommunitySummaryEntry>(id => ({
           community_id: id,
+          label: this.communityLabels.get(id) ?? `Community ${id}`,
           summary: this.communitySummaries.get(id) ?? "",
         })).filter(c => c.summary),
         source_snippets: sourceSnippets,
@@ -569,7 +572,8 @@ export class ContextBuilder {
       const summary = this.communitySummaries.get(id);
       if (!summary) continue;
 
-      const line = `**Community ${id}**: ${summary}`;
+      const label = this.communityLabels.get(id) ?? `Community ${id}`;
+      const line = `**${label}** (community ${id}): ${summary}`;
       const lineTokens = countTokens(line);
       if (tokens + lineTokens > budget) break;
       lines.push(line);

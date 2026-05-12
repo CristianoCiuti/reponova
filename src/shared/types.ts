@@ -266,6 +266,7 @@ export interface RelationshipEntry {
 
 export interface CommunitySummaryEntry {
   community_id: string;
+  label: string;
   summary: string;
 }
 

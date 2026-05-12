@@ -13,6 +13,7 @@ import type { CommunityResult } from "./community.js";
 /** Summary data for a community (from intelligence layer) */
 export interface CommunitySummaryInfo {
   id: string;
+  label: string;
   summary: string;
 }
 
@@ -48,6 +49,7 @@ interface SigmaNode {
     nodeType: string;
     sourceFile: string;
     community: number;
+    communityLabel?: string;
     degree: number;
   };
 }
@@ -103,11 +105,19 @@ function computeLayout(graph: Graph): void {
  * Export graph as standalone interactive HTML visualization using Sigma.js.
  */
 export function exportHtml(options: ExportHtmlOptions): void {
-  const { graph, outputPath, minDegree } = options;
+  const { graph, outputPath, minDegree, communitySummaries } = options;
   const nodes: SigmaNode[] = [];
   const edges: SigmaEdge[] = [];
   const includedNodes = new Set<string>();
   const nodeTypes = new Set<string>();
+
+  // Build label lookup from community summaries
+  const communityLabelMap = new Map<number, string>();
+  if (communitySummaries) {
+    for (const s of communitySummaries) {
+      communityLabelMap.set(Number(s.id), s.label);
+    }
+  }
 
   // Build a filtered subgraph for layout
   graph.forEachNode((nodeId) => {
@@ -127,6 +137,7 @@ export function exportHtml(options: ExportHtmlOptions): void {
     const size = Math.max(3, Math.min(20, 3 + Math.sqrt(degree) * 2));
     const nodeType = (attrs.type as string) ?? "unknown";
     const sourceFile = (attrs.source_file as string) ?? "";
+    const communityLabel = communityLabelMap.get(community) ?? `Community ${community}`;
 
     nodeTypes.add(nodeType);
     nodes.push({
@@ -140,6 +151,7 @@ export function exportHtml(options: ExportHtmlOptions): void {
         nodeType,
         sourceFile,
         community,
+        communityLabel,
         degree,
       },
     });
@@ -179,9 +191,11 @@ export function exportCommunityHtml(options: ExportHtmlOptions): void {
   const edgeCounts = new Map<string, number>();
 
   const summaryMap = new Map<string, string>();
+  const labelMap = new Map<string, string>();
   if (communitySummaries) {
     for (const s of communitySummaries) {
       summaryMap.set(String(s.id), s.summary);
+      labelMap.set(String(s.id), s.label);
     }
   }
 
@@ -189,31 +203,8 @@ export function exportCommunityHtml(options: ExportHtmlOptions): void {
   let i = 0;
 
   for (const [communityId, members] of communities.communities.entries()) {
-    const rankedMembers = members
-      .filter((nodeId) => graph.hasNode(nodeId))
-      .map((nodeId) => ({
-        label: (graph.getNodeAttribute(nodeId, "label") as string | undefined) ?? nodeId,
-        degree: graph.degree(nodeId),
-        repo: graph.getNodeAttribute(nodeId, "repo") as string | undefined,
-        type: graph.getNodeAttribute(nodeId, "type") as string | undefined,
-      }))
-      .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label));
-
-    const prominent = rankedMembers
-      .filter((member) => member.type !== "module" && member.type !== "document")
-      .slice(0, 3)
-      .map((member) => member.label);
-
-    const summaryText = summaryMap.get(String(communityId));
-    let displayLabel: string;
-    if (summaryText) {
-      const shortSummary = summaryText.length > 50 ? summaryText.slice(0, 47) + "..." : summaryText;
-      displayLabel = `C${communityId}: ${shortSummary}`;
-    } else {
-      displayLabel = prominent.length > 0
-        ? `C${communityId}: ${prominent.join(", ")}`
-        : `Community ${communityId}`;
-    }
+    const communityLabel = labelMap.get(String(communityId));
+    const displayLabel = communityLabel ?? `Community ${communityId}`;
 
     // Initial circular positions (refined by ForceAtlas2 after all nodes/edges are built)
     const angle = (2 * Math.PI * i) / communityCount;
@@ -687,7 +678,7 @@ function generateNodeGraphHtml(options: {
     infoDetails.innerHTML =
       row('Type', attrs.nodeType) +
       row('File', attrs.sourceFile || '-') +
-      row('Community', attrs.community) +
+      row('Community', (attrs.communityLabel || 'Community ' + attrs.community) + ' (ID: ' + attrs.community + ')') +
       row('Degree', attrs.degree);
     infoPanel.classList.add('visible');
   }
@@ -1024,9 +1015,10 @@ function generateCommunityGraphHtml(options: {
 
   function showCommunityInfo(nodeId) {
     var attrs = graph.getNodeAttributes(nodeId);
-    infoLabel.textContent = 'Community ' + attrs.community;
-    infoSummary.textContent = attrs.label || '';
-    infoDetails.innerHTML = '<div class="detail-row"><span class="label">Members</span><span class="value">' + attrs.degree + '</span></div>';
+    infoLabel.textContent = attrs.label || ('Community ' + attrs.community);
+    infoSummary.textContent = '';
+    infoDetails.innerHTML = '<div class="detail-row"><span class="label">Members</span><span class="value">' + attrs.degree + '</span></div>' +
+      '<div class="detail-row"><span class="label">ID</span><span class="value">' + attrs.community + '</span></div>';
     infoPanel.classList.add('visible');
   }
 
