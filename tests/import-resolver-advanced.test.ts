@@ -21,9 +21,9 @@ describe("Wildcard import expansion", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "public_fn", qualifiedName: "lib.public_fn", kind: "function", decorators: [], startLine: 1, endLine: 5, calls: [] },
-        { name: "_private_fn", qualifiedName: "lib._private_fn", kind: "function", decorators: [], startLine: 7, endLine: 11, calls: [] },
-        { name: "PublicClass", qualifiedName: "lib.PublicClass", kind: "class", decorators: [], startLine: 13, endLine: 20, calls: [] },
+        { name: "public_fn", qualifiedName: "lib.public_fn", kind: "function", decorators: [], startLine: 1, endLine: 5 },
+        { name: "_private_fn", qualifiedName: "lib._private_fn", kind: "function", decorators: [], startLine: 7, endLine: 11 },
+        { name: "PublicClass", qualifiedName: "lib.PublicClass", kind: "class", decorators: [], startLine: 13, endLine: 20 },
       ],
       imports: [],
       references: [],
@@ -62,8 +62,8 @@ describe("Wildcard import expansion", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "alpha", qualifiedName: "lib.alpha", kind: "function", decorators: [], startLine: 1, endLine: 5, calls: [] },
-        { name: "beta", qualifiedName: "lib.beta", kind: "function", decorators: [], startLine: 7, endLine: 11, calls: [] },
+        { name: "alpha", qualifiedName: "lib.alpha", kind: "function", decorators: [], startLine: 1, endLine: 5 },
+        { name: "beta", qualifiedName: "lib.beta", kind: "function", decorators: [], startLine: 7, endLine: 11 },
       ],
       imports: [],
       references: [],
@@ -98,7 +98,7 @@ describe("Wildcard import expansion", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "fn", qualifiedName: "lib.fn", kind: "function", decorators: [], startLine: 1, endLine: 5, calls: [] },
+        { name: "fn", qualifiedName: "lib.fn", kind: "function", decorators: [], startLine: 1, endLine: 5 },
       ],
       imports: [],
       references: [],
@@ -134,8 +134,8 @@ describe("Named import resolution", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "parse_data", qualifiedName: "utils.parse_data", kind: "function", decorators: [], startLine: 1, endLine: 10, calls: [] },
-        { name: "format_data", qualifiedName: "utils.format_data", kind: "function", decorators: [], startLine: 12, endLine: 20, calls: [] },
+        { name: "parse_data", qualifiedName: "utils.parse_data", kind: "function", decorators: [], startLine: 1, endLine: 10 },
+        { name: "format_data", qualifiedName: "utils.format_data", kind: "function", decorators: [], startLine: 12, endLine: 20 },
       ],
       imports: [],
       references: [],
@@ -172,7 +172,7 @@ describe("Named import resolution", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "parse_data", qualifiedName: "utils.parse_data", kind: "function", decorators: [], startLine: 1, endLine: 10, calls: [] },
+        { name: "parse_data", qualifiedName: "utils.parse_data", kind: "function", decorators: [], startLine: 1, endLine: 10 },
       ],
       imports: [],
       references: [],
@@ -238,7 +238,7 @@ describe("chaseReExport: re-export chasing", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "User", qualifiedName: "models.user.User", kind: "class", decorators: [], startLine: 1, endLine: 20, calls: [] },
+        { name: "User", qualifiedName: "models.user.User", kind: "class", decorators: [], startLine: 1, endLine: 20 },
       ],
       imports: [],
       references: [],
@@ -288,7 +288,7 @@ describe("chaseReExport: re-export chasing", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "BaseModel", qualifiedName: "core.base.BaseModel", kind: "class", decorators: [], startLine: 1, endLine: 20, calls: [] },
+        { name: "BaseModel", qualifiedName: "core.base.BaseModel", kind: "class", decorators: [], startLine: 1, endLine: 20 },
       ],
       imports: [],
       references: [],
@@ -382,7 +382,7 @@ describe("chaseReExport: re-export chasing", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "DeepFn", qualifiedName: "d.DeepFn", kind: "function", decorators: [], startLine: 1, endLine: 5, calls: [] },
+        { name: "DeepFn", qualifiedName: "d.DeepFn", kind: "function", decorators: [], startLine: 1, endLine: 5 },
       ],
       imports: [],
       references: [],
@@ -450,7 +450,7 @@ describe("findInByPath: partial path matching", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "fn", qualifiedName: "utils.fn", kind: "function", decorators: [], startLine: 1, endLine: 5, calls: [] },
+        { name: "fn", qualifiedName: "utils.fn", kind: "function", decorators: [], startLine: 1, endLine: 5 },
       ],
       imports: [],
       references: [],
@@ -477,7 +477,7 @@ describe("findInByPath: partial path matching", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "fn", qualifiedName: "myproject.pkg.utils.fn", kind: "function", decorators: [], startLine: 1, endLine: 5, calls: [] },
+        { name: "fn", qualifiedName: "myproject.pkg.utils.fn", kind: "function", decorators: [], startLine: 1, endLine: 5 },
       ],
       imports: [],
       references: [],
@@ -527,7 +527,7 @@ describe("Cross-file import resolution integration", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "FnA", qualifiedName: "a.FnA", kind: "function", decorators: [], startLine: 1, endLine: 5, calls: [] },
+        { name: "FnA", qualifiedName: "a.FnA", kind: "function", decorators: [], startLine: 1, endLine: 5 },
       ],
       imports: [],
       references: [],
@@ -537,20 +537,24 @@ describe("Cross-file import resolution integration", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "FnB", qualifiedName: "b.FnB", kind: "function", decorators: [], startLine: 1, endLine: 5, calls: ["FnA"] },
+        { name: "FnB", qualifiedName: "b.FnB", kind: "function", decorators: [], startLine: 1, endLine: 5 },
       ],
       imports: [{ module: "a", names: ["FnA"], isWildcard: false, line: 1 }],
-      references: [],
+      references: [
+        { name: "FnA", fromSymbol: "b.FnB", kind: "call", line: 1 },
+      ],
     };
     const fileC: FileExtraction = {
       filePath: "c.py",
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "FnC", qualifiedName: "c.FnC", kind: "function", decorators: [], startLine: 1, endLine: 5, calls: ["FnB"] },
+        { name: "FnC", qualifiedName: "c.FnC", kind: "function", decorators: [], startLine: 1, endLine: 5 },
       ],
       imports: [{ module: "b", names: ["FnB"], isWildcard: false, line: 1 }],
-      references: [],
+      references: [
+        { name: "FnB", fromSymbol: "c.FnC", kind: "call", line: 1 },
+      ],
     };
 
     const resolved = resolveImports([fileA, fileB, fileC]);
@@ -570,7 +574,7 @@ describe("Cross-file import resolution integration", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "exists", qualifiedName: "lib.exists", kind: "function", decorators: [], startLine: 1, endLine: 5, calls: [] },
+        { name: "exists", qualifiedName: "lib.exists", kind: "function", decorators: [], startLine: 1, endLine: 5 },
       ],
       imports: [],
       references: [],

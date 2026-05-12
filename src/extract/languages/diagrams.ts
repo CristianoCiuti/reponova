@@ -76,7 +76,6 @@ export class DiagramExtractor implements LanguageExtractor {
           startLine: i + 1,
           endLine: i + 1,
           parent: fileName,
-          calls: [],
         });
       }
 
@@ -88,7 +87,7 @@ export class DiagramExtractor implements LanguageExtractor {
         if (from !== to && /^\w+$/.test(from) && /^\w+$/.test(to)) {
           references.push({
             name: to,
-            fromSymbol: from,
+            fromSymbol: `${moduleName}.${from}`,
             kind: "inheritance",
             line: i + 1,
           });
@@ -145,7 +144,6 @@ export class DiagramExtractor implements LanguageExtractor {
         startLine: 1,
         endLine: 1,
         parent: fileName,
-        calls: [],
       });
     }
 

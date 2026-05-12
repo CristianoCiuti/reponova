@@ -49,7 +49,6 @@ describe("Graph Generation E2E: Python modules", () => {
         decorators: ["login_required"],
         startLine: 5,
         endLine: 20,
-        calls: ["validate_token", "get_user"],
         signature: "(request: Request) -> User",
         docstring: "Authenticate incoming request.",
       },
@@ -60,7 +59,6 @@ describe("Graph Generation E2E: Python modules", () => {
         decorators: [],
         startLine: 22,
         endLine: 30,
-        calls: [],
         signature: "(token: str) -> bool",
       },
       {
@@ -70,13 +68,15 @@ describe("Graph Generation E2E: Python modules", () => {
         decorators: [],
         startLine: 1,
         endLine: 1,
-        calls: [],
       },
     ],
     imports: [
       { module: "src.models", names: ["User"], isWildcard: false, line: 1 },
     ],
-    references: [],
+    references: [
+      { name: "validate_token", fromSymbol: "src/auth.py/authenticate", kind: "call", line: 10 },
+      { name: "get_user", fromSymbol: "src/auth.py/authenticate", kind: "call", line: 12 },
+    ],
   };
 
   it("should create a module node for the file", () => {
@@ -149,7 +149,6 @@ describe("Graph Generation E2E: Class hierarchy & inheritance", () => {
         decorators: [],
         startLine: 1,
         endLine: 10,
-        calls: [],
         docstring: "Base for all models.",
       },
       {
@@ -159,7 +158,6 @@ describe("Graph Generation E2E: Class hierarchy & inheritance", () => {
         decorators: [],
         startLine: 12,
         endLine: 40,
-        calls: [],
         bases: ["BaseModel"],
         docstring: "User model.",
       },
@@ -170,7 +168,6 @@ describe("Graph Generation E2E: Class hierarchy & inheritance", () => {
         decorators: [],
         startLine: 15,
         endLine: 17,
-        calls: [],
         parent: "User",
         signature: "(self) -> str",
       },
@@ -181,7 +178,6 @@ describe("Graph Generation E2E: Class hierarchy & inheritance", () => {
         decorators: [],
         startLine: 19,
         endLine: 25,
-        calls: ["validate"],
         parent: "User",
       },
       {
@@ -191,12 +187,14 @@ describe("Graph Generation E2E: Class hierarchy & inheritance", () => {
         decorators: [],
         startLine: 27,
         endLine: 35,
-        calls: [],
         parent: "User",
       },
     ],
     imports: [],
-    references: [],
+    references: [
+      { name: "BaseModel", fromSymbol: "models.py/User", kind: "inheritance", line: 12 },
+      { name: "validate", fromSymbol: "models.py/User.save", kind: "call", line: 20 },
+    ],
   };
 
   it("should create class nodes with bases and docstrings", () => {
@@ -260,7 +258,6 @@ describe("Graph Generation E2E: Cross-file imports", () => {
         decorators: [],
         startLine: 1,
         endLine: 20,
-        calls: [],
       },
       {
         name: "Role",
@@ -269,7 +266,6 @@ describe("Graph Generation E2E: Cross-file imports", () => {
         decorators: [],
         startLine: 22,
         endLine: 40,
-        calls: [],
       },
     ],
     imports: [],
@@ -288,13 +284,14 @@ describe("Graph Generation E2E: Cross-file imports", () => {
         decorators: [],
         startLine: 5,
         endLine: 15,
-        calls: ["User"],
       },
     ],
     imports: [
       { module: "models", names: ["User", "Role"], isWildcard: false, line: 1 },
     ],
-    references: [],
+    references: [
+      { name: "User", fromSymbol: "service.py/create_user", kind: "call", line: 10 },
+    ],
   };
 
   it("should resolve imports_from edges to specific symbols", () => {
@@ -340,28 +337,26 @@ describe("Graph Generation E2E: Markdown documents", () => {
     symbols: [
       {
         name: "Components",
-        qualifiedName: "docs/architecture.md/Components",
+        qualifiedName: "docs.architecture.Components",
         kind: "section",
         decorators: ["h2"],
         startLine: 5,
         endLine: 30,
         parent: "architecture.md",
-        calls: [],
       },
       {
-        name: "Data_Flow",
-        qualifiedName: "docs/architecture.md/Data_Flow",
+        name: "Data Flow",
+        qualifiedName: "docs.architecture.Data_Flow",
         kind: "section",
         decorators: ["h2"],
         startLine: 32,
         endLine: 60,
         parent: "architecture.md",
-        calls: [],
       },
     ],
     imports: [],
     references: [
-      { name: "ConfigLoader", fromSymbol: "Components", kind: "call", line: 10 },
+      { name: "ConfigLoader", fromSymbol: "docs.architecture.Components", kind: "call", line: 10 },
     ],
   };
 
@@ -379,7 +374,7 @@ describe("Graph Generation E2E: Markdown documents", () => {
     expect(sections.length).toBe(2);
     const names = sections.map((s) => s.attrs.label);
     expect(names).toContain("Components");
-    expect(names).toContain("Data_Flow");
+    expect(names).toContain("Data Flow");
   });
 
   it("should create contains edges from document to sections", () => {
@@ -415,7 +410,6 @@ describe("Graph Generation E2E: Diagrams", () => {
         decorators: [],
         startLine: 3,
         endLine: 3,
-        calls: [],
       },
       {
         name: "Processor",
@@ -424,7 +418,6 @@ describe("Graph Generation E2E: Diagrams", () => {
         decorators: [],
         startLine: 4,
         endLine: 4,
-        calls: [],
       },
       {
         name: "IOutput",
@@ -433,13 +426,12 @@ describe("Graph Generation E2E: Diagrams", () => {
         decorators: [],
         startLine: 5,
         endLine: 5,
-        calls: [],
       },
     ],
     imports: [],
     references: [
-      { name: "Processor", fromSymbol: "InputReader", kind: "call", line: 7 },
-      { name: "IOutput", fromSymbol: "Processor", kind: "call", line: 8 },
+      { name: "Processor", fromSymbol: "diagrams/flow.puml/InputReader", kind: "call", line: 7 },
+      { name: "IOutput", fromSymbol: "diagrams/flow.puml/Processor", kind: "call", line: 8 },
     ],
   };
 
@@ -504,7 +496,6 @@ describe("Graph Generation E2E: Diagrams", () => {
           decorators: [],
           startLine: 1,
           endLine: 1,
-          calls: [],
         },
       ],
       imports: [],
@@ -543,7 +534,6 @@ describe("Graph Generation E2E: Mixed file types in one graph", () => {
         decorators: [],
         startLine: 1,
         endLine: 10,
-        calls: [],
       },
     ],
     imports: [],
@@ -563,7 +553,6 @@ describe("Graph Generation E2E: Mixed file types in one graph", () => {
         startLine: 1,
         endLine: 20,
         parent: "README.md",
-        calls: [],
       },
     ],
     imports: [],
@@ -625,13 +614,14 @@ describe("Graph Generation E2E: Multi-repo", () => {
         decorators: [],
         startLine: 1,
         endLine: 10,
-        calls: ["UserService"],
       },
     ],
     imports: [
       { module: "core.services", names: ["UserService"], isWildcard: false, line: 1 },
     ],
-    references: [],
+    references: [
+      { name: "UserService", fromSymbol: "api/routes.py/get_users", kind: "call", line: 5 },
+    ],
   };
 
   const coreFile: FileExtraction = {
@@ -646,7 +636,6 @@ describe("Graph Generation E2E: Multi-repo", () => {
         decorators: [],
         startLine: 1,
         endLine: 30,
-        calls: [],
       },
     ],
     imports: [],
@@ -700,7 +689,6 @@ describe("Graph Generation E2E: Edge cases", () => {
           decorators: [],
           startLine: 1,
           endLine: 5,
-          calls: [],
         },
       ],
       imports: [],
@@ -719,7 +707,6 @@ describe("Graph Generation E2E: Edge cases", () => {
           decorators: [],
           startLine: 1,
           endLine: 5,
-          calls: [],
         },
       ],
       imports: [],
@@ -746,11 +733,12 @@ describe("Graph Generation E2E: Edge cases", () => {
           decorators: [],
           startLine: 1,
           endLine: 5,
-          calls: ["factorial"],
         },
       ],
       imports: [],
-      references: [],
+      references: [
+        { name: "factorial", fromSymbol: "recursive.py/factorial", kind: "call", line: 3 },
+      ],
     };
 
     const { graph } = buildGraph({ extractions: [selfCall] });
@@ -772,7 +760,6 @@ describe("Graph Generation E2E: Edge cases", () => {
           decorators: [],
           startLine: 1,
           endLine: 1,
-          calls: [],
         },
         {
           name: "API_KEY",
@@ -781,7 +768,6 @@ describe("Graph Generation E2E: Edge cases", () => {
           decorators: [],
           startLine: 2,
           endLine: 2,
-          calls: [],
         },
       ],
       imports: [],
@@ -838,7 +824,6 @@ describe("Graph Generation E2E: Edge cases", () => {
           startLine: 1,
           endLine: 5,
           parent: "NonExistentClass",
-          calls: [],
         },
       ],
       imports: [],
@@ -854,21 +839,27 @@ describe("Graph Generation E2E: Edge cases", () => {
   });
 
   it("should handle large number of symbols without degeneration", () => {
+    const symbols = Array.from({ length: 100 }, (_, i) => ({
+      name: `fn_${i}`,
+      qualifiedName: `big.py/fn_${i}`,
+      kind: "function" as const,
+      decorators: [],
+      startLine: i * 5 + 1,
+      endLine: i * 5 + 4,
+    }));
+    const references = Array.from({ length: 99 }, (_, i) => ({
+      name: `fn_${i}`,
+      fromSymbol: `big.py/fn_${i + 1}`,
+      kind: "call" as const,
+      line: (i + 1) * 5 + 2,
+    }));
     const manySymbols: FileExtraction = {
       filePath: "big.py",
       language: "python",
       fileNode: { kind: "module" },
-      symbols: Array.from({ length: 100 }, (_, i) => ({
-        name: `fn_${i}`,
-        qualifiedName: `big.py/fn_${i}`,
-        kind: "function" as const,
-        decorators: [],
-        startLine: i * 5 + 1,
-        endLine: i * 5 + 4,
-        calls: i > 0 ? [`fn_${i - 1}`] : [],
-      })),
+      symbols,
       imports: [],
-      references: [],
+      references,
     };
 
     const { graph, stats } = buildGraph({ extractions: [manySymbols] });
@@ -900,7 +891,6 @@ describe("Graph Generation E2E: Edge cases", () => {
           decorators: [],
           startLine: 1,
           endLine: 5,
-          calls: [],
         },
         {
           name: "caller_a",
@@ -909,7 +899,6 @@ describe("Graph Generation E2E: Edge cases", () => {
           decorators: [],
           startLine: 7,
           endLine: 12,
-          calls: ["target"],
         },
         {
           name: "caller_b",
@@ -918,11 +907,13 @@ describe("Graph Generation E2E: Edge cases", () => {
           decorators: [],
           startLine: 14,
           endLine: 19,
-          calls: ["target"],
         },
       ],
       imports: [],
-      references: [],
+      references: [
+        { name: "target", fromSymbol: "dup.py/caller_a", kind: "call", line: 9 },
+        { name: "target", fromSymbol: "dup.py/caller_b", kind: "call", line: 16 },
+      ],
     };
 
     const { graph } = buildGraph({ extractions: [dupeEdge] });
@@ -964,11 +955,12 @@ describe("Graph Generation E2E: Node ID determinism", () => {
           decorators: [],
           startLine: 1,
           endLine: 5,
-          calls: ["fn_b"],
         },
       ],
       imports: [{ module: "b", names: ["fn_b"], isWildcard: false, line: 1 }],
-      references: [],
+      references: [
+        { name: "fn_b", fromSymbol: "a.py/fn_a", kind: "call", line: 3 },
+      ],
     };
 
     const fileB: FileExtraction = {
@@ -983,7 +975,6 @@ describe("Graph Generation E2E: Node ID determinism", () => {
           decorators: [],
           startLine: 1,
           endLine: 5,
-          calls: [],
         },
       ],
       imports: [],
@@ -1002,5 +993,311 @@ describe("Graph Generation E2E: Node ID determinism", () => {
     const nodes2 = new Set<string>();
     result2.graph.forEachNode((id) => nodes2.add(id));
     expect(nodes1).toEqual(nodes2);
+  });
+});
+
+// ─── Unified Reference Edge Creation ─────────────────────────────────────────
+
+describe("Graph Generation E2E: Unified reference edge creation", () => {
+  it("creates 'references' edge for doc→code call references", () => {
+    const doc: FileExtraction = {
+      filePath: "docs/guide.md",
+      language: "markdown",
+      fileNode: { kind: "document", label: "guide.md" },
+      symbols: [
+        {
+          name: "Setup Guide",
+          qualifiedName: "docs/guide.md/Setup_Guide",
+          kind: "section",
+          decorators: [],
+          startLine: 1,
+          endLine: 20,
+        },
+      ],
+      imports: [],
+      references: [
+        {
+          name: "src/core.py/initialize",
+          fromSymbol: "docs/guide.md/Setup_Guide",
+          kind: "call",
+          line: 5,
+        },
+      ],
+    };
+
+    const code: FileExtraction = {
+      filePath: "src/core.py",
+      language: "python",
+      fileNode: { kind: "module", label: "core.py" },
+      symbols: [
+        {
+          name: "initialize",
+          qualifiedName: "src/core.py/initialize",
+          kind: "function",
+          decorators: [],
+          startLine: 1,
+          endLine: 10,
+        },
+      ],
+      imports: [],
+      references: [],
+    };
+
+    const result = buildGraph({ extractions: [doc, code] });
+    const refEdges = getEdgesByType(result.graph, "references");
+    expect(refEdges.length).toBe(1);
+    expect(refEdges[0].source).toBe("docs/guide.md/Setup_Guide");
+    expect(refEdges[0].target).toBe("src/core.py/initialize");
+
+    // Must NOT create a "calls" edge — doc references are "references"
+    const callEdges = getEdgesByType(result.graph, "calls");
+    expect(callEdges.length).toBe(0);
+  });
+
+  it("creates 'calls' edge for code→code call references", () => {
+    const fileA: FileExtraction = {
+      filePath: "src/a.py",
+      language: "python",
+      fileNode: { kind: "module", label: "a.py" },
+      symbols: [
+        {
+          name: "caller",
+          qualifiedName: "src/a.py/caller",
+          kind: "function",
+          decorators: [],
+          startLine: 1,
+          endLine: 5,
+        },
+      ],
+      imports: [{ module: "b", names: ["target_fn"], line: 1 }],
+      references: [
+        {
+          name: "target_fn",
+          fromSymbol: "src/a.py/caller",
+          kind: "call",
+          line: 3,
+        },
+      ],
+    };
+
+    const fileB: FileExtraction = {
+      filePath: "src/b.py",
+      language: "python",
+      fileNode: { kind: "module", label: "b.py" },
+      symbols: [
+        {
+          name: "target_fn",
+          qualifiedName: "src/b.py/target_fn",
+          kind: "function",
+          decorators: [],
+          startLine: 1,
+          endLine: 5,
+        },
+      ],
+      imports: [],
+      references: [],
+    };
+
+    const result = buildGraph({ extractions: [fileA, fileB] });
+    const callEdges = getEdgesByType(result.graph, "calls");
+    expect(callEdges.length).toBe(1);
+    expect(callEdges[0].source).toBe("src/a.py/caller");
+    expect(callEdges[0].target).toBe("src/b.py/target_fn");
+
+    // Must NOT create a "references" edge — code calls are "calls"
+    const refEdges = getEdgesByType(result.graph, "references");
+    expect(refEdges.length).toBe(0);
+  });
+
+  it("creates 'extends' edge for inheritance references", () => {
+    const file: FileExtraction = {
+      filePath: "src/models.py",
+      language: "python",
+      fileNode: { kind: "module", label: "models.py" },
+      symbols: [
+        {
+          name: "BaseModel",
+          qualifiedName: "src/models.py/BaseModel",
+          kind: "class",
+          decorators: [],
+          startLine: 1,
+          endLine: 10,
+        },
+        {
+          name: "UserModel",
+          qualifiedName: "src/models.py/UserModel",
+          kind: "class",
+          decorators: [],
+          startLine: 12,
+          endLine: 20,
+          bases: ["BaseModel"],
+        },
+      ],
+      imports: [],
+      references: [
+        {
+          name: "BaseModel",
+          fromSymbol: "src/models.py/UserModel",
+          kind: "inheritance",
+          line: 12,
+        },
+      ],
+    };
+
+    const result = buildGraph({ extractions: [file] });
+    const extendsEdges = getEdgesByType(result.graph, "extends");
+    expect(extendsEdges.length).toBe(1);
+    expect(extendsEdges[0].source).toBe("src/models.py/UserModel");
+    expect(extendsEdges[0].target).toBe("src/models.py/BaseModel");
+  });
+
+  it("creates 'references' edge for diagram→code references", () => {
+    const diagram: FileExtraction = {
+      filePath: "diagrams/arch.puml",
+      language: "diagrams",
+      fileNode: { kind: "diagram", label: "arch.puml" },
+      symbols: [
+        {
+          name: "AuthService",
+          qualifiedName: "diagrams/arch.puml/AuthService",
+          kind: "component",
+          decorators: [],
+          startLine: 1,
+          endLine: 5,
+        },
+      ],
+      imports: [],
+      references: [
+        {
+          name: "src/auth.py/validate_token",
+          fromSymbol: "diagrams/arch.puml/AuthService",
+          kind: "call",
+          line: 3,
+        },
+      ],
+    };
+
+    const code: FileExtraction = {
+      filePath: "src/auth.py",
+      language: "python",
+      fileNode: { kind: "module", label: "auth.py" },
+      symbols: [
+        {
+          name: "validate_token",
+          qualifiedName: "src/auth.py/validate_token",
+          kind: "function",
+          decorators: [],
+          startLine: 1,
+          endLine: 10,
+        },
+      ],
+      imports: [],
+      references: [],
+    };
+
+    const result = buildGraph({ extractions: [diagram, code] });
+    const refEdges = getEdgesByType(result.graph, "references");
+    expect(refEdges.length).toBe(1);
+    expect(refEdges[0].source).toBe("diagrams/arch.puml/AuthService");
+    expect(refEdges[0].target).toBe("src/auth.py/validate_token");
+
+    // Diagrams produce "references", never "calls"
+    const callEdges = getEdgesByType(result.graph, "calls");
+    expect(callEdges.length).toBe(0);
+  });
+
+  it("resolves references by direct node ID match", () => {
+    const doc: FileExtraction = {
+      filePath: "docs/api.md",
+      language: "markdown",
+      fileNode: { kind: "document", label: "api.md" },
+      symbols: [
+        {
+          name: "API Reference",
+          qualifiedName: "docs/api.md/API_Reference",
+          kind: "section",
+          decorators: [],
+          startLine: 1,
+          endLine: 10,
+        },
+      ],
+      imports: [],
+      references: [
+        {
+          name: "src/utils.py/format_output",
+          fromSymbol: "docs/api.md/API_Reference",
+          kind: "call",
+          line: 5,
+        },
+      ],
+    };
+
+    const code: FileExtraction = {
+      filePath: "src/utils.py",
+      language: "python",
+      fileNode: { kind: "module", label: "utils.py" },
+      symbols: [
+        {
+          name: "format_output",
+          qualifiedName: "src/utils.py/format_output",
+          kind: "function",
+          decorators: [],
+          startLine: 1,
+          endLine: 8,
+        },
+      ],
+      imports: [],
+      references: [],
+    };
+
+    const result = buildGraph({ extractions: [doc, code] });
+    const refEdges = getEdgesByType(result.graph, "references");
+    expect(refEdges.length).toBe(1);
+    expect(refEdges[0].target).toBe("src/utils.py/format_output");
+  });
+
+  it("maps type_annotation and attribute_access to 'references' edge", () => {
+    const file: FileExtraction = {
+      filePath: "src/service.py",
+      language: "python",
+      fileNode: { kind: "module", label: "service.py" },
+      symbols: [
+        {
+          name: "Config",
+          qualifiedName: "src/service.py/Config",
+          kind: "class",
+          decorators: [],
+          startLine: 1,
+          endLine: 10,
+        },
+        {
+          name: "run_service",
+          qualifiedName: "src/service.py/run_service",
+          kind: "function",
+          decorators: [],
+          startLine: 12,
+          endLine: 25,
+        },
+      ],
+      imports: [],
+      references: [
+        {
+          name: "Config",
+          fromSymbol: "src/service.py/run_service",
+          kind: "type_annotation",
+          line: 13,
+        },
+      ],
+    };
+
+    const result = buildGraph({ extractions: [file] });
+    const refEdges = getEdgesByType(result.graph, "references");
+    expect(refEdges.length).toBe(1);
+    expect(refEdges[0].source).toBe("src/service.py/run_service");
+    expect(refEdges[0].target).toBe("src/service.py/Config");
+
+    // type_annotation produces "references", not "calls"
+    const callEdges = getEdgesByType(result.graph, "calls");
+    expect(callEdges.length).toBe(0);
   });
 });

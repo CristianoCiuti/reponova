@@ -87,8 +87,6 @@ export interface SymbolNode {
   parent?: string;
   /** Base classes (for class nodes) */
   bases?: string[];
-  /** Symbol names called within this function body */
-  calls: string[];
 }
 
 /**

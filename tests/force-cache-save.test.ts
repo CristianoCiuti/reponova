@@ -37,7 +37,6 @@ function makeExtraction(filePath: string, fnName: string): FileExtraction {
       decorators: [],
       startLine: 1,
       endLine: 1,
-      calls: [],
     }],
     imports: [],
     references: [],

@@ -188,7 +188,6 @@ describe("FIX-016: Serialize docstring/signature/bases", () => {
           startLine: 10,
           endLine: 30,
           decorators: [],
-          calls: [],
           bases: ["BaseUser", "PermissionMixin"],
           docstring: "Admin user with full permissions.",
           signature: undefined,
@@ -228,7 +227,6 @@ describe("FIX-016: Serialize docstring/signature/bases", () => {
           startLine: 1,
           endLine: 50,
           decorators: [],
-          calls: [],
           bases: ["BaseService"],
           docstring: "Handles user CRUD operations.",
         },
@@ -239,14 +237,18 @@ describe("FIX-016: Serialize docstring/signature/bases", () => {
           startLine: 10,
           endLine: 20,
           decorators: [],
-          calls: ["db.query"],
           parent: "UserService",
           signature: "(self, user_id: int) -> User",
           docstring: "Fetch a user by ID.",
         },
       ],
       imports: [],
-      references: [],
+      references: [{
+        name: "db.query",
+        fromSymbol: "service.UserService.get_user",
+        kind: "call",
+        line: 10,
+      }],
     };
 
     const { graph } = buildGraph({ extractions: [extraction] });

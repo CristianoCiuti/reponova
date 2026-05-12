@@ -62,7 +62,6 @@ describe("BUG-005: nodeId = qualifiedName (no makeNodeId)", () => {
           decorators: [],
           startLine: 1,
           endLine: 10,
-          calls: [],
         },
       ],
       imports: [],
@@ -85,7 +84,6 @@ describe("BUG-005: nodeId = qualifiedName (no makeNodeId)", () => {
           decorators: [],
           startLine: 1,
           endLine: 5,
-          calls: [],
         },
       ],
       imports: [],
@@ -103,7 +101,6 @@ describe("BUG-005: nodeId = qualifiedName (no makeNodeId)", () => {
           decorators: [],
           startLine: 1,
           endLine: 5,
-          calls: [],
         },
       ],
       imports: [],
@@ -128,7 +125,6 @@ describe("BUG-005: nodeId = qualifiedName (no makeNodeId)", () => {
           decorators: [],
           startLine: 1,
           endLine: 20,
-          calls: [],
         },
         {
           name: "save",
@@ -138,7 +134,6 @@ describe("BUG-005: nodeId = qualifiedName (no makeNodeId)", () => {
           startLine: 5,
           endLine: 10,
           parent: "User",
-          calls: [],
         },
       ],
       imports: [],
@@ -183,7 +178,6 @@ describe("BUG-006: multi:true graph + addEdgeSafe", () => {
           decorators: [],
           startLine: 1,
           endLine: 20,
-          calls: [],
         },
       ],
       imports: [],
@@ -202,13 +196,14 @@ describe("BUG-006: multi:true graph + addEdgeSafe", () => {
           decorators: [],
           startLine: 1,
           endLine: 10,
-          calls: ["User"],
         },
       ],
       imports: [
         { module: "models", names: ["User"], isWildcard: false, line: 1 },
       ],
-      references: [],
+      references: [
+        { name: "User", fromSymbol: "service.create", kind: "call", line: 1 },
+      ],
     };
 
     const { graph } = buildGraph({ extractions: [models, consumer] });
@@ -243,7 +238,6 @@ describe("BUG-006: multi:true graph + addEdgeSafe", () => {
           decorators: [],
           startLine: 1,
           endLine: 5,
-          calls: [],
         },
         {
           name: "caller",
@@ -252,11 +246,12 @@ describe("BUG-006: multi:true graph + addEdgeSafe", () => {
           decorators: [],
           startLine: 7,
           endLine: 15,
-          calls: ["target_fn"],
         },
       ],
       imports: [],
-      references: [],
+      references: [
+        { name: "target_fn", fromSymbol: "repeat.caller", kind: "call", line: 7 },
+      ],
     };
     const { graph } = buildGraph({ extractions: [ext] });
     const callEdges = getEdgesByType(graph, "calls").filter(
@@ -278,7 +273,6 @@ describe("BUG-006: multi:true graph + addEdgeSafe", () => {
           decorators: [],
           startLine: 1,
           endLine: 20,
-          calls: [],
         },
         {
           name: "my_method",
@@ -288,7 +282,6 @@ describe("BUG-006: multi:true graph + addEdgeSafe", () => {
           startLine: 3,
           endLine: 10,
           parent: "MyClass",
-          calls: [],
         },
       ],
       imports: [],
@@ -321,11 +314,12 @@ describe("BUG-006: multi:true graph + addEdgeSafe", () => {
           decorators: [],
           startLine: 1,
           endLine: 5,
-          calls: ["recurse"],
         },
       ],
       imports: [],
-      references: [],
+      references: [
+        { name: "recurse", fromSymbol: "loop.recurse", kind: "call", line: 1 },
+      ],
     };
     const { graph } = buildGraph({ extractions: [ext] });
     const callEdges = getEdgesByType(graph, "calls");
@@ -346,11 +340,12 @@ describe("BUG-006: multi:true graph + addEdgeSafe", () => {
           decorators: [],
           startLine: 1,
           endLine: 5,
-          calls: ["nonexistent_function"],
         },
       ],
       imports: [],
-      references: [],
+      references: [
+        { name: "nonexistent_function", fromSymbol: "missing.caller", kind: "call", line: 1 },
+      ],
     };
     const { graph } = buildGraph({ extractions: [ext] });
     const callEdges = getEdgesByType(graph, "calls");
@@ -396,10 +391,10 @@ describe("BUG-008: SymbolKind = string (open union)", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "fn", qualifiedName: "standard.fn", kind: "function", decorators: [], startLine: 1, endLine: 5, calls: [] },
-        { name: "Cls", qualifiedName: "standard.Cls", kind: "class", decorators: [], startLine: 7, endLine: 15, calls: [] },
-        { name: "meth", qualifiedName: "standard.Cls.meth", kind: "method", decorators: [], startLine: 9, endLine: 12, parent: "Cls", calls: [] },
-        { name: "VAL", qualifiedName: "standard.VAL", kind: "constant", decorators: [], startLine: 17, endLine: 17, calls: [] },
+        { name: "fn", qualifiedName: "standard.fn", kind: "function", decorators: [], startLine: 1, endLine: 5 },
+        { name: "Cls", qualifiedName: "standard.Cls", kind: "class", decorators: [], startLine: 7, endLine: 15 },
+        { name: "meth", qualifiedName: "standard.Cls.meth", kind: "method", decorators: [], startLine: 9, endLine: 12, parent: "Cls" },
+        { name: "VAL", qualifiedName: "standard.VAL", kind: "constant", decorators: [], startLine: 17, endLine: 17 },
       ],
       imports: [],
       references: [],
@@ -417,9 +412,9 @@ describe("BUG-008: SymbolKind = string (open union)", () => {
       language: "protobuf",
       fileNode: { kind: "schema" },
       symbols: [
-        { name: "MyMessage", qualifiedName: "custom.MyMessage", kind: "message", decorators: [], startLine: 1, endLine: 10, calls: [] },
-        { name: "MyService", qualifiedName: "custom.MyService", kind: "service", decorators: [], startLine: 12, endLine: 20, calls: [] },
-        { name: "MyEnum", qualifiedName: "custom.MyEnum", kind: "proto_enum", decorators: [], startLine: 22, endLine: 30, calls: [] },
+        { name: "MyMessage", qualifiedName: "custom.MyMessage", kind: "message", decorators: [], startLine: 1, endLine: 10 },
+        { name: "MyService", qualifiedName: "custom.MyService", kind: "service", decorators: [], startLine: 12, endLine: 20 },
+        { name: "MyEnum", qualifiedName: "custom.MyEnum", kind: "proto_enum", decorators: [], startLine: 22, endLine: 30 },
       ],
       imports: [],
       references: [],
@@ -439,35 +434,32 @@ describe("BUG-009: No 'method' edge type — class→method uses 'contains'", ()
     language: "python",
     fileNode: { kind: "module" },
     symbols: [
-      {
-        name: "Shape",
-        qualifiedName: "shapes.Shape",
-        kind: "class",
-        decorators: [],
-        startLine: 1,
-        endLine: 30,
-        calls: [],
-      },
-      {
-        name: "area",
-        qualifiedName: "shapes.Shape.area",
-        kind: "method",
-        decorators: [],
-        startLine: 3,
-        endLine: 8,
-        parent: "Shape",
-        calls: [],
-      },
-      {
-        name: "perimeter",
-        qualifiedName: "shapes.Shape.perimeter",
-        kind: "method",
-        decorators: [],
-        startLine: 10,
-        endLine: 15,
-        parent: "Shape",
-        calls: [],
-      },
+        {
+          name: "Shape",
+          qualifiedName: "shapes.Shape",
+          kind: "class",
+          decorators: [],
+          startLine: 1,
+          endLine: 30,
+        },
+        {
+          name: "area",
+          qualifiedName: "shapes.Shape.area",
+          kind: "method",
+          decorators: [],
+          startLine: 3,
+          endLine: 8,
+          parent: "Shape",
+        },
+        {
+          name: "perimeter",
+          qualifiedName: "shapes.Shape.perimeter",
+          kind: "method",
+          decorators: [],
+          startLine: 10,
+          endLine: 15,
+          parent: "Shape",
+        },
     ],
     imports: [],
     references: [],
@@ -511,24 +503,28 @@ describe("BUG-009: No 'method' edge type — class→method uses 'contains'", ()
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "Base", qualifiedName: "models.Base", kind: "class", decorators: [], startLine: 1, endLine: 10, calls: [] },
-        { name: "Child", qualifiedName: "models.Child", kind: "class", decorators: [], startLine: 12, endLine: 30, calls: [], bases: ["Base"] },
-        { name: "do_it", qualifiedName: "models.Child.do_it", kind: "method", decorators: [], startLine: 15, endLine: 20, parent: "Child", calls: [] },
+        { name: "Base", qualifiedName: "models.Base", kind: "class", decorators: [], startLine: 1, endLine: 10 },
+        { name: "Child", qualifiedName: "models.Child", kind: "class", decorators: [], startLine: 12, endLine: 30, bases: ["Base"] },
+        { name: "do_it", qualifiedName: "models.Child.do_it", kind: "method", decorators: [], startLine: 15, endLine: 20, parent: "Child" },
       ],
       imports: [],
-      references: [],
+      references: [
+        { name: "Child", fromSymbol: "app.main", kind: "call", line: 1 },
+      ],
     };
     const consumer: FileExtraction = {
       filePath: "app.py",
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "main", qualifiedName: "app.main", kind: "function", decorators: [], startLine: 1, endLine: 10, calls: ["Child"] },
+        { name: "main", qualifiedName: "app.main", kind: "function", decorators: [], startLine: 1, endLine: 10 },
       ],
       imports: [
         { module: "models", names: ["Child"], isWildcard: false, line: 1 },
       ],
-      references: [],
+      references: [
+        { name: "Child", fromSymbol: "app.main", kind: "call", line: 1 },
+      ],
     };
     const { graph } = buildGraph({ extractions: [models, consumer] });
     const allEdges = getAllEdges(graph);
@@ -548,9 +544,9 @@ describe("NEW-001: DEFAULT_EDGE_WEIGHTS keys are lowercase", () => {
     }
   });
 
-  it("contains exactly the 5 expected edge types", () => {
+  it("contains exactly the 6 expected edge types", () => {
     const keys = Object.keys(DEFAULT_EDGE_WEIGHTS).sort();
-    expect(keys).toEqual(["calls", "contains", "extends", "imports", "imports_from"]);
+    expect(keys).toEqual(["calls", "contains", "extends", "imports", "imports_from", "references"]);
   });
 
   it("weights are positive numbers", () => {
@@ -566,7 +562,7 @@ describe("NEW-001: DEFAULT_EDGE_WEIGHTS keys are lowercase", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "fn", qualifiedName: "check.fn", kind: "function", decorators: [], startLine: 1, endLine: 5, calls: [] },
+        { name: "fn", qualifiedName: "check.fn", kind: "function", decorators: [], startLine: 1, endLine: 5 },
       ],
       imports: [],
       references: [],
@@ -588,11 +584,13 @@ describe("resolveCall: no global resolution (simpleNameToIds removed)", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "helper", qualifiedName: "local.helper", kind: "function", decorators: [], startLine: 1, endLine: 5, calls: [] },
-        { name: "main", qualifiedName: "local.main", kind: "function", decorators: [], startLine: 7, endLine: 15, calls: ["helper"] },
+        { name: "helper", qualifiedName: "local.helper", kind: "function", decorators: [], startLine: 1, endLine: 5 },
+        { name: "main", qualifiedName: "local.main", kind: "function", decorators: [], startLine: 7, endLine: 15 },
       ],
       imports: [],
-      references: [],
+      references: [
+        { name: "helper", fromSymbol: "local.main", kind: "call", line: 7 },
+      ],
     };
     const { graph } = buildGraph({ extractions: [ext] });
     const calls = getEdgesByType(graph, "calls");
@@ -605,7 +603,7 @@ describe("resolveCall: no global resolution (simpleNameToIds removed)", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "utility", qualifiedName: "lib.utility", kind: "function", decorators: [], startLine: 1, endLine: 10, calls: [] },
+        { name: "utility", qualifiedName: "lib.utility", kind: "function", decorators: [], startLine: 1, endLine: 10 },
       ],
       imports: [],
       references: [],
@@ -615,10 +613,12 @@ describe("resolveCall: no global resolution (simpleNameToIds removed)", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "run", qualifiedName: "app.run", kind: "function", decorators: [], startLine: 1, endLine: 10, calls: ["utility"] },
+        { name: "run", qualifiedName: "app.run", kind: "function", decorators: [], startLine: 1, endLine: 10 },
       ],
       imports: [{ module: "lib", names: ["utility"], isWildcard: false, line: 1 }],
-      references: [],
+      references: [
+        { name: "utility", fromSymbol: "app.run", kind: "call", line: 1 },
+      ],
     };
     const { graph } = buildGraph({ extractions: [lib, app] });
     const calls = getEdgesByType(graph, "calls");
@@ -631,7 +631,7 @@ describe("resolveCall: no global resolution (simpleNameToIds removed)", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "unique_fn", qualifiedName: "lib.unique_fn", kind: "function", decorators: [], startLine: 1, endLine: 10, calls: [] },
+        { name: "unique_fn", qualifiedName: "lib.unique_fn", kind: "function", decorators: [], startLine: 1, endLine: 10 },
       ],
       imports: [],
       references: [],
@@ -641,10 +641,12 @@ describe("resolveCall: no global resolution (simpleNameToIds removed)", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "run", qualifiedName: "app.run", kind: "function", decorators: [], startLine: 1, endLine: 10, calls: ["unique_fn"] },
+        { name: "run", qualifiedName: "app.run", kind: "function", decorators: [], startLine: 1, endLine: 10 },
       ],
       imports: [], // No import! simpleNameToIds would have resolved this, but it's removed
-      references: [],
+      references: [
+        { name: "unique_fn", fromSymbol: "app.run", kind: "call", line: 1 },
+      ],
     };
     const { graph } = buildGraph({ extractions: [lib, app] });
     const calls = getEdgesByType(graph, "calls");
@@ -658,12 +660,14 @@ describe("resolveCall: no global resolution (simpleNameToIds removed)", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "MyClass", qualifiedName: "cls.MyClass", kind: "class", decorators: [], startLine: 1, endLine: 30, calls: [] },
-        { name: "process", qualifiedName: "cls.MyClass.process", kind: "method", decorators: [], startLine: 3, endLine: 10, parent: "MyClass", calls: ["self.validate"] },
-        { name: "validate", qualifiedName: "cls.MyClass.validate", kind: "method", decorators: [], startLine: 12, endLine: 20, parent: "MyClass", calls: [] },
+        { name: "MyClass", qualifiedName: "cls.MyClass", kind: "class", decorators: [], startLine: 1, endLine: 30 },
+        { name: "process", qualifiedName: "cls.MyClass.process", kind: "method", decorators: [], startLine: 3, endLine: 10, parent: "MyClass" },
+        { name: "validate", qualifiedName: "cls.MyClass.validate", kind: "method", decorators: [], startLine: 12, endLine: 20, parent: "MyClass" },
       ],
       imports: [],
-      references: [],
+      references: [
+        { name: "self.validate", fromSymbol: "cls.MyClass.process", kind: "call", line: 3 },
+      ],
     };
     const { graph } = buildGraph({ extractions: [ext] });
     const calls = getEdgesByType(graph, "calls");
@@ -676,8 +680,8 @@ describe("resolveCall: no global resolution (simpleNameToIds removed)", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "Service", qualifiedName: "lib.Service", kind: "class", decorators: [], startLine: 1, endLine: 30, calls: [] },
-        { name: "start", qualifiedName: "lib.Service.start", kind: "method", decorators: [], startLine: 3, endLine: 10, parent: "Service", calls: [] },
+        { name: "Service", qualifiedName: "lib.Service", kind: "class", decorators: [], startLine: 1, endLine: 30 },
+        { name: "start", qualifiedName: "lib.Service.start", kind: "method", decorators: [], startLine: 3, endLine: 10, parent: "Service" },
       ],
       imports: [],
       references: [],
@@ -687,10 +691,12 @@ describe("resolveCall: no global resolution (simpleNameToIds removed)", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "main", qualifiedName: "app.main", kind: "function", decorators: [], startLine: 1, endLine: 10, calls: ["Service.start"] },
+        { name: "main", qualifiedName: "app.main", kind: "function", decorators: [], startLine: 1, endLine: 10 },
       ],
       imports: [{ module: "lib", names: ["Service"], isWildcard: false, line: 1 }],
-      references: [],
+      references: [
+        { name: "Service.start", fromSymbol: "app.main", kind: "call", line: 1 },
+      ],
     };
     const { graph } = buildGraph({ extractions: [lib, app] });
     const calls = getEdgesByType(graph, "calls");
@@ -746,7 +752,7 @@ describe("Graph structural invariants", () => {
       language: "python",
       fileNode: { kind: "module" },
       symbols: [
-        { name: "fn", qualifiedName: "attrs.fn", kind: "function", decorators: [], startLine: 1, endLine: 5, calls: [] },
+        { name: "fn", qualifiedName: "attrs.fn", kind: "function", decorators: [], startLine: 1, endLine: 5 },
       ],
       imports: [],
       references: [],

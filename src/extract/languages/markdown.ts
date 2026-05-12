@@ -112,14 +112,16 @@ export class MarkdownExtractor implements LanguageExtractor {
           sections[sections.length - 1]!.endLine = i;
         }
 
-        const sectionName = this.sanitizeSectionName(heading);
-        const count = (sectionCounts.get(sectionName) ?? 0) + 1;
-        sectionCounts.set(sectionName, count);
-        const uniqueSectionName = count === 1 ? sectionName : `${sectionName}_${count}`;
-        const qualified = `${moduleName}.${uniqueSectionName}`;
+        // Display name preserves spaces; sanitized form used only for qualifiedName (node ID)
+        const displayName = this.cleanHeading(heading);
+        const sanitizedName = this.sanitizeSectionName(heading);
+        const count = (sectionCounts.get(sanitizedName) ?? 0) + 1;
+        sectionCounts.set(sanitizedName, count);
+        const uniqueSanitized = count === 1 ? sanitizedName : `${sanitizedName}_${count}`;
+        const qualified = `${moduleName}.${uniqueSanitized}`;
 
         sections.push({
-          name: sectionName,
+          name: displayName,
           qualifiedName: qualified,
           kind: "section",
           decorators: [`h${level}`],
@@ -127,11 +129,10 @@ export class MarkdownExtractor implements LanguageExtractor {
           startLine: i + 1,
           endLine: lines.length, // Will be updated when next section found
           parent: docName,
-          calls: [],
         });
 
         currentStart = i + 1;
-        currentName = sectionName;
+        currentName = displayName;
       }
     }
 
@@ -140,8 +141,8 @@ export class MarkdownExtractor implements LanguageExtractor {
 
   private extractCodeReferences(
     lines: string[],
-    _filePath: string,
-    docName: string,
+    filePath: string,
+    _docName: string,
     sections: SymbolNode[],
   ): SymbolReference[] {
     const references: SymbolReference[] = [];
@@ -151,8 +152,8 @@ export class MarkdownExtractor implements LanguageExtractor {
       const line = lines[i]!;
       const lineNum = i + 1;
 
-      // Find the current section for context
-      const currentSection = this.findSectionAtLine(lineNum, sections, docName);
+      // Find the current section for context (returns qualifiedName = node ID)
+      const currentSection = this.findSectionAtLine(lineNum, sections, filePath);
 
       // Extract backtick code spans: `symbol_name`
       const backtickRegex = /`([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)`/g;
@@ -196,13 +197,22 @@ export class MarkdownExtractor implements LanguageExtractor {
     return references;
   }
 
-  private findSectionAtLine(lineNum: number, sections: SymbolNode[], docName: string): string {
+  private findSectionAtLine(lineNum: number, sections: SymbolNode[], filePath: string): string {
     for (let i = sections.length - 1; i >= 0; i--) {
       if (lineNum >= sections[i]!.startLine) {
-        return sections[i]!.name;
+        return sections[i]!.qualifiedName;
       }
     }
-    return docName;
+    return filePath;
+  }
+
+  private cleanHeading(heading: string): string {
+    // Remove markdown formatting only, preserve spaces for readable labels
+    return heading
+      .replace(/[*_~`\[\]()]/g, "")
+      .replace(/[^a-zA-Z0-9_ -]/g, "")
+      .trim()
+      .slice(0, 80);
   }
 
   private sanitizeSectionName(heading: string): string {

@@ -71,7 +71,7 @@ describe("Incremental Build", () => {
       filePath: "file1.py",
       language: "python",
       fileNode: { kind: "module" },
-      symbols: [{ name: "hello", qualifiedName: "file1.py/hello", kind: "function", decorators: [], startLine: 1, endLine: 1, calls: [] }],
+      symbols: [{ name: "hello", qualifiedName: "file1.py/hello", kind: "function", decorators: [], startLine: 1, endLine: 1 }],
       imports: [],
       references: [],
     }];
@@ -135,7 +135,7 @@ describe("Markdown Extractor", () => {
     expect(sections.length).toBeGreaterThan(0);
     const names = sections.map((s) => s.name);
     expect(names).toContain("Components");
-    expect(names).toContain("Data_Flow");
+    expect(names).toContain("Data Flow");
     expect(names).toContain("Configuration");
   });
 
@@ -223,8 +223,9 @@ describe("Diagram Extractor", () => {
     it("should extract relationships as references", () => {
       expect(extraction.references.length).toBeGreaterThan(0);
       const rels = extraction.references.map((r) => `${r.fromSymbol}->${r.name}`);
-      expect(rels).toContain("ConfigLoader->DataProcessor");
-      expect(rels).toContain("DataProcessor->OutputInterface");
+      // fromSymbol now uses qualifiedName (moduleName.symbolName)
+      expect(rels).toContain("docs.architecture.ConfigLoader->DataProcessor");
+      expect(rels).toContain("docs.architecture.DataProcessor->OutputInterface");
     });
 
     it("should extract title as docstring", () => {

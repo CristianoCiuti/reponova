@@ -361,6 +361,7 @@ export const DEFAULT_EDGE_WEIGHTS: Record<string, number> = {
   imports_from: 0.5,
   extends: 0.8,
   contains: 0.3,
+  references: 0.4,
 };
 
 /** Default config values */

@@ -9,7 +9,7 @@
  * The assembler mechanically creates nodes and edges from that declaration.
  *
  * Node types: function, class, method, module, document, diagram, section, component, constant
- * Edge types: calls, imports, imports_from, extends, contains
+ * Edge types: calls, imports, imports_from, extends, contains, references
  */
 import Graph from "graphology";
 import type { FileExtraction } from "../extract/types.js";
@@ -157,7 +157,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
     }
   }
 
-  // ── 4. Resolve calls → CALLS edges ────────────────────────────────────
+  // ── 4. Resolve references → CALLS / EXTENDS / REFERENCES edges ─────────
 
   // Build import mapping: for each file, which imported names → which target node IDs
   const importedNames = new Map<string, Map<string, string>>(); // filePath → (name → targetNodeId)
@@ -184,57 +184,24 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
   for (const extraction of extractions) {
     const filePath = toPosix(extraction.filePath);
     const fileImports = importedNames.get(filePath) ?? new Map<string, string>();
+    const isDoc = extraction.fileNode.kind !== "module";
 
-    for (const symbol of extraction.symbols) {
-      if (symbol.calls.length === 0) continue;
-      const callerId = symbol.qualifiedName;
-      if (!graph.hasNode(callerId)) continue;
+    for (const ref of extraction.references) {
+      const sourceId = ref.fromSymbol;
+      if (!graph.hasNode(sourceId)) continue;
 
-      for (const callName of symbol.calls) {
-        const targetId = resolveCall(
-          callName,
-          filePath,
-          extraction,
-          fileImports,
-          graph,
-        );
-        if (targetId && targetId !== callerId) {
-          addEdgeSafe(graph, callerId, targetId, "calls");
-          if (!isSameFile(graph, callerId, targetId)) {
-            crossFileEdges++;
-          }
-        }
-      }
-    }
-  }
-
-  // ── 5. Resolve inheritance → EXTENDS edges ────────────────────────────
-
-  for (const extraction of extractions) {
-    const filePath = toPosix(extraction.filePath);
-    const fileImports = importedNames.get(filePath) ?? new Map<string, string>();
-
-    for (const symbol of extraction.symbols) {
-      if (!symbol.bases || symbol.bases.length === 0) continue;
-      const classId = symbol.qualifiedName;
-
-      for (const base of symbol.bases) {
-        // Try import-based resolution first
-        const baseName = base.includes(".") ? base.split(".").pop()! : base;
-        let targetId = fileImports.get(baseName) ?? fileImports.get(base);
-
-        // Try same-file resolution
-        if (!targetId) {
-          const sameFileSymbol = extraction.symbols.find(
-            (s) => s.name === baseName && s.kind === "class",
-          );
-          if (sameFileSymbol) {
-            targetId = sameFileSymbol.qualifiedName;
-          }
-        }
-
-        if (targetId && graph.hasNode(classId) && graph.hasNode(targetId)) {
-          addEdgeSafe(graph, classId, targetId, "extends");
+      const targetId = resolveReference(
+        ref.name,
+        filePath,
+        extraction,
+        fileImports,
+        graph,
+      );
+      if (targetId && targetId !== sourceId) {
+        const edgeType = mapReferenceKind(ref.kind, isDoc);
+        addEdgeSafe(graph, sourceId, targetId, edgeType);
+        if (!isSameFile(graph, sourceId, targetId)) {
+          crossFileEdges++;
         }
       }
     }
@@ -255,25 +222,28 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Resolve a call name to a target node ID.
+ * Resolve a reference name to a target node ID.
  *
  * Resolution order:
- * 1. Import-based: if call name matches an imported name
- * 2. Same-file: if call name matches a symbol in the same file
- * 3. Attribute-based: "obj.method" → try to resolve obj's type
- * 4. Global: if call name uniquely matches one symbol across all files
+ * 1. Direct node ID: if ref.name is an existing node ID (file path, qualifiedName)
+ * 2. Import-based: if name matches an imported name
+ * 3. Same-file: if name matches a symbol in the same file
+ * 4. Attribute-based: "obj.method" → try to resolve obj's type
  */
-function resolveCall(
-  callName: string,
+function resolveReference(
+  refName: string,
   _filePath: string,
   extraction: FileExtraction,
   fileImports: Map<string, string>,
   graph: Graph,
 ): string | null {
+  // 0. Direct node ID match (file paths, fully qualified names)
+  if (graph.hasNode(refName)) return refName;
+
   // Handle attribute calls: "self.method" → just "method"
-  let simpleName = callName;
-  if (callName.includes(".")) {
-    const parts = callName.split(".");
+  let simpleName = refName;
+  if (refName.includes(".")) {
+    const parts = refName.split(".");
     simpleName = parts[parts.length - 1]!;
 
     // "self.method" → look up method in same class
@@ -313,6 +283,24 @@ function resolveCall(
   }
 
   return null;
+}
+
+/**
+ * Map a SymbolReference kind to a graph edge type.
+ * Doc/diagram sources produce "references" for calls (semantically distinct from code calls).
+ */
+function mapReferenceKind(kind: string, isDoc: boolean): string {
+  switch (kind) {
+    case "call":
+      return isDoc ? "references" : "calls";
+    case "inheritance":
+      return "extends";
+    case "type_annotation":
+    case "attribute_access":
+      return "references";
+    default:
+      return "references";
+  }
 }
 
 function isSameFile(graph: Graph, callerId: string, targetId: string): boolean {

@@ -145,10 +145,12 @@ describe("Python Extractor", () => {
     expect(loadConfig!.docstring).toContain("Load configuration");
   });
 
-  it("should extract function calls", () => {
-    const loadConfig = extraction.symbols.find((s) => s.name === "load_config");
-    expect(loadConfig).toBeDefined();
-    expect(loadConfig!.calls).toContain("validate_config");
+  it("should extract function calls as references", () => {
+    const callRefs = extraction.references.filter(
+      (r) => r.kind === "call" && r.fromSymbol.includes("load_config"),
+    );
+    const callNames = callRefs.map((r) => r.name);
+    expect(callNames).toContain("validate_config");
   });
 
   // ── Classes ──
@@ -325,7 +327,6 @@ describe("Graph Builder", () => {
           startLine: 5,
           endLine: 20,
           parent: "README.md",
-          calls: [],
         },
         {
           name: "Usage",
@@ -336,7 +337,6 @@ describe("Graph Builder", () => {
           startLine: 21,
           endLine: 50,
           parent: "README.md",
-          calls: [],
         },
       ],
       imports: [],

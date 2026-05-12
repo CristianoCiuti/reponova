@@ -201,10 +201,9 @@ export class PythonExtractor implements LanguageExtractor {
       startLine: node.startPosition.row + 1,
       endLine: node.endPosition.row + 1,
       parent: parentClass,
-      calls,
     });
 
-    // Create references for each call
+    // Create references for each call (single source of truth for edge creation)
     for (const call of calls) {
       references.push({
         name: call,
@@ -252,7 +251,6 @@ export class PythonExtractor implements LanguageExtractor {
       startLine: node.startPosition.row + 1,
       endLine: node.endPosition.row + 1,
       bases,
-      calls: [],
     });
 
     // Create inheritance references
@@ -335,7 +333,6 @@ export class PythonExtractor implements LanguageExtractor {
       decorators: [],
       startLine: node.startPosition.row + 1,
       endLine: node.endPosition.row + 1,
-      calls: [],
     });
   }
 

@@ -294,6 +294,7 @@ function getEdgeColor(relation: string): string {
     case "calls": return "rgba(251, 113, 133, 0.5)";
     case "imports": case "imports_from": return "rgba(45, 212, 191, 0.5)";
     case "extends": case "inherits": return "rgba(129, 140, 248, 0.5)";
+    case "references": return "rgba(250, 204, 21, 0.5)";
     case "contains": return "rgba(148, 163, 184, 0.25)";
     default: return "rgba(148, 163, 184, 0.35)";
   }
@@ -459,6 +460,7 @@ function generateNodeGraphHtml(options: {
   <div class="legend-item"><div class="legend-dot" style="background:rgba(251,113,133,0.8)"></div>calls</div>
   <div class="legend-item"><div class="legend-dot" style="background:rgba(45,212,191,0.8)"></div>imports</div>
   <div class="legend-item"><div class="legend-dot" style="background:rgba(129,140,248,0.8)"></div>extends</div>
+  <div class="legend-item"><div class="legend-dot" style="background:rgba(250,204,21,0.8)"></div>references</div>
   <div class="legend-item"><div class="legend-dot" style="background:rgba(148,163,184,0.5)"></div>contains</div>
 </div>
 <script id="graph-data" type="application/json">${graphDataJson}</script>
