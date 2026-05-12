@@ -173,9 +173,9 @@ function hashConfigFields(provider: string | undefined, threshold: number): stri
 }
 
 function checkConfigChanged(hashPath: string, currentHash: string): boolean {
-  if (!existsSync(hashPath)) return false;
+  if (!existsSync(hashPath)) return true;
   try { return readFileSync(hashPath, "utf-8").trim() !== currentHash; }
-  catch { return false; }
+  catch { return true; }
 }
 
 function loadFingerprints(path: string): Record<string, string> {

@@ -162,11 +162,11 @@ function hashConfigFields(provider?: string): string {
 }
 
 function checkConfigChanged(hashPath: string, currentHash: string): boolean {
-  if (!existsSync(hashPath)) return false;
+  if (!existsSync(hashPath)) return true;
   try {
     return readFileSync(hashPath, "utf-8").trim() !== currentHash;
   } catch {
-    return false;
+    return true;
   }
 }
 
