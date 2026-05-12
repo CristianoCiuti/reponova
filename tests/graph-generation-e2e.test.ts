@@ -1301,3 +1301,236 @@ describe("Graph Generation E2E: Unified reference edge creation", () => {
     expect(callEdges.length).toBe(0);
   });
 });
+
+// ─── Markdown File Path Resolution (Multi-Repo) ─────────────────────────────
+
+describe("Graph Generation E2E: Markdown file path resolution", () => {
+  it("resolves file path references with same-repo prefix", () => {
+    const readme: FileExtraction = {
+      filePath: "myrepo/docs/README.md",
+      language: "markdown",
+      fileNode: { kind: "document", label: "README.md" },
+      symbols: [
+        {
+          name: "Templates",
+          qualifiedName: "myrepo.docs.README.Templates",
+          kind: "section",
+          decorators: ["h2"],
+          startLine: 5,
+          endLine: 15,
+          parent: "README.md",
+        },
+      ],
+      imports: [],
+      references: [
+        {
+          name: "src/jobs/ingestion.py",
+          fromSymbol: "myrepo.docs.README.Templates",
+          kind: "references",
+          line: 10,
+        },
+      ],
+    };
+
+    const pyModule: FileExtraction = {
+      filePath: "myrepo/src/jobs/ingestion.py",
+      language: "python",
+      fileNode: { kind: "module" },
+      symbols: [],
+      imports: [],
+      references: [],
+    };
+
+    const { graph } = buildGraph({
+      extractions: [readme, pyModule],
+      repoNames: ["myrepo"],
+    });
+    const refEdges = getEdgesByType(graph, "references");
+    expect(refEdges.length).toBe(1);
+    expect(refEdges[0]!.source).toBe("myrepo.docs.README.Templates");
+    expect(refEdges[0]!.target).toBe("myrepo/src/jobs/ingestion.py");
+  });
+
+  it("resolves file path references cross-repo when same-repo fails", () => {
+    const readme: FileExtraction = {
+      filePath: "repo_docs/README.md",
+      language: "markdown",
+      fileNode: { kind: "document", label: "README.md" },
+      symbols: [
+        {
+          name: "Jobs",
+          qualifiedName: "repo_docs.README.Jobs",
+          kind: "section",
+          decorators: ["h2"],
+          startLine: 1,
+          endLine: 10,
+          parent: "README.md",
+        },
+      ],
+      imports: [],
+      references: [
+        {
+          name: "src/jobs/calcolo.py",
+          fromSymbol: "repo_docs.README.Jobs",
+          kind: "references",
+          line: 5,
+        },
+      ],
+    };
+
+    const pyModule: FileExtraction = {
+      filePath: "repo_engine/src/jobs/calcolo.py",
+      language: "python",
+      fileNode: { kind: "module" },
+      symbols: [],
+      imports: [],
+      references: [],
+    };
+
+    const { graph } = buildGraph({
+      extractions: [readme, pyModule],
+      repoNames: ["repo_docs", "repo_engine"],
+    });
+    const refEdges = getEdgesByType(graph, "references");
+    expect(refEdges.length).toBe(1);
+    expect(refEdges[0]!.source).toBe("repo_docs.README.Jobs");
+    expect(refEdges[0]!.target).toBe("repo_engine/src/jobs/calcolo.py");
+  });
+
+  it("returns no edge when file path matches no repo prefix", () => {
+    const readme: FileExtraction = {
+      filePath: "myrepo/README.md",
+      language: "markdown",
+      fileNode: { kind: "document", label: "README.md" },
+      symbols: [
+        {
+          name: "Info",
+          qualifiedName: "myrepo.README.Info",
+          kind: "section",
+          decorators: ["h2"],
+          startLine: 1,
+          endLine: 5,
+          parent: "README.md",
+        },
+      ],
+      imports: [],
+      references: [
+        {
+          name: "nonexistent/path/file.py",
+          fromSymbol: "myrepo.README.Info",
+          kind: "references",
+          line: 3,
+        },
+      ],
+    };
+
+    const { graph } = buildGraph({
+      extractions: [readme],
+      repoNames: ["myrepo"],
+    });
+    const refEdges = getEdgesByType(graph, "references");
+    expect(refEdges.length).toBe(0);
+  });
+
+  it("does not dot-split file paths (fix 2)", () => {
+    // Without fix 2, "src/module.py" would be split on "." into ["src/module", "py"]
+    // and try to find a symbol named "py" — which should NOT happen.
+    // This test verifies that file paths bypass dot-splitting entirely.
+    const readme: FileExtraction = {
+      filePath: "myrepo/README.md",
+      language: "markdown",
+      fileNode: { kind: "document", label: "README.md" },
+      symbols: [
+        {
+          name: "Ref",
+          qualifiedName: "myrepo.README.Ref",
+          kind: "section",
+          decorators: ["h2"],
+          startLine: 1,
+          endLine: 5,
+          parent: "README.md",
+        },
+      ],
+      imports: [],
+      references: [
+        {
+          name: "src/config.py",
+          fromSymbol: "myrepo.README.Ref",
+          kind: "references",
+          line: 3,
+        },
+      ],
+    };
+
+    // Create a symbol named "py" that should NOT be matched
+    const pyFile: FileExtraction = {
+      filePath: "myrepo/trick.py",
+      language: "python",
+      fileNode: { kind: "module" },
+      symbols: [
+        {
+          name: "py",
+          qualifiedName: "myrepo/trick.py/py",
+          kind: "function",
+          decorators: [],
+          startLine: 1,
+          endLine: 3,
+        },
+      ],
+      imports: [],
+      references: [],
+    };
+
+    const { graph } = buildGraph({
+      extractions: [readme, pyFile],
+      repoNames: ["myrepo"],
+    });
+    // "src/config.py" doesn't exist as a node → no edge. Critically, it must NOT
+    // resolve to the "py" function via dot-splitting.
+    const refEdges = getEdgesByType(graph, "references");
+    expect(refEdges.length).toBe(0);
+  });
+
+  it("still resolves direct node ID match (single-repo mode)", () => {
+    const readme: FileExtraction = {
+      filePath: "docs/guide.md",
+      language: "markdown",
+      fileNode: { kind: "document", label: "guide.md" },
+      symbols: [
+        {
+          name: "Setup",
+          qualifiedName: "docs.guide.Setup",
+          kind: "section",
+          decorators: ["h2"],
+          startLine: 1,
+          endLine: 10,
+          parent: "guide.md",
+        },
+      ],
+      imports: [],
+      references: [
+        {
+          name: "src/app.py",
+          fromSymbol: "docs.guide.Setup",
+          kind: "references",
+          line: 5,
+        },
+      ],
+    };
+
+    const pyModule: FileExtraction = {
+      filePath: "src/app.py",
+      language: "python",
+      fileNode: { kind: "module" },
+      symbols: [],
+      imports: [],
+      references: [],
+    };
+
+    // No repoNames → single-repo mode, node IDs have no prefix
+    const { graph } = buildGraph({ extractions: [readme, pyModule] });
+    const refEdges = getEdgesByType(graph, "references");
+    expect(refEdges.length).toBe(1);
+    expect(refEdges[0]!.target).toBe("src/app.py");
+  });
+});

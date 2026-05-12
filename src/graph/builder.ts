@@ -195,6 +195,7 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
         extraction,
         fileImports,
         graph,
+        repoNames,
       );
       if (targetId && targetId !== sourceId) {
         addEdgeSafe(graph, sourceId, targetId, ref.kind);
@@ -223,10 +224,11 @@ export function buildGraph(options: BuildGraphOptions): BuiltGraph {
  * Resolve a reference name to a target node ID.
  *
  * Resolution order:
- * 1. Direct node ID: if ref.name is an existing node ID (file path, qualifiedName)
- * 2. Import-based: if name matches an imported name
- * 3. Same-file: if name matches a symbol in the same file
- * 4. Attribute-based: "obj.method" → try to resolve obj's type
+ * 0. Direct node ID match (file path, qualifiedName)
+ * 0b. File path resolution with repo-prefix awareness (multi-repo)
+ * 1. Attribute-based: "obj.method" → resolve obj via imports (skipped for file paths)
+ * 2. Import-based: name matches an imported name
+ * 3. Same-file: name matches a symbol in the same file
  */
 function resolveReference(
   refName: string,
@@ -234,11 +236,42 @@ function resolveReference(
   extraction: FileExtraction,
   fileImports: Map<string, string>,
   graph: Graph,
+  repoNames?: string[],
 ): string | null {
   // 0. Direct node ID match (file paths, fully qualified names)
   if (graph.hasNode(refName)) return refName;
 
+  // 0b. File path resolution — try with repo prefix(es)
+  // Markdown references like "development/templates/jobs/foo.py" need
+  // repo prefix to match node IDs like "myrepo/development/templates/jobs/foo.py"
+  const isFilePath = refName.includes("/");
+  if (isFilePath && /\.\w+$/.test(refName)) {
+    const filePath = toPosix(extraction.filePath);
+    const sourceRepo = graph.hasNode(filePath)
+      ? (graph.getNodeAttribute(filePath, "repo") as string | undefined)
+      : undefined;
+
+    // Same-repo first
+    if (sourceRepo) {
+      const prefixed = `${sourceRepo}/${refName}`;
+      if (graph.hasNode(prefixed)) return prefixed;
+    }
+
+    // Cross-repo: try all other repo prefixes
+    if (repoNames) {
+      for (const repo of repoNames) {
+        if (repo === sourceRepo) continue;
+        const prefixed = `${repo}/${refName}`;
+        if (graph.hasNode(prefixed)) return prefixed;
+      }
+    }
+
+    // File path with no match — don't fall through to dot-splitting
+    return null;
+  }
+
   // Handle attribute calls: "self.method" → just "method"
+  // Skipped for file paths (guarded above) to avoid splitting "foo.py" into ["foo", "py"]
   let simpleName = refName;
   if (refName.includes(".")) {
     const parts = refName.split(".");
