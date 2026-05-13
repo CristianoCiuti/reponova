@@ -136,6 +136,8 @@ export class EmbeddingEngine {
   }
 
   async initialize(): Promise<boolean> {
+    if (this.available) return true;
+
     let ort: OrtModule;
     try {
       ort = await import("onnxruntime-node") as unknown as OrtModule;
@@ -185,25 +187,20 @@ export class EmbeddingEngine {
     if (!this.available || !this.session || !this.tokenizer) return [];
 
     const results: EmbeddingResult[] = [];
-    const batchSize = items.length > 0 ? items.length : 1;
     const total = items.length;
+    const progressInterval = computeProgressInterval(total);
+    const batchSize = Math.min(50, progressInterval);
     const timer = new ProgressTimer(total);
-    const progressInterval = Math.max(batchSize * 10, Math.floor(total / 10));
 
     for (let i = 0; i < total; i += batchSize) {
       const batch = items.slice(i, i + batchSize);
       const batchResults = await this.embedBatchInternal(batch);
       results.push(...batchResults);
 
-      const processed = Math.min(i + batchSize, total);
-      if (processed >= total || (i > 0 && i % progressInterval < batchSize)) {
-        const { elapsed } = timer.tick(processed - 1);
-        const elapsedNum = parseFloat(elapsed);
-        const rate = elapsedNum > 0 ? processed / elapsedNum : 0;
-        const remaining = rate > 0 ? Math.ceil((total - processed) / rate) : 0;
-        if (processed < total) {
-          log.info(`  Embedded ${processed}/${total} nodes (${rate.toFixed(1)}/s, ~${formatEta(remaining)} remaining)`);
-        }
+      const processed = i + batch.length;
+      if (processed % progressInterval === 0 && processed < total) {
+        const { elapsed, avgMs, remaining } = timer.tick(processed - 1);
+        log.info(`  Embeddings: ${processed}/${total} (${elapsed}s, ~${avgMs}ms/item, ~${remaining}s remaining)`);
       }
     }
 
@@ -386,9 +383,10 @@ export function composeNodeText(
   return text.replace(/\s+/g, " ").trim().slice(0, 512);
 }
 
-function formatEta(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return s > 0 ? `${m}m${s}s` : `${m}m`;
+function computeProgressInterval(total: number): number {
+  if (total <= 10) return 5;
+  if (total <= 50) return 10;
+  if (total <= 200) return 25;
+  if (total <= 1000) return 100;
+  return 250;
 }
