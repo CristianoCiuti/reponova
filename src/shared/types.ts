@@ -73,8 +73,7 @@ export interface BuildConfigFingerprint {
     provider?: string;
   };
   outlines: { enabled: boolean };
-  community_summaries: { enabled: boolean };
-  node_descriptions: { enabled: boolean };
+  enrich: { enabled: boolean };
 }
 
 /** Adjacency map for BFS/Dijkstra */
@@ -111,8 +110,7 @@ export interface Config {
   docs: DocsConfig;
   images: ImagesConfig;
   embeddings: EmbeddingsConfig;
-  community_summaries: CommunitySummariesConfig;
-  node_descriptions: NodeDescriptionsConfig;
+  enrich: EnrichConfig;
   /** Generate interactive HTML visualizations */
   html: boolean;
   /** Minimum node degree to include in HTML visualization */
@@ -166,19 +164,16 @@ export interface EmbeddingsConfig {
   batch_size: number;
 }
 
-/** Community summaries — independent from node descriptions */
-export interface CommunitySummariesConfig {
+export interface EnrichConfig {
   enabled: boolean;
-  max_number: number;
   provider?: string;
-}
-
-/** Node descriptions — independent from community summaries */
-export interface NodeDescriptionsConfig {
-  enabled: boolean;
-  /** Degree percentile threshold: 0.8 = top 20%, 0.0 = all */
   threshold: number;
-  provider?: string;
+  max_communities: number;
+  candidate_threshold: number;
+  description_batch_tokens: number;
+  routing_batch_size: number;
+  concurrency: number;
+  max_retry_depth: number;
 }
 
 /** Outline config — simplified. File selection comes from top-level patterns. */
@@ -398,13 +393,15 @@ export const DEFAULT_CONFIG: Config = {
     enabled: true,
     batch_size: 128,
   },
-  community_summaries: {
-    enabled: true,
-    max_number: 0,
-  },
-  node_descriptions: {
+  enrich: {
     enabled: true,
     threshold: 0.8,
+    max_communities: 0,
+    candidate_threshold: 0.3,
+    description_batch_tokens: 40000,
+    routing_batch_size: 30,
+    concurrency: 4,
+    max_retry_depth: 3,
   },
   outlines: {
     enabled: true,

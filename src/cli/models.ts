@@ -212,8 +212,7 @@ function getProviderFeatureRefs(config: Config): Map<string, string[]> {
   };
 
   add(config.embeddings.provider, "embeddings.provider", config.embeddings.enabled);
-  add(config.community_summaries.provider, "community_summaries.provider", config.community_summaries.enabled);
-  add(config.node_descriptions.provider, "node_descriptions.provider", config.node_descriptions.enabled);
+  add(config.enrich.provider, "enrich.provider", config.enrich.enabled);
 
   return refs;
 }

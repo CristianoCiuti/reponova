@@ -1,37 +1,31 @@
 /**
  * Community summary generator.
  */
-import { toPosix } from "../shared/paths.js";
 import { log, ProgressTimer } from "../shared/utils.js";
-import type { CommunitySummariesConfig, GraphNode } from "../shared/types.js";
+import type { EnrichConfig, GraphNode } from "../shared/types.js";
 import type { LlmProvider } from "./llm-provider.js";
+import {
+  buildAlgorithmicSummary,
+  findHubs,
+  findPrimaryPath,
+  type CommunityData,
+  type CommunitySummary,
+} from "../pipeline/enrich/algorithmic.js";
 
-export interface CommunitySummary {
-  id: string;
-  label: string;
-  nodeCount: number;
-  summary: string;
-  hub_nodes: string[];
-  primary_path: string;
-  repos: string[];
-}
-
-export interface CommunityData {
-  id: string;
-  nodes: GraphNode[];
-}
+export type CommunitySummaryGeneratorConfig = Pick<EnrichConfig, "enabled" | "max_communities" | "provider">;
+export type { CommunitySummary, CommunityData };
 
 export class CommunitySummaryGenerator {
-  private config: CommunitySummariesConfig;
+  private config: CommunitySummaryGeneratorConfig;
   private llm: LlmProvider | null;
 
-  constructor(config: CommunitySummariesConfig, llm: LlmProvider | null) {
+  constructor(config: CommunitySummaryGeneratorConfig, llm: LlmProvider | null) {
     this.config = config;
     this.llm = llm;
   }
 
   async generate(communities: CommunityData[]): Promise<CommunitySummary[]> {
-    const maxNumber = this.config.max_number;
+    const maxNumber = this.config.max_communities;
     const sorted = [...communities].sort((a, b) => b.nodes.length - a.nodes.length);
     const selected = maxNumber > 0 ? sorted.slice(0, maxNumber) : sorted;
 
@@ -105,17 +99,6 @@ export class CommunitySummaryGenerator {
   }
 }
 
-function buildAlgorithmicSummary(
-  nodeCount: number,
-  hubs: GraphNode[],
-  primaryPath: string,
-  repos: string[],
-): string {
-  const hubNames = hubs.slice(0, 3).map((n) => n.label).join(", ");
-  const repoStr = repos.length > 0 ? ` Spans ${repos.join(", ")}.` : "";
-  return `${nodeCount} nodes cluster. Centered around ${hubNames} in ${primaryPath}.${repoStr}`;
-}
-
 /** Parse LLM response that should contain "Label: ..." and "Summary: ..." lines. */
 export function parseLlmResponse(text: string): { label?: string; summary?: string } {
   const labelMatch = text.match(/^Label:\s*(.+)$/m);
@@ -144,35 +127,6 @@ function composeCommunityPrompt(community: CommunityData): string {
   lines.push("Sample nodes:", ...sample);
 
   return lines.join("\n");
-}
-
-function findHubs(nodes: GraphNode[]): GraphNode[] {
-  const priority: Record<string, number> = { class: 3, module: 2, function: 1, method: 0 };
-  return [...nodes]
-    .sort((a, b) => (priority[b.type] ?? 0) - (priority[a.type] ?? 0))
-    .slice(0, 5);
-}
-
-function findPrimaryPath(nodes: GraphNode[]): string {
-  const paths = nodes.filter((n) => n.source_file).map((n) => n.source_file!);
-  if (paths.length === 0) return "(unknown)";
-
-  const dirs = paths.map((p) => toPosix(p).split("/").slice(0, -1).join("/"));
-  const counts = new Map<string, number>();
-  for (const dir of dirs) {
-    counts.set(dir, (counts.get(dir) ?? 0) + 1);
-  }
-
-  let maxDir = "";
-  let maxCount = 0;
-  for (const [dir, count] of counts) {
-    if (count > maxCount) {
-      maxDir = dir;
-      maxCount = count;
-    }
-  }
-
-  return maxDir || toPosix(paths[0] ?? "").split("/").slice(0, -1).join("/");
 }
 
 function countTypes(nodes: GraphNode[]): Record<string, number> {

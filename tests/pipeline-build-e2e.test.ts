@@ -12,8 +12,7 @@ function makeConfig(): Config {
   config.output = "out";
   config.html = false;
   config.embeddings.enabled = false;
-  config.community_summaries.enabled = false;
-  config.node_descriptions.enabled = false;
+  config.enrich.enabled = false;
   config.outlines.enabled = false;
   return config;
 }
@@ -109,9 +108,7 @@ describe("pipeline build E2E", { timeout: 30000 }, () => {
         "  html: false",
         "  embeddings:",
         "    enabled: false",
-        "  community_summaries:",
-        "    enabled: false",
-        "  node_descriptions:",
+        "  enrich:",
         "    enabled: false",
         "  outlines:",
         "    enabled: false",
@@ -123,8 +120,7 @@ describe("pipeline build E2E", { timeout: 30000 }, () => {
 
     expect(config.html).toBe(false);
     expect(config.embeddings.enabled).toBe(false);
-    expect(config.community_summaries.enabled).toBe(false);
-    expect(config.node_descriptions.enabled).toBe(false);
+    expect(config.enrich.enabled).toBe(false);
     expect(config.outlines.enabled).toBe(false);
     expect(existsSync(join(result.outputDir, "graph.json"))).toBe(true);
   });

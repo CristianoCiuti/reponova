@@ -24,7 +24,7 @@ interface RankedCommunity {
 export const reportPhase: Phase = {
   id: "report",
   label: "Report",
-  dependencies: ["community-summaries", "node-descriptions"],
+  dependencies: ["enrich"],
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const startedAt = new Date();
@@ -34,7 +34,7 @@ export const reportPhase: Phase = {
     try {
       const { outputDir, force } = ctx;
       const outputPath = join(outputDir, "report.md");
-      const graphJsonPath = join(outputDir, "graph.json");
+      const graphJsonPath = join(outputDir, "graph-enriched.json");
       const summariesPath = join(outputDir, "community_summaries.json");
       const descriptionsPath = join(outputDir, "node_descriptions.json");
 

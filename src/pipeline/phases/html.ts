@@ -19,7 +19,7 @@ import { log, errorMessage } from "../../shared/utils.js";
 export const htmlPhase: Phase = {
   id: "html",
   label: "HTML Visualizations",
-  dependencies: ["community-summaries", "node-descriptions"],
+  dependencies: ["enrich"],
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const startedAt = new Date();
@@ -30,7 +30,7 @@ export const htmlPhase: Phase = {
       const { config, outputDir, force } = ctx;
       const htmlPath = join(outputDir, "graph.html");
       const communityHtmlPath = join(outputDir, "graph_communities.html");
-      const graphJsonPath = join(outputDir, "graph.json");
+      const graphJsonPath = join(outputDir, "graph-enriched.json");
       const summariesPath = join(outputDir, "community_summaries.json");
       const descriptionsPath = join(outputDir, "node_descriptions.json");
       const configHashPath = join(outputDir, ".cache", "html-config-hash.txt");

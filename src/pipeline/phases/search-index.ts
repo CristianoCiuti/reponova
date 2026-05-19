@@ -14,7 +14,7 @@ import { log, errorMessage } from "../../shared/utils.js";
 export const searchIndexPhase: Phase = {
   id: "index",
   label: "Search Index",
-  dependencies: ["communities"],
+  dependencies: ["enrich"],
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const startedAt = new Date();
@@ -23,7 +23,7 @@ export const searchIndexPhase: Phase = {
 
     try {
       const { outputDir, force } = ctx;
-      const graphJsonPath = join(outputDir, "graph.json");
+      const graphJsonPath = join(outputDir, "graph-enriched.json");
       const dbPath = join(outputDir, "graph_search.db");
 
       if (!shouldRun(graphJsonPath, dbPath, force)) {

@@ -12,7 +12,7 @@ vi.mock("@lancedb/lancedb", () => ({
 import { CommunitySummaryGenerator, type CommunityData, parseLlmResponse } from "../src/intelligence/community-summary-generator.js";
 import { NodeDescriptionGenerator } from "../src/intelligence/node-description-generator.js";
 import { LlmEngine } from "../src/intelligence/local-llm-engine.js";
-import type { GraphNode, CommunitySummariesConfig, NodeDescriptionsConfig } from "../src/shared/types.js";
+import type { GraphNode } from "../src/shared/types.js";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync, rmSync, existsSync } from "node:fs";
@@ -142,9 +142,9 @@ describe("VectorStore (fallback mode)", () => {
 // ─── CommunitySummaryGenerator (algorithmic mode) ─────────────────────────────
 
 describe("CommunitySummaryGenerator (algorithmic)", () => {
-  const defaultSummariesConfig: CommunitySummariesConfig = {
+  const defaultSummariesConfig = {
     enabled: true,
-    max_number: 50,
+    max_communities: 50,
   };
 
   it("generates algorithmic community summaries", async () => {
@@ -171,7 +171,7 @@ describe("CommunitySummaryGenerator (algorithmic)", () => {
     expect(summaries[0].repos).toEqual([]);
   });
 
-  it("respects disabled community_summaries config", async () => {
+  it("respects disabled enrich config", async () => {
     const generator = new CommunitySummaryGenerator(
       { ...defaultSummariesConfig, enabled: false },
       null,
@@ -275,7 +275,7 @@ describe("parseLlmResponse", () => {
 // ─── NodeDescriptionGenerator (algorithmic mode) ──────────────────────────────
 
 describe("NodeDescriptionGenerator (algorithmic)", () => {
-  const defaultDescriptionsConfig: NodeDescriptionsConfig = {
+  const defaultDescriptionsConfig = {
     enabled: true,
     threshold: 0.8,
   };

@@ -26,10 +26,9 @@ describe("loadConfig", () => {
       expect(config.incremental).toBe(true);
       expect(config.patterns).toEqual([]);
       expect(config.exclude).toEqual([]);
-      expect(config.community_summaries.enabled).toBe(true);
-      expect(config.community_summaries.max_number).toBe(0);
-      expect(config.node_descriptions.enabled).toBe(true);
-      expect(config.node_descriptions.threshold).toBe(0.8);
+      expect(config.enrich.enabled).toBe(true);
+      expect(config.enrich.max_communities).toBe(0);
+      expect(config.enrich.threshold).toBe(0.8);
       expect(config.models.gpu).toBe("auto");
       expect(config.models.cache_dir).toBe("~/.cache/reponova/models");
       expect(config.models.download_on_first_use).toBe(true);

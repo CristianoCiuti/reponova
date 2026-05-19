@@ -2,32 +2,31 @@
  * Node description generator.
  */
 import { log, ProgressTimer } from "../shared/utils.js";
-import type { NodeDescriptionsConfig, GraphNode } from "../shared/types.js";
+import type { EnrichConfig, GraphNode } from "../shared/types.js";
 import type { LlmProvider } from "./llm-provider.js";
+import {
+  algorithmicDescription,
+  selectTargetNodes,
+  type NodeDescription,
+} from "../pipeline/enrich/algorithmic.js";
 
-export interface NodeDescription {
-  id: string;
-  description: string;
-}
+export type NodeDescriptionGeneratorConfig = Pick<EnrichConfig, "enabled" | "threshold" | "provider">;
+export type { NodeDescription };
 
 export class NodeDescriptionGenerator {
-  private config: NodeDescriptionsConfig;
+  private config: NodeDescriptionGeneratorConfig;
   private llm: LlmProvider | null;
 
-  constructor(config: NodeDescriptionsConfig, llm: LlmProvider | null) {
+  constructor(config: NodeDescriptionGeneratorConfig, llm: LlmProvider | null) {
     this.config = config;
     this.llm = llm;
   }
 
   async generate(nodes: GraphNode[], edgeCounts: Map<string, number>): Promise<NodeDescription[]> {
     const threshold = this.config.threshold;
-    const sorted = [...edgeCounts.entries()].sort((a, b) => b[1] - a[1]);
-    const cutoff = Math.ceil(sorted.length * (1 - threshold));
-    const topNodeIds = new Set(sorted.slice(0, cutoff).map(([id]) => id));
-
-    const targetNodes = nodes.filter((n) => topNodeIds.has(n.id));
+    const targetNodes = selectTargetNodes(nodes, edgeCounts, threshold);
     log.info(
-      `Node description selection: threshold=${threshold}, edgeCounts=${edgeCounts.size}, cutoff=${cutoff}, candidates=${topNodeIds.size}, matched=${targetNodes.length}`,
+      `Node description selection: threshold=${threshold}, edgeCounts=${edgeCounts.size}, candidates=${targetNodes.length}, matched=${targetNodes.length}`,
     );
 
     if (targetNodes.length === 0) {
@@ -116,12 +115,6 @@ export class NodeDescriptionGenerator {
     log.info(`  ✓ ${descriptions.length} node descriptions generated in ${timer.elapsedSec()}s (LLM=0, algorithmic=${descriptions.length})`);
     return descriptions;
   }
-}
-
-function algorithmicDescription(node: GraphNode, degree: number): string {
-  const typeLabel = node.type.charAt(0).toUpperCase() + node.type.slice(1);
-  const location = node.source_file ? ` in ${node.source_file}` : "";
-  return `${typeLabel} with ${degree} connections${location}.`;
 }
 
 function composeNodePrompt(node: GraphNode): string {

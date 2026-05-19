@@ -109,16 +109,12 @@ embeddings:
   enabled: true
   # provider: my-openai           # reference a provider defined above
 
-# ── Community Summaries ──
-community_summaries:
-  enabled: true
-  # provider: local-llm           # uncomment for LLM-enhanced summaries
-
-# ── Node Descriptions ──
-node_descriptions:
+# ── Enrich ──
+enrich:
   enabled: true
   # threshold: 0.8                # top 20% of nodes by degree
-  # provider: local-llm           # uncomment for LLM-enhanced descriptions
+  # max_communities: 0            # 0 = no limit; N = only top N largest communities
+  # provider: local-llm           # uncomment for LLM-enhanced enrichments
 
 # ── HTML ──
 # html: true

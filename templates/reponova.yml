@@ -73,20 +73,17 @@ embeddings:
   # provider: my-openai           # reference a provider defined above
   # batch_size: 128               # batch size for embedding generation
 
-# ── Community Summaries ──────────────────────────────────────────────────────
-# Default (no provider): algorithmic summaries (rule-based, still useful)
-# With provider: uses LLM for richer natural-language summaries
-community_summaries:
-  enabled: true
-  max_number: 0                   # 0 = no limit; N = only top N largest communities
-  # provider: local-llm           # reference a provider defined above
-
-# ── Node Descriptions ────────────────────────────────────────────────────────
-# Default (no provider): algorithmic descriptions
-# With provider: uses LLM for richer descriptions
-node_descriptions:
+# ── Enrich ───────────────────────────────────────────────────────────────────
+# Unified algorithmic/LLM enrichment for community summaries + node descriptions
+enrich:
   enabled: true
   threshold: 0.8                  # top 20% of nodes by degree
+  max_communities: 0              # 0 = no limit; N = only top N largest communities
+  candidate_threshold: 0.3
+  description_batch_tokens: 40000
+  routing_batch_size: 30
+  concurrency: 4
+  max_retry_depth: 3
   # provider: local-llm           # reference a provider defined above
 
 # ── Outlines ─────────────────────────────────────────────────────────────────

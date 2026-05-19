@@ -21,7 +21,7 @@ import type { EmbeddingProvider } from "../../intelligence/llm-provider.js";
 export const embeddingsPhase: Phase = {
   id: "embeddings",
   label: "Embeddings",
-  dependencies: ["community-summaries", "node-descriptions"],
+  dependencies: ["enrich"],
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const startedAt = new Date();
@@ -53,7 +53,7 @@ export const embeddingsPhase: Phase = {
       const configChanged = checkConfigChanged(configHashPath, currentConfigHash);
       const effectiveForce = force || configChanged;
 
-      const graphJsonPath = join(outputDir, "graph.json");
+      const graphJsonPath = join(outputDir, "graph-enriched.json");
       const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
 
       // Load community summaries and node descriptions for enriched text

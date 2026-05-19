@@ -48,16 +48,16 @@ const EmbeddingsConfigSchema = z.object({
   batch_size: z.number().default(128),
 });
 
-const CommunitySummariesConfigSchema = z.object({
+const EnrichConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  max_number: z.number().min(0).default(0),
   provider: z.string().optional(),
-});
-
-const NodeDescriptionsConfigSchema = z.object({
-  enabled: z.boolean().default(true),
   threshold: z.number().min(0).max(1).default(0.8),
-  provider: z.string().optional(),
+  max_communities: z.number().min(0).default(0),
+  candidate_threshold: z.number().min(0).max(1).default(0.3),
+  description_batch_tokens: z.number().default(40000),
+  routing_batch_size: z.number().default(30),
+  concurrency: z.number().min(1).default(4),
+  max_retry_depth: z.number().min(0).default(3),
 });
 
 const OutlineConfigSchema = z.object({
@@ -85,8 +85,7 @@ const ConfigSchema = z.object({
   docs: DocsConfigSchema.default({}),
   images: ImagesConfigSchema.default({}),
   embeddings: EmbeddingsConfigSchema.default({}),
-  community_summaries: CommunitySummariesConfigSchema.default({}),
-  node_descriptions: NodeDescriptionsConfigSchema.default({}),
+  enrich: EnrichConfigSchema.default({}),
   html: z.boolean().default(true),
   html_min_degree: z.number().int().min(1).optional(),
   outlines: OutlineConfigSchema.default({}),
@@ -98,17 +97,20 @@ const ConfigSchema = z.object({
  * If the raw YAML contains a `build` key, promote its children to root.
  */
 function migrateLegacyConfig(raw: Record<string, unknown>): Record<string, unknown> {
-  if (!raw.build || typeof raw.build !== "object") return raw;
-
-  const build = raw.build as Record<string, unknown>;
   const migrated = { ...raw };
-  delete migrated.build;
 
-  // Promote build children to root (only if not already set at root level)
-  for (const [key, value] of Object.entries(build)) {
-    if (!(key in migrated)) {
-      migrated[key] = value;
+  if (raw.build && typeof raw.build === "object") {
+    const build = raw.build as Record<string, unknown>;
+    delete migrated.build;
+
+    // Promote build children to root (only if not already set at root level)
+    for (const [key, value] of Object.entries(build)) {
+      if (!(key in migrated)) {
+        migrated[key] = value;
+      }
     }
+
+    log.info("Migrated legacy config: promoted build.* fields to root level");
   }
 
   // Migrate legacy outlines config (patterns/exclude/exclude_common under outlines)
@@ -118,7 +120,35 @@ function migrateLegacyConfig(raw: Record<string, unknown>): Record<string, unkno
     migrated.outlines = { enabled: outlines.enabled ?? true };
   }
 
-  log.info("Migrated legacy config: promoted build.* fields to root level");
+  const communitySummaries = asRecord(migrated.community_summaries);
+  const nodeDescriptions = asRecord(migrated.node_descriptions);
+  if (communitySummaries || nodeDescriptions) {
+    const existingEnrich = asRecord(migrated.enrich) ?? {};
+    const derivedEnrich: Record<string, unknown> = {
+      enabled: toBoolean(communitySummaries?.enabled, true) && toBoolean(nodeDescriptions?.enabled, true),
+    };
+
+    if (typeof nodeDescriptions?.threshold === "number") {
+      derivedEnrich.threshold = nodeDescriptions.threshold;
+    }
+    if (typeof communitySummaries?.max_number === "number") {
+      derivedEnrich.max_communities = communitySummaries.max_number;
+    }
+
+    const provider =
+      existingEnrich.provider ??
+      nodeDescriptions?.provider ??
+      communitySummaries?.provider;
+    if (typeof provider === "string") {
+      derivedEnrich.provider = provider;
+    }
+
+    migrated.enrich = { ...derivedEnrich, ...existingEnrich };
+    delete migrated.community_summaries;
+    delete migrated.node_descriptions;
+    log.info("Migrated legacy config: promoted community_summaries/node_descriptions to enrich");
+  }
+
   return migrated;
 }
 
@@ -178,12 +208,11 @@ function resolveConfigPath(explicitPath?: string): string | null {
 
 function validateProviderReferences(config: Config): void {
   for (const [providerName, provider] of Object.entries(config.providers)) {
-    validateProviderRequirements(providerName, provider);
+  validateProviderRequirements(providerName, provider);
   }
 
   validateEmbeddingProvider(config);
-  validateLlmProvider(config, "community_summaries", config.community_summaries.provider);
-  validateLlmProvider(config, "node_descriptions", config.node_descriptions.provider);
+  validateLlmProvider(config, "enrich", config.enrich.provider);
 }
 
 function validateEmbeddingProvider(config: Config): void {
@@ -235,6 +264,16 @@ function validateProviderRequirements(providerName: string, provider: ProviderCo
   if ((provider.type === "llama-cpp" || provider.type === "onnx") && !provider.model) {
     throw new Error(`Provider \"${providerName}\" (${provider.type}) requires model`);
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function toBoolean(value: unknown, defaultValue: boolean): boolean {
+  return typeof value === "boolean" ? value : defaultValue;
 }
 
 export { ConfigSchema };
