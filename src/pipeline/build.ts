@@ -20,6 +20,7 @@ import { ProviderRegistry } from "../intelligence/provider-registry.js";
 export interface BuildOptions {
   force?: boolean;
   target?: string;
+  startAfter?: string;
 }
 
 /**
@@ -84,6 +85,7 @@ export async function runBuild(config: Config, configDir: string, options: Build
     // Run orchestrator
     const orchestratorOptions: OrchestratorOptions = {
       target: options.target,
+      startAfter: options.startAfter,
       force: options.force ?? false,
     };
 

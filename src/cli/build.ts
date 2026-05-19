@@ -20,13 +20,19 @@ export const buildCommand: CommandModule = {
       .option("target", {
         type: "string",
         describe: "Run only this phase + its transitive dependencies (e.g. outlines, index, html)",
-      }),
+      })
+      .option("start-after", {
+        type: "string",
+        describe: "Run only phases downstream of this phase (requires previous build outputs)",
+      })
+      .conflicts("target", "start-after"),
   handler: async (argv) => {
     try {
       const { config, configDir } = loadConfig(argv.config as string | undefined);
       await runBuild(config, configDir, {
         force: argv.force as boolean,
         target: argv.target as string | undefined,
+        startAfter: argv["start-after"] as string | undefined,
       });
     } catch (err) {
       log.error(errorMessage(err));
