@@ -6,6 +6,7 @@
  */
 import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
+import { graphContract } from "../cache/contracts/graph.js";
 import { readDetectedFiles } from "./file-detection.js";
 import { extractAll, buildGraph } from "../../extract/index.js";
 import { exportJson } from "../../graph/export-json.js";
@@ -22,6 +23,7 @@ export const graphPhase: Phase = {
   id: "graph",
   label: "Graph Building",
   dependencies: ["file-detection"],
+  contract: graphContract,
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const startedAt = new Date();

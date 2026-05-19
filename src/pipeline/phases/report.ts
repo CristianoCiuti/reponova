@@ -1,13 +1,12 @@
 /**
  * report phase — generates markdown build report.
  *
- * Reads graph.json and community_summaries.json.
- * Skip logic: mtime comparison of inputs vs report.md.
+ * Reads graph-enriched.json and generates report.md.
  */
-import { existsSync, statSync } from "node:fs";
 import { atomicWriteText } from "../../shared/atomic-write.js";
 import { extname, join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
+import { reportContract } from "../cache/contracts/report.js";
 import type { GraphData, GraphNode } from "../../shared/types.js";
 import { loadGraphData } from "../../graph/loader.js";
 import { log, errorMessage } from "../../shared/utils.js";
@@ -25,6 +24,7 @@ export const reportPhase: Phase = {
   id: "report",
   label: "Report",
   dependencies: ["enrich"],
+  contract: reportContract,
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const startedAt = new Date();
@@ -32,19 +32,9 @@ export const reportPhase: Phase = {
     log.info(`  [${this.id}] ${this.label}...`);
 
     try {
-      const { outputDir, force } = ctx;
+      const { outputDir } = ctx;
       const outputPath = join(outputDir, "report.md");
       const graphJsonPath = join(outputDir, "graph-enriched.json");
-      const summariesPath = join(outputDir, "community_summaries.json");
-      const descriptionsPath = join(outputDir, "node_descriptions.json");
-
-      if (!shouldRun(graphJsonPath, outputPath, summariesPath, descriptionsPath, force)) {
-        const finishedAt = new Date();
-        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-        log.info(`  [${this.id}] Skipped: up to date (${elapsed}s)`);
-        return { processed: 0, skipped: true, skipReason: "up to date" };
-      }
 
       const graphData = loadGraphData(graphJsonPath);
       generateGraphReport({ graphData, outputDir, outputPath });
@@ -66,24 +56,6 @@ export const reportPhase: Phase = {
     }
   },
 };
-
-function shouldRun(
-  graphJsonPath: string,
-  outputPath: string,
-  summariesPath: string,
-  descriptionsPath: string,
-  force: boolean,
-): boolean {
-  if (force) return true;
-  if (!existsSync(outputPath)) return true;
-
-  const outputMtime = statSync(outputPath).mtimeMs;
-  let inputMtime = existsSync(graphJsonPath) ? statSync(graphJsonPath).mtimeMs : 0;
-  if (existsSync(summariesPath)) inputMtime = Math.max(inputMtime, statSync(summariesPath).mtimeMs);
-  if (existsSync(descriptionsPath)) inputMtime = Math.max(inputMtime, statSync(descriptionsPath).mtimeMs);
-
-  return inputMtime > outputMtime;
-}
 
 export function generateGraphReport(options: {
   graphData: GraphData;

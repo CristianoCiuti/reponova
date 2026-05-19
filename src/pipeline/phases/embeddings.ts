@@ -2,15 +2,15 @@
  * embeddings phase — generates vector representations for graph nodes.
  *
  * Enriched composeNodeText includes community summaries and node descriptions.
- * Per-node composed text comparison for incremental regeneration.
- * Config invalidation via .cache/embeddings-config-hash.txt.
+ * Per-node composed text comparison remains for fine-grained incrementality.
  */
 import { existsSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
+import { embeddingsContract } from "../cache/contracts/embeddings.js";
+import { hashObject, readHashFile } from "../cache/utils.js";
 import type { GraphData } from "../../shared/types.js";
-import { atomicWriteJson, atomicWriteText } from "../../shared/atomic-write.js";
+import { atomicWriteJson } from "../../shared/atomic-write.js";
 import { readJsonSafe } from "../../shared/fs.js";
 import { log, errorMessage } from "../../shared/utils.js";
 import { composeNodeText } from "../../intelligence/embeddings.js";
@@ -22,6 +22,7 @@ export const embeddingsPhase: Phase = {
   id: "embeddings",
   label: "Embeddings",
   dependencies: ["enrich"],
+  contract: embeddingsContract,
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const startedAt = new Date();
@@ -34,12 +35,14 @@ export const embeddingsPhase: Phase = {
       const vectorsPath = join(outputDir, "vectors");
       const tfidfPath = join(outputDir, "tfidf_idf.json");
       const cachePath = join(outputDir, ".cache", "node-texts.json");
+      const inputHashPath = join(outputDir, ".cache", "embeddings-input-hash.txt");
       const configHashPath = join(outputDir, ".cache", "embeddings-config-hash.txt");
 
       if (!embConfig.enabled) {
         removeDirectory(vectorsPath);
         removeFile(tfidfPath);
         removeFile(cachePath);
+        removeFile(inputHashPath);
         removeFile(configHashPath);
         const finishedAt = new Date();
         const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
@@ -48,9 +51,8 @@ export const embeddingsPhase: Phase = {
         return { processed: 0, skipped: true, skipReason: "disabled in config" };
       }
 
-      // Config invalidation
-      const currentConfigHash = hashConfigFields(embConfig.provider);
-      const configChanged = checkConfigChanged(configHashPath, currentConfigHash);
+      const currentConfigHash = getEmbeddingsConfigHash(config.embeddings);
+      const configChanged = readHashFile(configHashPath) !== currentConfigHash;
       const effectiveForce = force || configChanged;
 
       const graphJsonPath = join(outputDir, "graph-enriched.json");
@@ -108,7 +110,6 @@ export const embeddingsPhase: Phase = {
 
         if (itemsNeedingEmbeddings.length === 0 && removedIds.size === 0 && staleVectorIds.size === 0) {
           atomicWriteJson(getNodeTextCachePath(outputDir), Object.fromEntries(currentTexts));
-          atomicWriteText(configHashPath, currentConfigHash);
           const finishedAt = new Date();
           const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
           ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
@@ -127,14 +128,12 @@ export const embeddingsPhase: Phase = {
             } else {
               log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
             }
-            atomicWriteText(configHashPath, currentConfigHash);
             return result;
           }
 
           const cleanedRecords = existingRecords.filter((r) => !staleVectorIds.has(r.id));
           await vectorStore.upsert(cleanedRecords);
           atomicWriteJson(getNodeTextCachePath(outputDir), Object.fromEntries(currentTexts));
-          atomicWriteText(configHashPath, currentConfigHash);
           const finishedAt = new Date();
           const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
           ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
@@ -158,7 +157,6 @@ export const embeddingsPhase: Phase = {
         } else {
           log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
         }
-        atomicWriteText(configHashPath, currentConfigHash);
         return result;
       } finally {
         await vectorStore.dispose();
@@ -304,14 +302,12 @@ function loadNodeDescriptions(outputDir: string): Map<string, string> {
   return descs ? new Map(descs.map((d) => [d.id, d.description])) : new Map();
 }
 
-function hashConfigFields(provider?: string): string {
-  return createHash("sha256").update(JSON.stringify({ provider: provider ?? null })).digest("hex");
-}
-
-function checkConfigChanged(hashPath: string, currentHash: string): boolean {
-  if (!existsSync(hashPath)) return true;
-  try { return readFileSync(hashPath, "utf-8").trim() !== currentHash; }
-  catch { return true; }
+function getEmbeddingsConfigHash(config: { enabled: boolean; provider?: string; batch_size: number }): string {
+  return hashObject({
+    enabled: config.enabled,
+    provider: config.provider ?? null,
+    batch_size: config.batch_size,
+  });
 }
 
 function removeDirectory(path: string): void {

@@ -13,7 +13,7 @@ export const PHASE_OUTPUTS: Record<string, string[]> = {
   "enrich": ["graph-enriched.json", "node_descriptions.json", "community_summaries.json"],
   "index": ["graph_search.db"],
   "embeddings": [],
-  "html": ["graph.html"],
+  "html": ["graph.html", "graph_communities.html"],
   "report": ["report.md"],
 };
 

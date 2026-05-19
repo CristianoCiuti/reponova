@@ -13,6 +13,8 @@
  */
 import type { Phase, PhaseContext, PhaseResult } from "./phase.js";
 import type { PhaseRegistry } from "./registry.js";
+import type { CacheContext } from "../cache/context.js";
+import { join } from "node:path";
 import {
   buildDAG,
   validate,
@@ -142,7 +144,37 @@ async function executeLevel(
  * The orchestrator only sequences and parallelizes.
  */
 async function executePhase(phase: Phase, ctx: PhaseContext): Promise<PhaseResult> {
-  return phase.execute(ctx);
+  const contract = phase.contract;
+
+  if (contract && !ctx.force) {
+    const cacheCtx: CacheContext = {
+      outputDir: ctx.outputDir,
+      cacheDir: join(ctx.outputDir, ".cache"),
+      config: ctx.config,
+    };
+    const checkResult = contract.check(cacheCtx);
+    if (checkResult.fresh) {
+      log.info(`  [${phase.id}] Skipped: ${checkResult.reason}`);
+      return { processed: 0, skipped: true, skipReason: checkResult.reason };
+    }
+  }
+
+  const result = await phase.execute(ctx);
+
+  if (contract && !result.skipped && !result.skipReason?.startsWith("error:")) {
+    const cacheCtx: CacheContext = {
+      outputDir: ctx.outputDir,
+      cacheDir: join(ctx.outputDir, ".cache"),
+      config: ctx.config,
+    };
+    try {
+      contract.seal(cacheCtx);
+    } catch {
+      // Don't fail the phase if seal fails
+    }
+  }
+
+  return result;
 }
 
 /**

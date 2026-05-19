@@ -75,12 +75,13 @@ describe("pipeline build E2E", { timeout: 30000 }, () => {
     const fileDetection = second.phases.get("file-detection");
     const graph = second.phases.get("graph");
 
+    // file-detection always runs (contract returns stale)
     expect(fileDetection).toBeDefined();
     expect(fileDetection?.skipped).toBe(false);
     expect(fileDetection?.processed).toBeGreaterThan(0);
+    // graph is skipped by cache contract (detected-files.json unchanged + config unchanged)
     expect(graph).toBeDefined();
-    expect(graph?.skipped).toBe(false);
-    expect(graph?.processed).toBeGreaterThan(0);
+    expect(graph?.skipped).toBe(true);
   });
 
   it("empty repo produces empty graph", async () => {

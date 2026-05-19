@@ -1,12 +1,11 @@
 /**
  * search-index phase — generates SQLite FTS search index.
  *
- * Reads graph.json, populates SQLite in-memory, saves to graph_search.db.
- * Skip logic: mtime comparison between graph.json and graph_search.db.
+ * Reads graph-enriched.json, populates SQLite in-memory, saves to graph_search.db.
  */
-import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
+import { searchIndexContract } from "../cache/contracts/search-index.js";
 import { loadGraphData } from "../../graph/loader.js";
 import { openDatabase, initializeSchema, populateDatabase, saveDatabase } from "../../query/db.js";
 import { log, errorMessage } from "../../shared/utils.js";
@@ -15,6 +14,7 @@ export const searchIndexPhase: Phase = {
   id: "index",
   label: "Search Index",
   dependencies: ["enrich"],
+  contract: searchIndexContract,
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const startedAt = new Date();
@@ -22,17 +22,9 @@ export const searchIndexPhase: Phase = {
     log.info(`  [${this.id}] ${this.label}...`);
 
     try {
-      const { outputDir, force } = ctx;
+      const { outputDir } = ctx;
       const graphJsonPath = join(outputDir, "graph-enriched.json");
       const dbPath = join(outputDir, "graph_search.db");
-
-      if (!shouldRun(graphJsonPath, dbPath, force)) {
-        const finishedAt = new Date();
-        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-        log.info(`  [${this.id}] Skipped: up to date (${elapsed}s)`);
-        return { processed: 0, skipped: true, skipReason: "up to date" };
-      }
 
       log.info("Generating search index...");
       const graphData = loadGraphData(graphJsonPath);
@@ -62,10 +54,3 @@ export const searchIndexPhase: Phase = {
     }
   },
 };
-
-function shouldRun(graphJsonPath: string, dbPath: string, force: boolean): boolean {
-  if (force) return true;
-  if (!existsSync(dbPath)) return true;
-  if (!existsSync(graphJsonPath)) return false;
-  return statSync(graphJsonPath).mtimeMs > statSync(dbPath).mtimeMs;
-}

@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { join, extname } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
+import { outlinesContract } from "../cache/contracts/outlines.js";
 import { readDetectedFiles } from "./file-detection.js";
 import { generateOutline, formatOutlineJson } from "../../outline/index.js";
 import { getOutlineSupportedExtensions } from "../../outline/languages/registry.js";
@@ -26,6 +27,7 @@ export const outlinesPhase: Phase = {
   id: "outlines",
   label: "Outlines",
   dependencies: ["file-detection"],
+  contract: outlinesContract,
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
     const startedAt = new Date();
