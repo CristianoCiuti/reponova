@@ -12,7 +12,11 @@ import type { Database } from "./db.js";
 import { queryAll, queryOne } from "./db.js";
 import { searchNodes } from "./search.js";
 import { VectorStore } from "./vector-store.js";
+import { loadVectorMeta } from "./vector-meta.js";
 import { TfidfEmbeddingEngine } from "../intelligence/tfidf-embeddings.js";
+import { OnnxEmbeddingAdapter } from "../intelligence/embeddings.js";
+import { OpenAiEmbeddingProvider } from "../intelligence/openai-embedding-provider.js";
+import type { EmbeddingProvider } from "../intelligence/llm-provider.js";
 import type {
   CommunitySummaryEntry,
   ContextCandidate,
@@ -94,6 +98,7 @@ export class ContextBuilder {
   private graphDir: string;
   private vectorStore: VectorStore | null = null;
   private tfidfEngine: TfidfEmbeddingEngine | null = null;
+  private embeddingProvider: EmbeddingProvider | null = null;
   private communitySummaries: Map<string, string> = new Map();
   private communityLabels: Map<string, string> = new Map();
   private nodeDescriptions: Map<string, string> = new Map();
@@ -138,8 +143,30 @@ export class ContextBuilder {
       this.vectorStore = null;
     }
 
-    // Initialize embedding engine for query encoding
-    if (embeddingsConfig && embeddingsConfig.enabled) {
+    // Initialize embedding engine for query encoding (metadata-driven)
+    const meta = loadVectorMeta(this.graphDir);
+    if (meta) {
+      if (meta.provider === null) {
+        // TF-IDF
+        const engine = new TfidfEmbeddingEngine();
+        if (engine.loadVocabulary(this.graphDir)) this.tfidfEngine = engine;
+      } else if (meta.provider.type === "onnx") {
+        const cacheDir = meta.models?.cache_dir ?? "~/.cache/reponova/models";
+        const download = meta.models?.download_on_first_use ?? true;
+        const adapter = new OnnxEmbeddingAdapter(meta.provider.model!, cacheDir, download);
+        if (await adapter.initialize()) this.embeddingProvider = adapter;
+      } else if (meta.provider.type === "openai") {
+        const instance = new OpenAiEmbeddingProvider({
+          baseUrl: meta.provider.base_url!,
+          model: meta.provider.model!,
+          apiKey: meta.provider.api_key,
+          timeout: meta.provider.timeout ?? 30,
+          batchSize: 1,
+        });
+        if (await instance.initialize()) this.embeddingProvider = instance;
+      }
+    } else if (embeddingsConfig && embeddingsConfig.enabled) {
+      // Legacy fallback: pre-metadata builds
       if (!embeddingsConfig.provider) {
         const engine = new TfidfEmbeddingEngine();
         const loaded = engine.loadVocabulary(this.graphDir);
@@ -349,11 +376,14 @@ export class ContextBuilder {
     }
 
     // Vector search (if available)
-    if (this.vectorStore && this.tfidfEngine) {
+    if (this.vectorStore && (this.tfidfEngine || this.embeddingProvider)) {
       let queryVector: number[] | Float32Array | null = null;
 
       if (this.tfidfEngine) {
         queryVector = this.tfidfEngine.embedQuery(query);
+      } else if (this.embeddingProvider) {
+        const results = await this.embeddingProvider.embedBatch([{ id: "_q", text: query }]);
+        if (results.length > 0) queryVector = Array.from(results[0]!.vector);
       }
 
       if (queryVector) {
@@ -604,6 +634,7 @@ export class ContextBuilder {
    */
   async dispose(): Promise<void> {
     if (this.tfidfEngine) this.tfidfEngine.dispose();
+    if (this.embeddingProvider) await this.embeddingProvider.dispose();
     if (this.vectorStore) await this.vectorStore.dispose();
   }
 }

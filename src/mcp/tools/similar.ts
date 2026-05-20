@@ -1,15 +1,25 @@
 /**
  * graph_similar MCP tool — semantic similarity search via vector embeddings.
+ *
+ * Reads vectors/_meta.json to determine which embedding engine to bootstrap
+ * at query time. Supports TF-IDF (self-contained), ONNX (local model), and
+ * OpenAI-compatible (remote API) providers.
  */
 import { VectorStore } from "../../query/vector-store.js";
+import { loadVectorMeta } from "../../query/vector-meta.js";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { TfidfEmbeddingEngine } from "../../intelligence/tfidf-embeddings.js";
+import { OnnxEmbeddingAdapter } from "../../intelligence/embeddings.js";
+import { OpenAiEmbeddingProvider } from "../../intelligence/openai-embedding-provider.js";
 import type { EmbeddingsConfig } from "../../shared/types.js";
+import type { EmbeddingProvider } from "../../intelligence/llm-provider.js";
 import type { PathResolver } from "../../shared/path-resolver.js";
+import { log } from "../../shared/utils.js";
 
 let vectorStore: VectorStore | null = null;
 let tfidfEngine: TfidfEmbeddingEngine | null = null;
+let embeddingProvider: EmbeddingProvider | null = null;
 let _initPromise: Promise<boolean> | null = null;
 
 /**
@@ -32,10 +42,52 @@ async function _doInitSimilaritySearch(graphDir: string, embeddingsConfig: Embed
     return false;
   }
 
-  const tfidfIdfPath = join(graphDir, "tfidf_idf.json");
+  // Try metadata-driven init first (new builds write vectors/_meta.json)
+  const meta = loadVectorMeta(graphDir);
+  if (meta) {
+    if (meta.provider === null) {
+      // TF-IDF
+      const engine = new TfidfEmbeddingEngine();
+      if (!engine.loadVocabulary(graphDir)) { vectorStore = null; return false; }
+      tfidfEngine = engine;
+      return true;
+    }
 
+    if (meta.provider.type === "onnx") {
+      const cacheDir = meta.models?.cache_dir ?? "~/.cache/reponova/models";
+      const download = meta.models?.download_on_first_use ?? true;
+      const adapter = new OnnxEmbeddingAdapter(meta.provider.model!, cacheDir, download);
+      const ready = await adapter.initialize();
+      if (!ready) { vectorStore = null; return false; }
+      embeddingProvider = adapter;
+      return true;
+    }
+
+    if (meta.provider.type === "openai") {
+      const instance = new OpenAiEmbeddingProvider({
+        baseUrl: meta.provider.base_url!,
+        model: meta.provider.model!,
+        apiKey: meta.provider.api_key,
+        timeout: meta.provider.timeout ?? 30,
+        batchSize: 1,
+      });
+      const ready = await instance.initialize();
+      if (!ready) { vectorStore = null; return false; }
+      embeddingProvider = instance;
+      return true;
+    }
+
+    // Unknown provider type in metadata — fall through to legacy
+    log.warn(`Unknown embedding provider type in metadata: ${meta.provider.type}`);
+  }
+
+  // Legacy fallback: pre-metadata builds
+  return legacyInit(graphDir, embeddingsConfig);
+}
+
+function legacyInit(graphDir: string, embeddingsConfig: EmbeddingsConfig): boolean {
+  const tfidfIdfPath = join(graphDir, "tfidf_idf.json");
   if (!embeddingsConfig.provider && existsSync(tfidfIdfPath)) {
-    // Load pre-built IDF table for query-time embedding
     const engine = new TfidfEmbeddingEngine();
     const loaded = engine.loadVocabulary(graphDir);
     if (!loaded) {
@@ -45,8 +97,8 @@ async function _doInitSimilaritySearch(graphDir: string, embeddingsConfig: Embed
     tfidfEngine = engine;
     return true;
   }
-
-  return embeddingsConfig.provider ? true : false;
+  // Non-TF-IDF without metadata → can't bootstrap
+  return false;
 }
 
 /**
@@ -67,7 +119,7 @@ export async function handleSimilar(
     return { content: [{ type: "text" as const, text: "Error: 'query' is required" }], isError: true };
   }
 
-  if (!vectorStore || !tfidfEngine) {
+  if (!vectorStore || (!tfidfEngine && !embeddingProvider)) {
     return {
       content: [{
         type: "text" as const,
@@ -81,8 +133,19 @@ export async function handleSimilar(
   const typeFilter = args.type as string | undefined;
   const repoFilter = args.repo as string | undefined;
 
-  // Embed the query using whatever method was configured
-  const queryVector = tfidfEngine.embedQuery(query);
+  // Embed the query using whatever engine is available
+  let queryVector: number[];
+  if (tfidfEngine) {
+    queryVector = tfidfEngine.embedQuery(query);
+  } else if (embeddingProvider) {
+    const results = await embeddingProvider.embedBatch([{ id: "_q", text: query }]);
+    if (!results.length) {
+      return { content: [{ type: "text" as const, text: "Failed to embed query" }], isError: true };
+    }
+    queryVector = Array.from(results[0]!.vector);
+  } else {
+    return { content: [{ type: "text" as const, text: "No query embedding engine available" }], isError: true };
+  }
 
   // Search
   const results = await vectorStore.query(queryVector, {
@@ -122,6 +185,8 @@ export async function handleSimilar(
 export async function disposeSimilaritySearch(): Promise<void> {
   if (vectorStore) await vectorStore.dispose();
   if (tfidfEngine) tfidfEngine.dispose();
+  if (embeddingProvider) await embeddingProvider.dispose();
   vectorStore = null;
   tfidfEngine = null;
+  embeddingProvider = null;
 }

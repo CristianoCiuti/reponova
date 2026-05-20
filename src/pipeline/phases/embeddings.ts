@@ -9,13 +9,14 @@ import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { embeddingsContract } from "../cache/contracts/embeddings.js";
 import { hashObject, readHashFile } from "../cache/utils.js";
-import type { GraphData } from "../../shared/types.js";
+import type { GraphData, VectorMeta } from "../../shared/types.js";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
 import { readJsonSafe } from "../../shared/fs.js";
 import { log, errorMessage } from "../../shared/utils.js";
 import { composeNodeText } from "../../intelligence/embeddings.js";
 import { TfidfEmbeddingEngine } from "../../intelligence/tfidf-embeddings.js";
 import { VectorStore, type VectorRecord } from "../../query/vector-store.js";
+import { writeVectorMeta } from "../../query/vector-meta.js";
 import type { EmbeddingProvider } from "../../intelligence/llm-provider.js";
 
 export const embeddingsPhase: Phase = {
@@ -120,6 +121,15 @@ export const embeddingsPhase: Phase = {
         if (itemsNeedingEmbeddings.length === 0) {
           if (!embConfig.provider && staleVectorIds.size > 0 && items.length > 0) {
             const result = await generateTfidf(ctx, graphData, items, items, [], currentTexts, vectorStore);
+            if (!result.skipped) {
+              writeVectorMeta(ctx.outputDir, {
+                provider: null,
+                models: null,
+                dimensions: 384,
+                record_count: items.length,
+                created_at: new Date().toISOString(),
+              });
+            }
             const finishedAt = new Date();
             const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
             ctx.manifest.record(this.id, { status: result.skipped ? "skipped" : "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
@@ -147,6 +157,23 @@ export const embeddingsPhase: Phase = {
           result = await generateTfidf(ctx, graphData, items, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
         } else {
           result = await generateWithProvider(ctx, embeddingProvider, graphData, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
+        }
+
+        // Write vector metadata after successful generation
+        if (!result.skipped) {
+          const providerConfig = embConfig.provider ? ctx.config.providers[embConfig.provider] ?? null : null;
+          const dimensions = items[0] ? (await vectorStore.loadAllRecords())[0]?.vector.length ?? 384 : 384;
+          const meta: VectorMeta = {
+            provider: providerConfig,
+            models: providerConfig?.type === "onnx" ? {
+              cache_dir: ctx.config.models.cache_dir,
+              download_on_first_use: ctx.config.models.download_on_first_use,
+            } : null,
+            dimensions,
+            record_count: items.length,
+            created_at: new Date().toISOString(),
+          };
+          writeVectorMeta(ctx.outputDir, meta);
         }
 
         const finishedAt = new Date();

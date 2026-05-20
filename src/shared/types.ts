@@ -164,6 +164,25 @@ export interface EmbeddingsConfig {
   batch_size: number;
 }
 
+/**
+ * Vector store metadata — self-describing artifact written to vectors/_meta.json.
+ * `provider` uses the SAME ProviderConfig structure as reponova.yml.
+ * `models` carries the subset of ModelsConfig relevant to query-time bootstrapping.
+ */
+export interface VectorMeta {
+  provider: ProviderConfig | null;
+  models: VectorMetaModels | null;
+  dimensions: number;
+  record_count: number;
+  created_at: string;
+}
+
+/** Subset of ModelsConfig needed at query time */
+export interface VectorMetaModels {
+  cache_dir: string;
+  download_on_first_use: boolean;
+}
+
 export interface EnrichConfig {
   enabled: boolean;
   provider?: string;
