@@ -1,7 +1,7 @@
 /**
  * LLM Engine Pool — deduplicates model instances across build phases.
  *
- * When community_summaries and node_descriptions reference the same model,
+ * When multiple phases reference the same model (e.g. enrich and embeddings),
  * the pool returns the same LlmEngine instance. Avoids loading ~350MB twice.
  *
  * Lifecycle:

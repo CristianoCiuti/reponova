@@ -120,33 +120,12 @@ function migrateLegacyConfig(raw: Record<string, unknown>): Record<string, unkno
     migrated.outlines = { enabled: outlines.enabled ?? true };
   }
 
-  const communitySummaries = asRecord(migrated.community_summaries);
-  const nodeDescriptions = asRecord(migrated.node_descriptions);
-  if (communitySummaries || nodeDescriptions) {
-    const existingEnrich = asRecord(migrated.enrich) ?? {};
-    const derivedEnrich: Record<string, unknown> = {
-      enabled: toBoolean(communitySummaries?.enabled, true) && toBoolean(nodeDescriptions?.enabled, true),
-    };
-
-    if (typeof nodeDescriptions?.threshold === "number") {
-      derivedEnrich.threshold = nodeDescriptions.threshold;
-    }
-    if (typeof communitySummaries?.max_number === "number") {
-      derivedEnrich.max_communities = communitySummaries.max_number;
-    }
-
-    const provider =
-      existingEnrich.provider ??
-      nodeDescriptions?.provider ??
-      communitySummaries?.provider;
-    if (typeof provider === "string") {
-      derivedEnrich.provider = provider;
-    }
-
-    migrated.enrich = { ...derivedEnrich, ...existingEnrich };
-    delete migrated.community_summaries;
-    delete migrated.node_descriptions;
-    log.info("Migrated legacy config: promoted community_summaries/node_descriptions to enrich");
+  // Reject legacy config keys — no backward compatibility
+  if (migrated.community_summaries || migrated.node_descriptions) {
+    throw new Error(
+      "Legacy config detected: 'community_summaries' and 'node_descriptions' are no longer supported. " +
+      "Replace with 'enrich:' section. See INTELLIGENT-ENRICHMENT.md for the new config format.",
+    );
   }
 
   return migrated;
@@ -264,16 +243,6 @@ function validateProviderRequirements(providerName: string, provider: ProviderCo
   if ((provider.type === "llama-cpp" || provider.type === "onnx") && !provider.model) {
     throw new Error(`Provider \"${providerName}\" (${provider.type}) requires model`);
   }
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
-function toBoolean(value: unknown, defaultValue: boolean): boolean {
-  return typeof value === "boolean" ? value : defaultValue;
 }
 
 export { ConfigSchema };

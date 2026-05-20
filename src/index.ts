@@ -21,7 +21,7 @@ export type { RepoMapping, PathContext } from "./shared/path-resolver.js";
 // Intelligence layer exports
 export { EmbeddingEngine, composeNodeText } from "./intelligence/embeddings.js";
 export { VectorStore } from "./query/vector-store.js";
-export { CommunitySummaryGenerator } from "./intelligence/community-summary-generator.js";
+
 export { ContextBuilder } from "./query/context-builder.js";
 export { ProviderRegistry } from "./intelligence/provider-registry.js";
 export type { LlmProvider, LlmCompletionOptions, EmbeddingProvider } from "./intelligence/llm-provider.js";
