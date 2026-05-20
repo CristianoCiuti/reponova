@@ -8,6 +8,7 @@ import { existsSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { embeddingsContract } from "../cache/contracts/embeddings.js";
+import { checkPhaseCache, sealPhaseCache } from "../cache/contract.js";
 import { hashObject, readHashFile } from "../cache/utils.js";
 import type { GraphData, VectorMeta } from "../../shared/types.js";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
@@ -23,9 +24,11 @@ export const embeddingsPhase: Phase = {
   id: "embeddings",
   label: "Embeddings",
   dependencies: ["enrich"],
-  contract: embeddingsContract,
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const cached = checkPhaseCache(ctx, embeddingsContract);
+    if (cached) return cached;
+
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
     log.info(`  [${this.id}] ${this.label}...`);
@@ -137,6 +140,7 @@ export const embeddingsPhase: Phase = {
               log.info(`  [${this.id}] Skipped: ${result.skipReason ?? "up to date"} (${elapsed}s)`);
             } else {
               log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
+              sealPhaseCache(ctx, embeddingsContract);
             }
             return result;
           }
@@ -183,6 +187,7 @@ export const embeddingsPhase: Phase = {
           log.info(`  [${this.id}] Skipped: ${result.skipReason ?? "up to date"} (${elapsed}s)`);
         } else {
           log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
+          sealPhaseCache(ctx, embeddingsContract);
         }
         return result;
       } finally {

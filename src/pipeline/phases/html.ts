@@ -7,6 +7,7 @@ import { existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { htmlContract } from "../cache/contracts/html.js";
+import { checkPhaseCache, sealPhaseCache } from "../cache/contract.js";
 import { loadGraphAsGraphology } from "../../graph/graphology.js";
 import { detectCommunities } from "../../graph/community.js";
 import { exportHtml, exportCommunityHtml, type CommunitySummaryInfo } from "../../graph/export-html.js";
@@ -17,9 +18,11 @@ export const htmlPhase: Phase = {
   id: "html",
   label: "HTML Visualizations",
   dependencies: ["enrich"],
-  contract: htmlContract,
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const cached = checkPhaseCache(ctx, htmlContract);
+    if (cached) return cached;
+
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
     log.info(`  [${this.id}] ${this.label}...`);
@@ -70,6 +73,7 @@ export const htmlPhase: Phase = {
       ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
 
+      sealPhaseCache(ctx, htmlContract);
       return result;
     } catch (err) {
       const finishedAt = new Date();

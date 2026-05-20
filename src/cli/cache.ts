@@ -5,6 +5,28 @@ import type { CacheContract, CacheContext } from "../pipeline/cache/index.js";
 import { createDefaultRegistry } from "../pipeline/engine/registry.js";
 import { validatePhaseOutputsExist } from "../pipeline/engine/phase-outputs.js";
 import { errorMessage, log } from "../shared/utils.js";
+import { fileDetectionContract } from "../pipeline/cache/contracts/file-detection.js";
+import { graphContract } from "../pipeline/cache/contracts/graph.js";
+import { outlinesContract } from "../pipeline/cache/contracts/outlines.js";
+import { communitiesContract } from "../pipeline/cache/contracts/communities.js";
+import { enrichContract } from "../pipeline/cache/contracts/enrich.js";
+import { searchIndexContract } from "../pipeline/cache/contracts/search-index.js";
+import { embeddingsContract } from "../pipeline/cache/contracts/embeddings.js";
+import { htmlContract } from "../pipeline/cache/contracts/html.js";
+import { reportContract } from "../pipeline/cache/contracts/report.js";
+
+/** Map phase ID → its cache contract. */
+const contractMap = new Map<string, CacheContract>([
+  ["file-detection", fileDetectionContract],
+  ["graph", graphContract],
+  ["outlines", outlinesContract],
+  ["communities", communitiesContract],
+  ["enrich", enrichContract],
+  ["index", searchIndexContract],
+  ["embeddings", embeddingsContract],
+  ["html", htmlContract],
+  ["report", reportContract],
+]);
 
 export const cacheCommand: CommandModule = {
   command: "cache",
@@ -83,7 +105,7 @@ export const cacheCommand: CommandModule = {
 
       const registry = createDefaultRegistry();
       const rows = registry.getAll().map((phase) => {
-        const contract = phase.contract;
+        const contract = contractMap.get(phase.id);
         const result = contract
           ? contract.check(cacheCtx)
           : { fresh: false, reason: "no contract" };
@@ -115,12 +137,12 @@ export const cacheCommand: CommandModule = {
 };
 
 function getContract(phaseId: string): CacheContract {
-  const registry = createDefaultRegistry();
-  const phase = registry.get(phaseId);
-  if (!phase.contract) {
-    throw new Error(`Phase ${phaseId} has no cache contract`);
+  const contract = contractMap.get(phaseId);
+  if (!contract) {
+    const available = [...contractMap.keys()].join(", ");
+    throw new Error(`Phase "${phaseId}" has no cache contract. Available: ${available}`);
   }
-  return phase.contract;
+  return contract;
 }
 
 function pad(value: string, width: number): string {

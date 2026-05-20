@@ -7,6 +7,7 @@
 import { basename, join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { fileDetectionContract } from "../cache/contracts/file-detection.js";
+import { checkPhaseCache, sealPhaseCache } from "../cache/contract.js";
 import { detectFiles, detectDocFiles, detectDiagramFiles } from "../../extract/index.js";
 import { buildSkipDirs } from "../../shared/path-resolver.js";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
@@ -31,9 +32,11 @@ export const fileDetectionPhase: Phase = {
   id: "file-detection",
   label: "File Detection",
   dependencies: [],
-  contract: fileDetectionContract,
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const cached = checkPhaseCache(ctx, fileDetectionContract);
+    if (cached) return cached;
+
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
     log.info(`  [${this.id}] ${this.label}...`);
@@ -66,6 +69,7 @@ export const fileDetectionPhase: Phase = {
       ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
 
+      sealPhaseCache(ctx, fileDetectionContract);
       return result;
     } catch (err) {
       const finishedAt = new Date();

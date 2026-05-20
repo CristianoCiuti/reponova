@@ -6,6 +6,7 @@
 import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { searchIndexContract } from "../cache/contracts/search-index.js";
+import { checkPhaseCache, sealPhaseCache } from "../cache/contract.js";
 import { loadGraphData } from "../../graph/loader.js";
 import { openDatabase, initializeSchema, populateDatabase, saveDatabase } from "../../query/db.js";
 import { log, errorMessage } from "../../shared/utils.js";
@@ -14,9 +15,11 @@ export const searchIndexPhase: Phase = {
   id: "index",
   label: "Search Index",
   dependencies: ["enrich"],
-  contract: searchIndexContract,
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const cached = checkPhaseCache(ctx, searchIndexContract);
+    if (cached) return cached;
+
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
     log.info(`  [${this.id}] ${this.label}...`);
@@ -43,6 +46,7 @@ export const searchIndexPhase: Phase = {
       ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
 
+      sealPhaseCache(ctx, searchIndexContract);
       return result;
     } catch (err) {
       const finishedAt = new Date();

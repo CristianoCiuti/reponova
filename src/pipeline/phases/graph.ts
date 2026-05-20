@@ -7,6 +7,7 @@
 import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { graphContract } from "../cache/contracts/graph.js";
+import { checkPhaseCache, sealPhaseCache } from "../cache/contract.js";
 import { readDetectedFiles } from "./file-detection.js";
 import { extractAll, buildGraph } from "../../extract/index.js";
 import { exportJson } from "../../graph/export-json.js";
@@ -23,9 +24,11 @@ export const graphPhase: Phase = {
   id: "graph",
   label: "Graph Building",
   dependencies: ["file-detection"],
-  contract: graphContract,
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const cached = checkPhaseCache(ctx, graphContract);
+    if (cached) return cached;
+
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
     log.info(`  [${this.id}] ${this.label}...`);
@@ -106,6 +109,7 @@ export const graphPhase: Phase = {
       ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
 
+      sealPhaseCache(ctx, graphContract);
       return result;
     } catch (err) {
       const finishedAt = new Date();

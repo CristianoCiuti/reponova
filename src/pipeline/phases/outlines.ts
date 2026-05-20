@@ -15,6 +15,7 @@ import {
 import { join, extname } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { outlinesContract } from "../cache/contracts/outlines.js";
+import { checkPhaseCache, sealPhaseCache } from "../cache/contract.js";
 import { readDetectedFiles } from "./file-detection.js";
 import { generateOutline, formatOutlineJson } from "../../outline/index.js";
 import { getOutlineSupportedExtensions } from "../../outline/languages/registry.js";
@@ -27,9 +28,11 @@ export const outlinesPhase: Phase = {
   id: "outlines",
   label: "Outlines",
   dependencies: ["file-detection"],
-  contract: outlinesContract,
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const cached = checkPhaseCache(ctx, outlinesContract);
+    if (cached) return cached;
+
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
     log.info(`  [${this.id}] ${this.label}...`);
@@ -123,6 +126,7 @@ export const outlinesPhase: Phase = {
       ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
 
+      sealPhaseCache(ctx, outlinesContract);
       return result;
     } catch (err) {
       const finishedAt = new Date();

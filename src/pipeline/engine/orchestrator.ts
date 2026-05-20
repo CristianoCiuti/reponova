@@ -8,13 +8,11 @@
  * 4. Executes level-by-level (phases within a level run in parallel)
  * 5. Collects results
  *
- * Phase-specific logic (skip criteria, cache, config invalidation) is
- * entirely internal to each phase.
+ * Cache logic (check/seal/invalidate) is entirely owned by each phase.
+ * The orchestrator never touches caching — it only sequences and parallelizes.
  */
 import type { Phase, PhaseContext, PhaseResult } from "./phase.js";
 import type { PhaseRegistry } from "./registry.js";
-import type { CacheContext } from "../cache/context.js";
-import { join } from "node:path";
 import {
   buildDAG,
   validate,
@@ -140,41 +138,11 @@ async function executeLevel(
 /**
  * Execute a single phase.
  *
- * Phases own their own timing, logging, and error handling.
+ * Phases own their own cache check/seal, timing, logging, and error handling.
  * The orchestrator only sequences and parallelizes.
  */
 async function executePhase(phase: Phase, ctx: PhaseContext): Promise<PhaseResult> {
-  const contract = phase.contract;
-
-  if (contract && !ctx.force) {
-    const cacheCtx: CacheContext = {
-      outputDir: ctx.outputDir,
-      cacheDir: join(ctx.outputDir, ".cache"),
-      config: ctx.config,
-    };
-    const checkResult = contract.check(cacheCtx);
-    if (checkResult.fresh) {
-      log.info(`  [${phase.id}] Skipped: ${checkResult.reason}`);
-      return { processed: 0, skipped: true, skipReason: checkResult.reason };
-    }
-  }
-
-  const result = await phase.execute(ctx);
-
-  if (contract && !result.skipped && !result.skipReason?.startsWith("error:")) {
-    const cacheCtx: CacheContext = {
-      outputDir: ctx.outputDir,
-      cacheDir: join(ctx.outputDir, ".cache"),
-      config: ctx.config,
-    };
-    try {
-      contract.seal(cacheCtx);
-    } catch {
-      // Don't fail the phase if seal fails
-    }
-  }
-
-  return result;
+  return phase.execute(ctx);
 }
 
 /**

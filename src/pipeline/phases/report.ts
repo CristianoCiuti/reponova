@@ -7,6 +7,7 @@ import { atomicWriteText } from "../../shared/atomic-write.js";
 import { extname, join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { reportContract } from "../cache/contracts/report.js";
+import { checkPhaseCache, sealPhaseCache } from "../cache/contract.js";
 import type { GraphData, GraphNode } from "../../shared/types.js";
 import { loadGraphData } from "../../graph/loader.js";
 import { log, errorMessage } from "../../shared/utils.js";
@@ -24,9 +25,11 @@ export const reportPhase: Phase = {
   id: "report",
   label: "Report",
   dependencies: ["enrich"],
-  contract: reportContract,
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const cached = checkPhaseCache(ctx, reportContract);
+    if (cached) return cached;
+
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
     log.info(`  [${this.id}] ${this.label}...`);
@@ -45,6 +48,7 @@ export const reportPhase: Phase = {
       ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
 
+      sealPhaseCache(ctx, reportContract);
       return result;
     } catch (err) {
       const finishedAt = new Date();

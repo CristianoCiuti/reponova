@@ -4,13 +4,12 @@
  * Every phase:
  * - Has a unique ID and human-readable label
  * - Declares its direct dependencies (IDs of phases it depends on)
- * - Decides internally whether it needs to run (skip logic)
+ * - Owns its own cache logic (check/seal/invalidate) internally
  * - Communicates with other phases via filesystem only (no in-memory passing)
  */
 import type { Config } from "../../shared/types.js";
 import type { BuildManifest } from "./manifest.js";
 import type { ProviderRegistry } from "../../intelligence/provider-registry.js";
-import type { CacheContract } from "../cache/contract.js";
 
 /**
  * Context provided by the orchestrator to every phase.
@@ -48,7 +47,8 @@ export interface PhaseResult {
 
 /**
  * Every phase implements this interface.
- * The phase DECIDES INTERNALLY whether it has work to do.
+ * The phase OWNS its cache logic — it checks freshness at the start
+ * of execute() and seals on success, autonomously.
  */
 export interface Phase {
   /** Unique phase identifier (used in DAG, CLI --target, logs) */
@@ -57,8 +57,6 @@ export interface Phase {
   readonly label: string;
   /** IDs of phases that must complete before this one can run */
   readonly dependencies: string[];
-  /** Optional cache contract for coarse skip/seal behavior. */
-  readonly contract?: CacheContract;
   /** Execute the phase. Returns result with processed count and skip info. */
   execute(ctx: PhaseContext): Promise<PhaseResult>;
 }

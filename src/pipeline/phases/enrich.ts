@@ -8,6 +8,7 @@ import { copyFileSync, existsSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { enrichContract } from "../cache/contracts/enrich.js";
+import { checkPhaseCache, sealPhaseCache } from "../cache/contract.js";
 import type { GraphData } from "../../shared/types.js";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
 import { log, errorMessage } from "../../shared/utils.js";
@@ -27,9 +28,11 @@ export const enrichPhase: Phase = {
   id: "enrich",
   label: "Enrich",
   dependencies: ["communities"],
-  contract: enrichContract,
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const cached = checkPhaseCache(ctx, enrichContract);
+    if (cached) return cached;
+
     const { config, outputDir } = ctx;
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
@@ -73,6 +76,7 @@ export const enrichPhase: Phase = {
       ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
 
+      sealPhaseCache(ctx, enrichContract);
       return result;
     } catch (err) {
       const finishedAt = new Date();

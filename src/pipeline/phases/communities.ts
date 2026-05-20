@@ -8,6 +8,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
 import { communitiesContract } from "../cache/contracts/communities.js";
+import { checkPhaseCache, sealPhaseCache } from "../cache/contract.js";
 import { loadGraphAsGraphology } from "../../graph/graphology.js";
 import { detectCommunities } from "../../graph/community.js";
 import { exportJson } from "../../graph/export-json.js";
@@ -17,9 +18,11 @@ export const communitiesPhase: Phase = {
   id: "communities",
   label: "Community Detection",
   dependencies: ["graph"],
-  contract: communitiesContract,
 
   async execute(ctx: PhaseContext): Promise<PhaseResult> {
+    const cached = checkPhaseCache(ctx, communitiesContract);
+    if (cached) return cached;
+
     const startedAt = new Date();
     ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
     log.info(`  [${this.id}] ${this.label}...`);
@@ -53,6 +56,7 @@ export const communitiesPhase: Phase = {
       ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
       log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
 
+      sealPhaseCache(ctx, communitiesContract);
       return result;
     } catch (err) {
       const finishedAt = new Date();
