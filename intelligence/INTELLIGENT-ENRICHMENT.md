@@ -653,19 +653,16 @@ cache --target communities:
 
 ---
 
-#### `cache --check enrich` / `cache --target enrich`
+#### `build --check enrich` / `cache --target enrich`
 
 ```
-cache --check enrich:
+build --check enrich:
   Exit 0 if ALL true:
-    - .cache/enrich-input-hash.txt exists
-    - .cache/enrich-config-hash.txt exists
-    - sha256(graph.json) == content of .cache/enrich-input-hash.txt
-    - sha256(enrich config) == content of .cache/enrich-config-hash.txt
-    - graph-enriched.json exists
-    - node_descriptions.json exists
-    - community_summaries.json exists
-  Exit 1 otherwise.
+    - All inputs available (graph.json from communities phase)
+    - Incremental enabled
+    - All outputs exist (graph-enriched.json, node_descriptions.json, community_summaries.json)
+    - Cache seal fresh (input hashes + config hash match sealed values)
+  Exit 1 otherwise (prints reason: "inputs unavailable", "outputs missing", "never sealed", "input changed", "config changed", "incremental disabled").
 
   Config hash includes: { provider, candidate_threshold, description_batch_tokens,
   routing_batch_size, concurrency, max_retry_depth, enabled }
@@ -687,7 +684,7 @@ cache --target enrich:
 | CLI `reponova enrich` | After `enrich:finalize` | Automatic (final action) |
 | Skill (IDE agent) | After `enrich:finalize` succeeds | **EXPLICIT** — agent MUST call `$ reponova cache --target enrich` |
 
-**Forgetting `cache --target enrich` in skill mode → next `cache --check enrich` returns exit 1 → unnecessary re-enrichment.**
+**Forgetting `cache --target enrich` in skill mode → next `build --check enrich` returns exit 1 → unnecessary re-enrichment.**
 
 ---
 
@@ -926,7 +923,7 @@ This section documents the **complete cache contract** for every phase: what fil
 
 **Config hash includes**: `{ provider, candidate_threshold, description_batch_tokens, routing_batch_size, concurrency, max_retry_depth, enabled }`
 
-`cache --check enrich` → exit 0 if all input hashes match AND all 3 output files exist (see CLI Commands section for full spec)
+`build --check enrich` → exit 0 if all input hashes match AND all 3 output files exist (see CLI Commands section for full spec)
 `cache --target enrich` → writes `.cache/enrich-input-hash.txt` + `.cache/enrich-config-hash.txt` (precondition: output files must exist)
 
 **WHO calls `cache --target enrich`:**
@@ -937,7 +934,7 @@ This section documents the **complete cache contract** for every phase: what fil
 | **CLI `reponova enrich`** | After `enrich:finalize` completes successfully | Automatic (final action) |
 | **Skill (IDE agent)** | After `enrich:finalize` succeeds | **EXPLICIT** — agent MUST call `$ reponova cache --target enrich` |
 
-**Forgetting `cache --target enrich` in skill mode → next `cache --check enrich` returns exit 1 → unnecessary re-enrichment.**
+**Forgetting `cache --target enrich` in skill mode → next `build --check enrich` returns exit 1 → unnecessary re-enrichment.**
 
 ---
 
@@ -1149,7 +1146,7 @@ Agent reads SKILL.md and executes:
                               ▼
 ┌─ Phase 2: Check if enrichment is needed ─────────────────────────────────┐
 │                                                                          │
-│  $ reponova cache --check enrich                                         │
+│  $ reponova build --check enrich                                         │
 │                                                                          │
 │  Exit 0 → "Enrichment is up to date." STOP.                             │
 │  Exit 1 → Continue.                                                      │
@@ -1264,7 +1261,7 @@ Agent reads SKILL.md and executes:
 │    - Writes .cache/enrich-input-hash.txt  (sha256 of graph.json)         │
 │    - Writes .cache/enrich-config-hash.txt (sha256 of enrich config)      │
 │                                                                          │
-│  If this call is omitted, next `cache --check enrich` returns exit 1     │
+│  If this call is omitted, next `build --check enrich` returns exit 1     │
 │  and enrichment reruns unnecessarily.                                    │
 │                                                                          │
 │  Downstream: search-index, embeddings, html, report                      │
@@ -1278,7 +1275,7 @@ Agent reads SKILL.md and executes:
 User: /reponova enrich
 
 1. $ reponova build --target communities     → skipped (graph unchanged)
-2. $ reponova cache --check enrich           → exit 0
+2. $ reponova build --check enrich           → exit 0
 3. Agent: "Enrichment is up to date."        → STOP (instant, no LLM calls)
 ```
 
@@ -1288,7 +1285,7 @@ User: /reponova enrich
 User: /reponova enrich
 
 1. $ reponova build --target communities     → re-runs graph + communities (new files)
-2. $ reponova cache --check enrich           → exit 1 (graph.json changed)
+2. $ reponova build --check enrich           → exit 1 (graph.json changed)
 3. $ reponova enrich:metrics                 → deletes .enrich/ (graph.json hash != sealed hash), computes fresh
 4-9. Agent performs LLM steps                → full enrichment
 10. $ reponova enrich:finalize               → final files
@@ -1302,7 +1299,7 @@ User: /reponova enrich
 User: /reponova enrich
 
 1. $ reponova build --target communities     → skipped
-2. $ reponova cache --check enrich           → exit 1 (no seal exists yet)
+2. $ reponova build --check enrich           → exit 1 (no seal exists yet)
 3. $ reponova enrich:metrics                 → SKIP (.enrich/candidates.json exists, graph.json hash unchanged)
 4. Agent checks .enrich/descriptions.json    → exists → SKIP Step 1
 5. Agent checks .enrich/profiles.json        → exists → SKIP Step 2
