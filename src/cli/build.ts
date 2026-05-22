@@ -20,7 +20,6 @@ export const buildCommand: CommandModule = {
       .option("force", {
         type: "boolean",
         describe: "Force rebuild even if up-to-date",
-        default: false,
       })
       .option("target", {
         type: "string",
@@ -71,7 +70,7 @@ export const buildCommand: CommandModule = {
       }
 
       await runBuild(config, configDir, {
-        force: argv.force as boolean,
+        force: (argv.force as boolean) || false,
         target: argv.target as string | undefined,
         startAfter: argv["start-after"] as string | undefined,
       });
