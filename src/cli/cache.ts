@@ -62,9 +62,7 @@ export const cacheCommand: CommandModule = {
         if (argv.check) {
           const phaseId = argv.check as string;
           const phase = registry.get(phaseId);
-          const result = "checkCacheFreshness" in phase
-            ? phase.checkCacheFreshness(ctx)
-            : { fresh: false, reason: "cache operations unsupported" };
+          const result = phase.checkCacheFreshness(ctx);
           if (result.fresh) {
             console.log(`Phase ${phaseId} is fresh: ${result.reason}`);
             process.exit(0);
@@ -76,9 +74,6 @@ export const cacheCommand: CommandModule = {
         if (argv.seal) {
           const phaseId = argv.seal as string;
           const phase = registry.get(phaseId);
-          if (!("sealCache" in phase)) {
-            throw new Error(`Phase "${phaseId}" does not support cache sealing`);
-          }
           phase.sealCache(ctx);
           console.log(`Phase ${phaseId} sealed.`);
           process.exit(0);
@@ -87,18 +82,13 @@ export const cacheCommand: CommandModule = {
         if (argv.invalidate) {
           const phaseId = argv.invalidate as string;
           const phase = registry.get(phaseId);
-          if (!("invalidateCache" in phase)) {
-            throw new Error(`Phase "${phaseId}" does not support cache invalidation`);
-          }
           phase.invalidateCache(ctx);
           console.log(`Phase ${phaseId} invalidated.`);
           process.exit(0);
         }
 
         const rows = registry.getAll().map((phase) => {
-          const result = "checkCacheFreshness" in phase
-            ? phase.checkCacheFreshness(ctx)
-            : { fresh: false, reason: "cache operations unsupported" };
+          const result = phase.checkCacheFreshness(ctx);
           return {
             phase: phase.id,
             status: result.fresh ? "fresh" : "stale",

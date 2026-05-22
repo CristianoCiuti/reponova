@@ -45,6 +45,10 @@ export interface Phase {
   readonly label: string;
   readonly dependencies: string[];
   execute(ctx: PhaseContext): Promise<PhaseResult>;
+  checkCacheFreshness(ctx: PhaseContext): { fresh: boolean; reason: string };
+  needsRun(ctx: PhaseContext): { needsRun: boolean; reason: string };
+  sealCache(ctx: PhaseContext): void;
+  invalidateCache(ctx: PhaseContext): void;
 }
 
 export abstract class BasePhase implements Phase {
@@ -163,6 +167,32 @@ export abstract class BasePhase implements Phase {
     if (existsSync(sealDir)) {
       rmSync(sealDir, { recursive: true, force: true });
     }
+  }
+
+  needsRun(ctx: PhaseContext): { needsRun: boolean; reason: string } {
+    // Check inputs availability
+    const missingInputs = this.inputs.filter((file) => !existsSync(join(ctx.outputDir, file)));
+    if (missingInputs.length > 0) {
+      return { needsRun: true, reason: `inputs unavailable: ${missingInputs.join(", ")}` };
+    }
+
+    // If incremental is disabled, always run
+    if (!ctx.config.incremental) {
+      return { needsRun: true, reason: "incremental disabled" };
+    }
+
+    // Check outputs existence
+    if (!this.outputsExist(ctx)) {
+      return { needsRun: true, reason: "outputs missing" };
+    }
+
+    // Check cache freshness
+    const cache = this.checkCacheFreshness(ctx);
+    if (!cache.fresh) {
+      return { needsRun: true, reason: cache.reason };
+    }
+
+    return { needsRun: false, reason: cache.reason };
   }
 
   private validateInputs(ctx: PhaseContext): void {

@@ -21,7 +21,7 @@ import { readJsonSafe } from "../../shared/fs.js";
 import { hashFile } from "../../shared/hash.js";
 import { log } from "../../shared/utils.js";
 import { BasePhase, type PhaseContext, type PhaseResult } from "../engine/phase.js";
-import { readDetectedFiles } from "./file-detection.js";
+import { readDetectedFiles, readFileHashes } from "./file-detection.js";
 
 class OutlinesPhase extends BasePhase {
   readonly id = "outlines";
@@ -56,6 +56,7 @@ class OutlinesPhase extends BasePhase {
       return { processed: 0, skipped: true, skipReason: "no outline-supported files" };
     }
 
+    const precomputedHashes = readFileHashes(outputDir);
     const previousHashes = force || !config.incremental ? new Map<string, string>() : loadOutlineHashes(outputDir);
     const nextHashes = new Map<string, string>();
     let count = 0;
@@ -65,7 +66,7 @@ class OutlinesPhase extends BasePhase {
       if (!existsSync(absPath)) continue;
 
       const outPath = join(outlinesDir, relPath + ".outline.json");
-      const fileHash = hashFile(absPath);
+      const fileHash = precomputedHashes.get(relPath) ?? hashFile(absPath);
       nextHashes.set(relPath, fileHash);
 
       if (!(force || !config.incremental) && existsSync(outPath) && previousHashes.get(relPath) === fileHash) {
