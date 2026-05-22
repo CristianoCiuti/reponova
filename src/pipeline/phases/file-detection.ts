@@ -5,14 +5,14 @@
  * Produces detected-files.json consumed by graph and outlines phases.
  */
 import { basename, join } from "node:path";
-import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
-import { fileDetectionContract } from "../cache/contracts/file-detection.js";
-import { checkPhaseCache, sealPhaseCache } from "../cache/contract.js";
+import type { Config } from "../../shared/types.js";
 import { detectFiles, detectDocFiles, detectDiagramFiles } from "../../extract/index.js";
-import { buildSkipDirs } from "../../shared/path-resolver.js";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
 import { readJsonSafe } from "../../shared/fs.js";
-import { log, errorMessage } from "../../shared/utils.js";
+import { hashFile } from "../../shared/hash.js";
+import { buildSkipDirs } from "../../shared/path-resolver.js";
+import { log } from "../../shared/utils.js";
+import { BasePhase, type PhaseContext, type PhaseResult } from "../engine/phase.js";
 
 export interface DetectedFiles {
   workspace: string;
@@ -28,56 +28,64 @@ export function readDetectedFiles(outputDir: string): DetectedFiles {
   return raw;
 }
 
-export const fileDetectionPhase: Phase = {
-  id: "file-detection",
-  label: "File Detection",
-  dependencies: [],
+export function readFileHashes(outputDir: string): Map<string, string> {
+  const path = join(outputDir, "file-hashes.json");
+  const raw = readJsonSafe<Record<string, string>>(path);
+  if (!raw) throw new Error(`file-hashes.json not found in ${outputDir} — run file-detection phase first`);
+  return new Map(Object.entries(raw));
+}
 
-  async execute(ctx: PhaseContext): Promise<PhaseResult> {
-    const cached = checkPhaseCache(ctx, fileDetectionContract);
-    if (cached) return cached;
+class FileDetectionPhase extends BasePhase {
+  readonly id = "file-detection";
+  readonly label = "File Detection";
+  readonly dependencies: string[] = [];
+  readonly inputs: string[] = [];
 
-    const startedAt = new Date();
-    ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
-    log.info(`  [${this.id}] ${this.label}...`);
+  getExpectedOutputs(_config: Config): { files: string[]; dirs: string[] } {
+    return { files: ["detected-files.json", "file-hashes.json"], dirs: [] };
+  }
 
-    try {
-      const { config, workspace, outputDir } = ctx;
+  getRelevantConfig(config: Config): object {
+    return {
+      patterns: config.patterns,
+      exclude: config.exclude,
+      exclude_common: config.exclude_common,
+      docs: config.docs,
+      images: config.images,
+    };
+  }
 
-      const skipDirs = buildSkipDirs(config.exclude_common);
-      skipDirs.add(basename(outputDir));
+  async doWork(ctx: PhaseContext): Promise<PhaseResult> {
+    const { config, workspace, outputDir } = ctx;
 
-      const repoNames = config.repos.length > 1
-        ? new Set(config.repos.map((r) => r.name))
-        : undefined;
+    const skipDirs = buildSkipDirs(config.exclude_common);
+    skipDirs.add(basename(outputDir));
 
-      const code = detectFiles(workspace, config.patterns, config.exclude, skipDirs, repoNames);
-      const docs = detectDocFiles(workspace, config.docs, skipDirs, repoNames);
-      const diagrams = detectDiagramFiles(workspace, config.images, skipDirs, repoNames);
+    const repoNames = config.repos.length > 1
+      ? new Set(config.repos.map((repo) => repo.name))
+      : undefined;
 
-      const detected: DetectedFiles = { workspace, code, docs, diagrams };
-      atomicWriteJson(join(outputDir, "detected-files.json"), detected);
+    const code = detectFiles(workspace, config.patterns, config.exclude, skipDirs, repoNames).sort();
+    const docs = detectDocFiles(workspace, config.docs, skipDirs, repoNames).sort();
+    const diagrams = detectDiagramFiles(workspace, config.images, skipDirs, repoNames).sort();
 
-      const extras: string[] = [];
-      if (docs.length > 0) extras.push(`${docs.length} docs`);
-      if (diagrams.length > 0) extras.push(`${diagrams.length} diagrams`);
-      log.info(`  ${code.length} source files${extras.length > 0 ? `, ${extras.join(", ")}` : ""}`);
+    const detected: DetectedFiles = { workspace, code, docs, diagrams };
+    atomicWriteJson(join(outputDir, "detected-files.json"), detected);
 
-      const result: PhaseResult = { processed: code.length + docs.length + diagrams.length, skipped: false };
-      const finishedAt = new Date();
-      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-      ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
+    const allFiles = [...code, ...docs, ...diagrams].sort();
+    log.info("Computing file hashes...");
+    const hashes = Object.fromEntries(
+      allFiles.map((relPath) => [relPath, hashFile(join(workspace, relPath))]),
+    );
+    atomicWriteJson(join(outputDir, "file-hashes.json"), hashes);
 
-      sealPhaseCache(ctx, fileDetectionContract);
-      return result;
-    } catch (err) {
-      const finishedAt = new Date();
-      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-      const message = errorMessage(err);
-      ctx.manifest.record(this.id, { status: "failed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      log.warn(`  [${this.id}] Failed: ${message} (${elapsed}s)`);
-      return { processed: 0, skipped: true, skipReason: `error: ${message}` };
-    }
-  },
-};
+    const extras: string[] = [];
+    if (docs.length > 0) extras.push(`${docs.length} docs`);
+    if (diagrams.length > 0) extras.push(`${diagrams.length} diagrams`);
+    log.info(`  ${code.length} source files${extras.length > 0 ? `, ${extras.join(", ")}` : ""}`);
+
+    return { processed: allFiles.length, skipped: false };
+  }
+}
+
+export const fileDetectionPhase = new FileDetectionPhase();

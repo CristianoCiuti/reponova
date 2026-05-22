@@ -2,16 +2,11 @@
  * enrich phase — generates graph-enriched.json, node descriptions, and community summaries.
  *
  * Algorithmic mode only in M1.
- * Contract handles coarse cache checks; phase keeps business logic for disabled mode.
  */
 import { copyFileSync, existsSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
-import { enrichContract } from "../cache/contracts/enrich.js";
-import { checkPhaseCache, sealPhaseCache } from "../cache/contract.js";
-import type { GraphData } from "../../shared/types.js";
+import type { Config, GraphData } from "../../shared/types.js";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
-import { log, errorMessage } from "../../shared/utils.js";
 import {
   algorithmicDescription,
   buildAlgorithmicSummary,
@@ -23,71 +18,53 @@ import {
   type CommunitySummary,
   type NodeDescription,
 } from "../enrich/algorithmic.js";
+import { BasePhase, type PhaseContext, type PhaseResult } from "../engine/phase.js";
 
-export const enrichPhase: Phase = {
-  id: "enrich",
-  label: "Enrich",
-  dependencies: ["communities"],
+class EnrichPhase extends BasePhase {
+  readonly id = "enrich";
+  readonly label = "Enrich";
+  readonly dependencies = ["communities"];
+  readonly inputs = ["graph.json"];
 
-  async execute(ctx: PhaseContext): Promise<PhaseResult> {
-    const cached = checkPhaseCache(ctx, enrichContract);
-    if (cached) return cached;
+  getExpectedOutputs(_config: Config): { files: string[]; dirs: string[] } {
+    return {
+      files: ["graph-enriched.json", "node_descriptions.json", "community_summaries.json"],
+      dirs: [],
+    };
+  }
 
+  getRelevantConfig(config: Config): object {
+    return { enrich: config.enrich };
+  }
+
+  async doWork(ctx: PhaseContext): Promise<PhaseResult> {
     const { config, outputDir } = ctx;
-    const startedAt = new Date();
-    ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
-    log.info(`  [${this.id}] ${this.label}...`);
+    const enrichConfig = config.enrich;
+    const graphJsonPath = join(outputDir, "graph.json");
+    const graphEnrichedPath = join(outputDir, "graph-enriched.json");
+    const descriptionsPath = join(outputDir, "node_descriptions.json");
+    const summariesPath = join(outputDir, "community_summaries.json");
 
-    try {
-      const enrichConfig = config.enrich;
-      const graphJsonPath = join(outputDir, "graph.json");
-      const graphEnrichedPath = join(outputDir, "graph-enriched.json");
-      const descriptionsPath = join(outputDir, "node_descriptions.json");
-      const summariesPath = join(outputDir, "community_summaries.json");
-      const inputHashPath = join(outputDir, ".cache", "enrich-input-hash.txt");
-      const configHashPath = join(outputDir, ".cache", "enrich-config-hash.txt");
-
-      if (!enrichConfig.enabled) {
-        removeFile(graphEnrichedPath);
-        removeFile(descriptionsPath);
-        removeFile(summariesPath);
-        removeFile(inputHashPath);
-        removeFile(configHashPath);
-        const finishedAt = new Date();
-        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-        log.info(`  [${this.id}] Skipped: disabled in config (${elapsed}s)`);
-        return { processed: 0, skipped: true, skipReason: "disabled in config" };
-      }
-
-      const graphRaw = readFileSync(graphJsonPath, "utf-8");
-      const graphData = JSON.parse(graphRaw) as GraphData;
-      const edgeCounts = computeEdgeCounts(graphData);
-      const descriptions = buildNodeDescriptions(graphData, edgeCounts, enrichConfig.threshold);
-      const summaries = buildCommunitySummaries(graphData, enrichConfig.max_communities);
-
-      copyFileSync(graphJsonPath, graphEnrichedPath);
-      atomicWriteJson(descriptionsPath, descriptions);
-      atomicWriteJson(summariesPath, summaries);
-
-      const result: PhaseResult = { processed: descriptions.length + summaries.length, skipped: false };
-      const finishedAt = new Date();
-      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-      ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
-
-      sealPhaseCache(ctx, enrichContract);
-      return result;
-    } catch (err) {
-      const finishedAt = new Date();
-      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-      const message = errorMessage(err);
-      ctx.manifest.record(this.id, { status: "failed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      log.warn(`  [${this.id}] Failed: ${message} (${elapsed}s)`);
-      return { processed: 0, skipped: true, skipReason: `error: ${message}` };
+    if (!enrichConfig.enabled) {
+      removeFile(graphEnrichedPath);
+      removeFile(descriptionsPath);
+      removeFile(summariesPath);
+      return { processed: 0, skipped: true, skipReason: "disabled in config" };
     }
-  },
-};
+
+    const graphRaw = readFileSync(graphJsonPath, "utf-8");
+    const graphData = JSON.parse(graphRaw) as GraphData;
+    const edgeCounts = computeEdgeCounts(graphData);
+    const descriptions = buildNodeDescriptions(graphData, edgeCounts, enrichConfig.threshold);
+    const summaries = buildCommunitySummaries(graphData, enrichConfig.max_communities);
+
+    copyFileSync(graphJsonPath, graphEnrichedPath);
+    atomicWriteJson(descriptionsPath, descriptions);
+    atomicWriteJson(summariesPath, summaries);
+
+    return { processed: descriptions.length + summaries.length, skipped: false };
+  }
+}
 
 function buildNodeDescriptions(graphData: GraphData, edgeCounts: Map<string, number>, threshold: number): NodeDescription[] {
   const targetNodes = selectTargetNodes(graphData.nodes, edgeCounts, threshold);
@@ -118,3 +95,5 @@ function buildCommunitySummaries(graphData: GraphData, maxCommunities: number): 
 function removeFile(path: string): void {
   if (existsSync(path)) unlinkSync(path);
 }
+
+export const enrichPhase = new EnrichPhase();

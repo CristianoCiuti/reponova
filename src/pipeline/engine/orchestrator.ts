@@ -21,7 +21,6 @@ import {
   resolveTransitiveDescendants,
   pruneDAG,
 } from "./dag.js";
-import { validatePhaseOutputsExist } from "./phase-outputs.js";
 import { errorMessage, log } from "../../shared/utils.js";
 
 export interface OrchestratorOptions {
@@ -67,7 +66,6 @@ export async function orchestrate(
 
   // Prune to strict descendants if --start-after specified
   if (options.startAfter) {
-    validatePhaseOutputsExist(options.startAfter, ctx.outputDir);
     const descendants = resolveTransitiveDescendants(dag, options.startAfter);
     if (descendants.size === 0) {
       log.info(`No phases downstream of "${options.startAfter}" — nothing to run.`);
