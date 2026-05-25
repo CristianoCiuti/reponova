@@ -138,153 +138,138 @@ function writeConfigFile(editorDir: string): string | null {
 
 // ─── Skill content ───────────────────────────────────────────────────────────
 
-const SKILL_MD = `---
-name: reponova
-description: Knowledge graph MCP server with 11 tools for searching symbols, analyzing blast radius, tracing dependency paths, semantic similarity, smart context building, and understanding codebase architecture. Use INSTEAD of grep/find for any structural code question.
+/**
+ * MCP tool usage guide — WHEN to use WHICH tool.
+ * Parameters are NOT documented here (MCP protocol exposes them automatically).
+ * Installed as the `reponova-mcp` skill (passive reference).
+ */
+const MCP_SKILL_MD = `# reponova — Knowledge Graph Tools
+
+This project has a knowledge graph MCP server with 11 tools. **Use these instead of grep/find for any structural code question.** MCP auto-exposes tool parameters — this guide tells you WHEN to use each.
+
+## Tool Selection Guide
+
+| Question type | Use this tool | NOT this |
+|---------------|--------------|----------|
+| "Where is X defined?" / "Find function Y" | \`graph_search\` | grep, find |
+| "What depends on X?" / "What breaks if I change X?" | \`graph_impact\` | manual trace |
+| "How are A and B connected?" | \`graph_path\` | reading imports manually |
+| "Tell me everything about symbol X" | \`graph_explain\` | reading source file |
+| "What's in this module/community?" | \`graph_community\` | ls, find |
+| "What are the most critical/coupled nodes?" | \`graph_hotspots\` | guessing |
+| "Find something similar to X" / conceptual search | \`graph_similar\` | grep (can't do semantic) |
+| "Give me full context about topic X" (token-budgeted) | \`graph_context\` | reading multiple files |
+| "Find docs about X" | \`graph_docs\` | grep *.md |
+| "Show me file structure without reading it" | \`graph_outline\` | cat, head |
+| "Is the graph built / up to date?" | \`graph_status\` | ls reponova-out |
+
+## Key Workflows
+
+1. **Before refactoring**: \`graph_impact\` on the target symbol → see upstream/downstream blast radius
+2. **Exploring unfamiliar code**: \`graph_search\` with \`context_depth: 2\` → see neighborhood around results
+3. **Architecture overview**: Read \`reponova-out/report.md\` or use \`graph_hotspots\` + \`graph_community\`
+4. **Tracing a call chain**: \`graph_path\` from A to B → shows exact weighted shortest path
+5. **Building context for a task**: \`graph_context\` with your task description → token-budgeted, relevance-ranked context combining text search, vectors, and graph expansion
+
+## Important Notes
+
+- Tool responses include **"Absolute path"** for every file reference — use it to open/edit files directly.
+- After code changes, run \`reponova build\` to rebuild (incremental, only processes changed files).
+- \`graph_search\` supports \`type\` filter: "function", "class", "module" — use it to narrow results.
+- \`graph_impact\` supports fuzzy matching — if exact symbol not found, it suggests alternatives.
+`;
+
+/**
+ * Enrich command skill — loaded ONLY when user explicitly requests enrichment.
+ * This is the full multi-step workflow where the agent acts as the LLM.
+ */
+const ENRICH_SKILL_MD = `---
+name: reponova-enrich
+description: Intelligent enrichment workflow for the reponova knowledge graph. Improves community assignments, generates node descriptions, and produces community profiles using LLM reasoning. Invoke with "/reponova enrich".
 ---
 
-# reponova
+# reponova enrich
 
-Knowledge graph MCP server — 11 specialized tools for querying your codebase's structure, dependencies, and semantics.
+Intelligent enrichment workflow — you are the LLM that reads source code, reasons about architectural placement, and writes intermediate files that CLI commands merge and apply.
 
-## Available Tools
+## Quick Reference
 
-### graph_search
-Full-text search across all graph nodes (functions, classes, modules) with optional BFS/DFS context expansion.
+| Step | Type | Command / Action |
+|------|------|-----------------|
+| Pre | CLI | \`reponova build --target communities\` |
+| Check | CLI | \`reponova build --check enrich\` (exit 0 = done) |
+| 0 | CLI | \`reponova enrich:metrics\` |
+| 1 | YOU | Read source → write \`.enrich/descriptions/batch-NNN.json\` → \`reponova enrich:merge descriptions\` |
+| 2 | YOU | Read descriptions + edges → write \`.enrich/profiles/community-NNN.json\` → \`reponova enrich:merge profiles\` |
+| 3 | YOU | Read candidates + profiles → write \`.enrich/routing/batch-NNN.json\` → \`reponova enrich:merge routing\` |
+| 4 | YOU | Read profiles + density + routing → write \`.enrich/restructure.json\` |
+| 5 | CLI | \`reponova enrich:apply\` |
+| 6 | YOU | Read modified list → re-profile → write \`.enrich/updated-profiles/community-NNN.json\` → \`reponova enrich:merge updated-profiles\` |
+| 7 | CLI | \`reponova enrich:finalize\` |
+| 8 | CLI | \`reponova cache --target enrich\` then \`reponova build --start-after enrich\` |
 
-Parameters:
-- \`query\` (required): search text
-- \`top_k\`: max results (default: 10)
-- \`type\`: filter by node type — "function", "class", "module"
-- \`repo\`: filter by repository name
-- \`context_depth\`: BFS/DFS expansion depth from top results (0 = no expansion, default: 0)
-- \`context_mode\`: "bfs" (broad context) or "dfs" (trace specific path). Default: "bfs"
+## Detailed Steps
 
-Use when: finding symbols, locating definitions, exploring what exists. Set context_depth > 0 to also see connected nodes around the results.
+### Step 1: Node Descriptions
 
-### graph_impact
-Blast radius analysis — find everything that depends on a symbol (downstream) and everything it depends on (upstream). Supports fuzzy matching with suggestions when symbol is not found exactly.
+For each node in \`.enrich/candidates.json\`, read its source code (\`source_file\` + \`start_line\`/\`end_line\`) and write a 1-2 sentence description of what it does architecturally.
 
-Parameters:
-- \`symbol\` (required): symbol name or ID
-- \`direction\`: "upstream", "downstream", or "both" (default: "both")
-- \`max_depth\`: BFS depth limit (default: 3)
-- \`include_tests\`: include test files (default: false)
+**Output format** (\`.enrich/descriptions/batch-NNN.json\`):
+\`\`\`json
+[{"id": "qualified_name", "description": "Authenticates users by validating credentials against the database."}]
+\`\`\`
 
-Use when: assessing change risk, understanding dependencies before refactoring.
+### Step 2: Community Profiling
 
-### graph_path
-Weighted shortest path (Dijkstra) between two nodes in the knowledge graph.
+Group nodes by community. For each community with 3+ members, produce:
 
-Parameters:
-- \`from\` (required): source node name or ID
-- \`to\` (required): target node name or ID
-- \`max_depth\`: max hops (default: 10)
-- \`edge_types\`: array of edge types to traverse (e.g. ["calls", "imports"])
+**Output format** (\`.enrich/profiles/community-NNN.json\`):
+\`\`\`json
+{"communityId": "auth", "label": "Authentication Services", "profile": "Manages user identity verification and token issuance.", "misfits": [{"nodeId": "utils.hash", "reason": "Generic utility, not auth-specific"}]}
+\`\`\`
 
-Use when: understanding how two symbols are connected, tracing call chains.
+### Step 3: Candidate Routing
 
-### graph_explain
-Full detail on a single node: properties, edges, community membership, centrality metrics. Optionally includes the file outline.
+For each candidate (high boundary-ratio nodes + misfits from Step 2), decide STAY or MOVE:
 
-Parameters:
-- \`symbol\` (required): node name or ID
-- \`include_code\`: also return the source file outline (default: false)
+**Output format** (\`.enrich/routing/batch-NNN.json\`):
+\`\`\`json
+[{"node": "utils.hash", "action": "move", "to": "data", "reason": "Used exclusively by database layer"}]
+\`\`\`
 
-Use when: deep-diving into a specific symbol, understanding its role in the architecture.
+### Step 4: Restructure Detection
 
-### graph_community
-List all nodes belonging to a specific community, ranked by degree centrality. Shows available communities if the requested one is not found.
+Analyze community structure for merges (tightly coupled pairs) and splits (oversized/incoherent clusters):
 
-Parameters:
-- \`community_id\` (required): community ID or name
+**Output format** (\`.enrich/restructure.json\`):
+\`\`\`json
+{"merges": [], "splits": []}
+\`\`\`
 
-Use when: exploring module boundaries, understanding which symbols are clustered together.
+### Step 6: Updated Profiles
 
-### graph_hotspots
-Most connected nodes in the graph — architectural hotspots / god nodes.
+Same as Step 2 but only for communities listed in \`.enrich/modified-communities.json\`.
 
-Parameters:
-- \`top_n\`: number of results (default: 10)
-- \`metric\`: ranking metric — "degree", "in_degree", "out_degree", "betweenness" (default: "degree")
+## Rules
 
-Use when: identifying critical symbols, finding architectural bottlenecks, prioritizing refactoring targets.
-
-### graph_similar
-Semantic similarity search — find symbols conceptually similar to a query using TF-IDF or ONNX embeddings.
-
-Parameters:
-- \`query\` (required): natural language query or symbol name
-- \`top_k\`: max results (default: 10)
-- \`type\`: filter by node type
-- \`repo\`: filter by repository
-
-Use when: finding related symbols, discovering similar patterns, exploring semantic connections.
-
-### graph_context
-Smart context builder — returns token-budgeted, relevance-ranked context by combining text search, vector similarity, graph expansion, and community summaries.
-
-Parameters:
-- \`query\` (required): natural language query or code reference
-- \`max_tokens\`: token budget (default: 4096)
-- \`scope\`: repo name or path prefix filter
-- \`include_source\`: include source code snippets (default: false)
-- \`format\`: "narrative" (markdown) or "structured" (JSON). Default: "narrative"
-
-Use when: building comprehensive context about a topic, gathering information for analysis, preparing context for code changes.
-
-### graph_docs
-Search documentation nodes (markdown, text, rst) with linked code references.
-
-Parameters:
-- \`query\` (required): search text
-- \`top_k\`: max results (default: 10)
-- \`repo\`: filter by repository
-
-Use when: finding documentation, searching through markdown files, looking for written explanations and their linked code symbols.
-
-### graph_outline
-File outline: function signatures, class definitions, imports — without reading the full source. Uses pre-computed tree-sitter outlines when available, falls back to on-the-fly generation.
-
-Parameters:
-- \`file_path\` (required): relative path to file
-- \`format\`: "markdown" or "json" (default: "markdown")
-
-Use when: getting a quick overview of a file's structure without reading the full source.
-
-### graph_status
-Graph metadata: node/edge counts, repos included, build timestamp, reponova version.
-
-No parameters.
-
-Use when: checking if the graph is available and up to date.
-
-## Best Practices
-
-1. **Prefer graph tools over grep/find** — graph_search uses indexed ranking and understands symbol types. Use graph_similar for semantic/conceptual searches.
-2. **Check impact before refactoring** — run graph_impact on any symbol you plan to modify. Check both upstream and downstream.
-3. **Use graph_path to trace connections** — faster and more accurate than manually following imports.
-4. **Use graph_hotspots to find god nodes** — high-degree or high-betweenness nodes are architectural risks.
-5. **Use context_depth for broad exploration** — set context_depth=2 on graph_search to see the neighborhood around results.
-6. **Use graph_context for comprehensive analysis** — combines search, vectors, and graph expansion within a token budget. More thorough than graph_search alone.
-7. **Read report.md** at \`reponova-out/report.md\` for architecture overview, god nodes, and community structure.
-8. **Keep the graph current** — after code changes, run \`reponova build\` to rebuild (incremental, only re-processes changed files).
-9. **Use resolved paths to navigate to files** — tool responses include "Graph path" (relative to graph output dir) and "Absolute path" (full disk path) for every file reference. Use the absolute path to open or edit files directly.
+- **SKIP** any step whose final merged file already exists (e.g., skip Step 1 if \`.enrich/descriptions.json\` exists).
+- **NEVER** modify \`graph.json\` — it is immutable after the communities phase.
+- **ALWAYS** seal the cache at the end: \`reponova cache --target enrich\`.
+- Batch file naming: zero-padded 3-digit (\`batch-001.json\`, \`community-001.json\`).
+- If a step has no work (e.g., no modified communities in Step 6), write an empty array to the final file.
 `;
 
 // ─── Context message injected by hooks ───────────────────────────────────────
 
 const HOOK_CONTEXT =
-  "reponova: Knowledge graph MCP server with 11 tools is available. " +
-  "Use graph_search (text search), graph_impact (blast radius), graph_path (shortest path), " +
-  "graph_explain (node detail), graph_similar (semantic search), graph_context (smart context builder) " +
-  "instead of manually grep/find-ing the codebase. " +
-  "Read reponova-out/report.md for architecture overview.";
+  "reponova: 11 MCP graph tools available for structural code queries. " +
+  "Consult the reponova-mcp skill to know which tool to use. " +
+  "Use graph_search instead of grep/find.";
 
 // ─── OpenCode plugin JS ──────────────────────────────────────────────────────
 
 const OPENCODE_PLUGIN_JS = `// reponova OpenCode plugin
-// Reminds the agent that 11 MCP graph tools are available before bash searches.
+// Reminds the agent that MCP graph tools exist and to consult the reponova-mcp skill.
 import { existsSync } from "fs";
 import { join } from "path";
 
@@ -298,7 +283,7 @@ export const ReponovaMcpPlugin = async ({ directory }) => {
 
       if (input.tool === "bash") {
         output.args.command =
-          'echo "[reponova] Knowledge graph MCP server available with 11 tools. Use graph_search (text search), graph_impact (blast radius), graph_similar (semantic search), graph_context (smart context) instead of manual grep/find. See reponova-out/report.md for architecture overview." && ' +
+          'echo "[reponova] 11 MCP graph tools available. Consult the reponova-mcp skill to know which tool to use. Use graph_search instead of grep/find." && ' +
           output.args.command;
         reminded = true;
       }
@@ -307,14 +292,20 @@ export const ReponovaMcpPlugin = async ({ directory }) => {
 };
 `;
 
-// ─── Cursor rule ─────────────────────────────────────────────────────────────
+// ─── Cursor rules ────────────────────────────────────────────────────────────
 
-const CURSOR_RULE = `---
-description: reponova knowledge graph MCP server
+const CURSOR_MCP_RULE = `---
+description: reponova knowledge graph — use graph tools instead of grep/find
 alwaysApply: true
 ---
 
-${SKILL_MD}`;
+${MCP_SKILL_MD}`;
+
+const CURSOR_ENRICH_RULE = `---
+description: Intelligent enrichment workflow for the reponova knowledge graph. Invoke when user asks to enrich the graph.
+---
+
+${ENRICH_SKILL_MD.replace(/^---[\s\S]*?---\n\n/, "")}`;
 
 // ─── VS Code copilot instructions ────────────────────────────────────────────
 
@@ -322,7 +313,11 @@ const VSCODE_SECTION_MARKER = "## reponova";
 
 const VSCODE_SECTION = `## reponova
 
-${SKILL_MD}`;
+${MCP_SKILL_MD}
+
+## reponova enrich
+
+${ENRICH_SKILL_MD.replace(/^---[\s\S]*?---\n\n/, "")}`;
 
 // ─── Command definition ──────────────────────────────────────────────────────
 
@@ -394,23 +389,28 @@ function installOpenCode(graphDir: string): void {
   if (!existsSync(pluginDir)) mkdirSync(pluginDir, { recursive: true });
   writeFileSync(pluginPath, OPENCODE_PLUGIN_JS);
 
-  // 4. Write skill file
-  const skillDir = resolve(projectDir, ".opencode", "skills", "reponova");
-  const skillPath = join(skillDir, "SKILL.md");
-  if (!existsSync(skillDir)) mkdirSync(skillDir, { recursive: true });
-  writeFileSync(skillPath, SKILL_MD);
+  // 4. Write skill files
+  const mcpSkillDir = resolve(projectDir, ".opencode", "skills", "reponova-mcp");
+  const mcpSkillPath = join(mcpSkillDir, "SKILL.md");
+  const enrichSkillDir = resolve(projectDir, ".opencode", "skills", "reponova-enrich");
+  const enrichSkillPath = join(enrichSkillDir, "SKILL.md");
+  if (!existsSync(mcpSkillDir)) mkdirSync(mcpSkillDir, { recursive: true });
+  if (!existsSync(enrichSkillDir)) mkdirSync(enrichSkillDir, { recursive: true });
+  writeFileSync(mcpSkillPath, `---\nname: reponova-mcp\ndescription: Knowledge graph MCP tools — use instead of grep/find for structural code questions.\n---\n\n${MCP_SKILL_MD}`);
+  writeFileSync(enrichSkillPath, ENRICH_SKILL_MD);
 
   // 5. Write config file
   const configWritten = writeConfigFile(configDir);
 
   console.log(`\u2713 OpenCode MCP server registered: ${configPath}`);
   console.log(`\u2713 OpenCode plugin installed: ${pluginPath}`);
-  console.log(`\u2713 OpenCode skill installed: ${skillPath}`);
+  console.log(`\u2713 OpenCode MCP skill: ${mcpSkillPath}`);
+  console.log(`\u2713 OpenCode enrich command: ${enrichSkillPath}`);
   if (configWritten) console.log(`\u2713 Config file created: ${configWritten}`);
   console.log("");
   console.log("  The MCP server starts automatically with OpenCode.");
-  console.log("  The plugin reminds the agent to use graph tools before searching.");
-  console.log("  The skill teaches the agent how to use each graph tool.");
+  console.log("  The plugin reminds the agent to consult the reponova-mcp skill.");
+  console.log("  Type /reponova-enrich to run the enrichment workflow.");
 }
 
 // ─── Cursor ──────────────────────────────────────────────────────────────────
@@ -431,18 +431,21 @@ function installCursor(graphDir: string): void {
   if (!existsSync(mcpDir)) mkdirSync(mcpDir, { recursive: true });
   writeFileSync(mcpPath, withTrailingNewline(text));
 
-  // 2. Write cursor rule
+  // 2. Write cursor rules (separate files: mcp guide + enrich)
   const rulesDir = resolve(projectDir, ".cursor", "rules");
-  const rulePath = join(rulesDir, "reponova.mdc");
+  const mcpRulePath = join(rulesDir, "reponova-mcp.mdc");
+  const enrichPath = join(rulesDir, "reponova-enrich.mdc");
 
   if (!existsSync(rulesDir)) mkdirSync(rulesDir, { recursive: true });
-  writeFileSync(rulePath, CURSOR_RULE);
+  writeFileSync(mcpRulePath, CURSOR_MCP_RULE);
+  writeFileSync(enrichPath, CURSOR_ENRICH_RULE);
 
   // 3. Write config file
   const configWritten = writeConfigFile(mcpDir);
 
   console.log(`\u2713 Cursor MCP server registered: ${mcpPath}`);
-  console.log(`\u2713 Cursor rule/skill installed: ${rulePath}`);
+  console.log(`\u2713 Cursor MCP skill (always-on): ${mcpRulePath}`);
+  console.log(`\u2713 Cursor enrich command: ${enrichPath}`);
   if (configWritten) console.log(`\u2713 Config file created: ${configWritten}`);
   console.log("");
   console.log("  Restart Cursor for changes to take effect.");
@@ -487,18 +490,24 @@ function installClaude(graphDir: string): void {
   if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
   writeFileSync(settingsPath, withTrailingNewline(text));
 
-  // 2. Write skill file
-  const skillDir = resolve(projectDir, ".claude", "skills", "reponova");
-  const skillPath = join(skillDir, "SKILL.md");
-  if (!existsSync(skillDir)) mkdirSync(skillDir, { recursive: true });
-  writeFileSync(skillPath, SKILL_MD);
+  // 2. Write skill files (separate: mcp guide + enrich)
+  const mcpSkillDir = resolve(projectDir, ".claude", "skills", "reponova-mcp");
+  const mcpSkillPath = join(mcpSkillDir, "SKILL.md");
+  if (!existsSync(mcpSkillDir)) mkdirSync(mcpSkillDir, { recursive: true });
+  writeFileSync(mcpSkillPath, `---\nname: reponova-mcp\ndescription: Knowledge graph MCP tools — use instead of grep/find for structural code questions.\n---\n\n${MCP_SKILL_MD}`);
+
+  const enrichSkillDir = resolve(projectDir, ".claude", "skills", "reponova-enrich");
+  const enrichSkillPath = join(enrichSkillDir, "SKILL.md");
+  if (!existsSync(enrichSkillDir)) mkdirSync(enrichSkillDir, { recursive: true });
+  writeFileSync(enrichSkillPath, ENRICH_SKILL_MD);
 
   // 3. Write config file
   const configWritten = writeConfigFile(claudeDir);
 
   // 4. Print MCP add command (Claude manages MCP via CLI)
   console.log(`\u2713 Claude PreToolUse hook installed: ${settingsPath}`);
-  console.log(`\u2713 Claude skill installed: ${skillPath}`);
+  console.log(`\u2713 Claude MCP skill: ${mcpSkillPath}`);
+  console.log(`\u2713 Claude enrich command: ${enrichSkillPath}`);
   if (configWritten) console.log(`\u2713 Config file created: ${configWritten}`);
   console.log("");
   console.log("  To also register the MCP server, run:");

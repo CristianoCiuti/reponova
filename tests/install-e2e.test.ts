@@ -120,6 +120,59 @@ describe("install --target opencode (E2E)", () => {
     expect(jsonResult.source).toBe("json");
     expect((jsonResult as Record<string, unknown>).mcp).toBeUndefined();
   });
+
+  it("installs reponova-mcp skill (not reponova) with correct frontmatter", () => {
+    run("opencode", sandbox);
+
+    // reponova-mcp/SKILL.md must exist
+    const mcpSkillPath = join(sandbox, ".opencode", "skills", "reponova-mcp", "SKILL.md");
+    expect(existsSync(mcpSkillPath)).toBe(true);
+
+    const content = readFileSync(mcpSkillPath, "utf-8");
+    expect(content).toContain("name: reponova-mcp");
+    expect(content).toContain("graph_search");
+    expect(content).toContain("graph_impact");
+    expect(content).toContain("Tool Selection Guide");
+
+    // Old path must NOT exist
+    const oldSkillPath = join(sandbox, ".opencode", "skills", "reponova", "SKILL.md");
+    expect(existsSync(oldSkillPath)).toBe(false);
+  });
+
+  it("installs reponova-enrich command skill", () => {
+    run("opencode", sandbox);
+
+    const enrichPath = join(sandbox, ".opencode", "skills", "reponova-enrich", "SKILL.md");
+    expect(existsSync(enrichPath)).toBe(true);
+
+    const content = readFileSync(enrichPath, "utf-8");
+    expect(content).toContain("name: reponova-enrich");
+    expect(content).toContain("enrich:metrics");
+    expect(content).toContain("enrich:merge");
+    expect(content).toContain("enrich:finalize");
+  });
+
+  it("plugin JS references reponova-mcp skill", () => {
+    run("opencode", sandbox);
+
+    const pluginPath = join(sandbox, ".opencode", "plugins", "reponova.js");
+    expect(existsSync(pluginPath)).toBe(true);
+
+    const content = readFileSync(pluginPath, "utf-8");
+    expect(content).toContain("reponova-mcp");
+    expect(content).toContain("graph_search");
+  });
+
+  it("writes reponova.yml config in .opencode/ directory", () => {
+    run("opencode", sandbox);
+
+    const configYml = join(sandbox, ".opencode", "reponova.yml");
+    expect(existsSync(configYml)).toBe(true);
+
+    const content = readFileSync(configYml, "utf-8");
+    expect(content).toContain("output: ../reponova-out");
+    expect(content).toContain("repos:");
+  });
 });
 
 // ─── E2E: cursor ─────────────────────────────────────────────────────────────
@@ -181,6 +234,31 @@ describe("install --target cursor (E2E)", () => {
     const servers = config.mcpServers as Record<string, unknown>;
     expect(servers.existing).toEqual({ command: "test" });
     expect(servers.reponova).toBeDefined();
+  });
+
+  it("installs reponova-mcp.mdc rule (alwaysApply) and reponova-enrich.mdc rule", () => {
+    run("cursor", sandbox);
+
+    // MCP rule
+    const mcpRulePath = join(sandbox, ".cursor", "rules", "reponova-mcp.mdc");
+    expect(existsSync(mcpRulePath)).toBe(true);
+
+    const mcpContent = readFileSync(mcpRulePath, "utf-8");
+    expect(mcpContent).toContain("alwaysApply: true");
+    expect(mcpContent).toContain("graph_search");
+    expect(mcpContent).toContain("Tool Selection Guide");
+
+    // Enrich rule
+    const enrichPath = join(sandbox, ".cursor", "rules", "reponova-enrich.mdc");
+    expect(existsSync(enrichPath)).toBe(true);
+
+    const enrichContent = readFileSync(enrichPath, "utf-8");
+    expect(enrichContent).not.toContain("alwaysApply: true"); // must NOT be always-on
+    expect(enrichContent).toContain("enrich:metrics");
+
+    // Old filename must NOT exist
+    const oldRulePath = join(sandbox, ".cursor", "rules", "reponova.mdc");
+    expect(existsSync(oldRulePath)).toBe(false);
   });
 });
 
@@ -272,6 +350,39 @@ describe("install --target claude (E2E)", () => {
     );
     expect(repnovaHooks.length).toBe(1);
   });
+
+  it("installs reponova-mcp skill (not reponova) and enrich command", () => {
+    run("claude", sandbox);
+
+    // MCP skill
+    const mcpSkillPath = join(sandbox, ".claude", "skills", "reponova-mcp", "SKILL.md");
+    expect(existsSync(mcpSkillPath)).toBe(true);
+
+    const mcpContent = readFileSync(mcpSkillPath, "utf-8");
+    expect(mcpContent).toContain("name: reponova-mcp");
+    expect(mcpContent).toContain("graph_search");
+
+    // Enrich command
+    const enrichPath = join(sandbox, ".claude", "skills", "reponova-enrich", "SKILL.md");
+    expect(existsSync(enrichPath)).toBe(true);
+
+    const enrichContent = readFileSync(enrichPath, "utf-8");
+    expect(enrichContent).toContain("name: reponova-enrich");
+    expect(enrichContent).toContain("enrich:metrics");
+
+    // Old path must NOT exist
+    const oldSkillPath = join(sandbox, ".claude", "skills", "reponova", "SKILL.md");
+    expect(existsSync(oldSkillPath)).toBe(false);
+  });
+
+  it("hook context references reponova-mcp skill", () => {
+    run("claude", sandbox);
+
+    const settings = readJson(join(sandbox, ".claude", "settings.json"));
+    const hooks = settings.hooks as Record<string, unknown[]>;
+    const hookJson = JSON.stringify(hooks.PreToolUse);
+    expect(hookJson).toContain("reponova-mcp");
+  });
 });
 
 // ─── E2E: vscode ─────────────────────────────────────────────────────────────
@@ -334,5 +445,53 @@ describe("install --target vscode (E2E)", () => {
     const servers = config.servers as Record<string, unknown>;
     expect(servers.other).toEqual({ type: "sse", url: "http://x" });
     expect(servers.reponova).toBeDefined();
+  });
+
+  it("copilot-instructions has both ## reponova (tool guide) and ## reponova enrich", () => {
+    run("vscode", sandbox);
+
+    const instructionsPath = join(sandbox, ".github", "copilot-instructions.md");
+    expect(existsSync(instructionsPath)).toBe(true);
+
+    const content = readFileSync(instructionsPath, "utf-8");
+
+    // Has MCP tool guide section
+    expect(content).toContain("## reponova");
+    expect(content).toContain("Tool Selection Guide");
+    expect(content).toContain("graph_search");
+    expect(content).toContain("graph_impact");
+
+    // Has enrich workflow section
+    expect(content).toContain("## reponova enrich");
+    expect(content).toContain("enrich:metrics");
+    expect(content).toContain("enrich:finalize");
+  });
+
+  it("copilot-instructions is idempotent (skips if section exists)", () => {
+    run("vscode", sandbox);
+    const out1 = run("vscode", sandbox);
+
+    // Should say "already present"
+    expect(out1).toContain("already present");
+
+    const instructionsPath = join(sandbox, ".github", "copilot-instructions.md");
+    const content = readFileSync(instructionsPath, "utf-8");
+
+    // Should only have ONE occurrence of the section header
+    const matches = content.match(/## reponova\n/g);
+    expect(matches).toHaveLength(1);
+  });
+
+  it("appends to existing copilot-instructions without overwriting", () => {
+    const githubDir = join(sandbox, ".github");
+    mkdirSync(githubDir, { recursive: true });
+    writeFileSync(join(githubDir, "copilot-instructions.md"), "# Project\n\nExisting instructions.\n");
+
+    run("vscode", sandbox);
+
+    const content = readFileSync(join(githubDir, "copilot-instructions.md"), "utf-8");
+    expect(content).toContain("# Project");
+    expect(content).toContain("Existing instructions.");
+    expect(content).toContain("## reponova");
   });
 });
