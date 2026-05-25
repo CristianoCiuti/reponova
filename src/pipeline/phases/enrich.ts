@@ -38,7 +38,7 @@ class EnrichPhase extends BasePhase {
   }
 
   async doWork(ctx: PhaseContext): Promise<PhaseResult> {
-    const { config, outputDir } = ctx;
+    const { config, outputDir, configDir } = ctx;
     const enrichConfig = config.enrich;
     const graphJsonPath = join(outputDir, "graph.json");
     const graphEnrichedPath = join(outputDir, "graph-enriched.json");
@@ -52,6 +52,19 @@ class EnrichPhase extends BasePhase {
       return { processed: 0, skipped: true, skipReason: "disabled in config" };
     }
 
+    // --- INTELLIGENT MODE (provider configured) ---
+    if (enrichConfig.provider) {
+      const { runFullEnrichment } = await import("../enrich/orchestrator.js");
+      const result = await runFullEnrichment({
+        config,
+        outputDir,
+        configDir,
+        providerRegistry: ctx.providerRegistry,
+      });
+      return { processed: result.totalLlmCalls, skipped: false };
+    }
+
+    // --- ALGORITHMIC MODE (no provider) ---
     const graphRaw = readFileSync(graphJsonPath, "utf-8");
     const graphData = JSON.parse(graphRaw) as GraphData;
     const edgeCounts = computeEdgeCounts(graphData);
