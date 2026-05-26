@@ -4,7 +4,7 @@ import { cacheCommand } from "./cache.js";
 import { mcpCommand } from "./mcp.js";
 import { buildCommand } from "./build.js";
 import { checkCommand } from "./check.js";
-import { installCommand } from "./install.js";
+import { installCommand } from "./install/index.js";
 import { modelsCommand } from "./models.js";
 import { enrichCommand } from "./enrich.js";
 import { enrichMetricsCommand } from "./enrich-metrics.js";

@@ -139,17 +139,22 @@ describe("install --target opencode (E2E)", () => {
     expect(existsSync(oldSkillPath)).toBe(false);
   });
 
-  it("installs reponova-enrich command skill", () => {
+  it("installs reponova-enrich as a COMMAND (not a skill)", () => {
     run("opencode", sandbox);
 
-    const enrichPath = join(sandbox, ".opencode", "skills", "reponova-enrich", "SKILL.md");
-    expect(existsSync(enrichPath)).toBe(true);
+    // Command must be in .opencode/commands/, NOT .opencode/skills/
+    const enrichCommandPath = join(sandbox, ".opencode", "commands", "reponova-enrich.md");
+    expect(existsSync(enrichCommandPath)).toBe(true);
 
-    const content = readFileSync(enrichPath, "utf-8");
-    expect(content).toContain("name: reponova-enrich");
+    const content = readFileSync(enrichCommandPath, "utf-8");
+    expect(content).toContain("description:");
     expect(content).toContain("enrich:metrics");
     expect(content).toContain("enrich:merge");
     expect(content).toContain("enrich:finalize");
+
+    // Old wrong path must NOT exist
+    const oldSkillPath = join(sandbox, ".opencode", "skills", "reponova-enrich", "SKILL.md");
+    expect(existsSync(oldSkillPath)).toBe(false);
   });
 
   it("plugin JS references reponova-mcp skill", () => {
@@ -236,7 +241,7 @@ describe("install --target cursor (E2E)", () => {
     expect(servers.reponova).toBeDefined();
   });
 
-  it("installs reponova-mcp.mdc rule (alwaysApply) and reponova-enrich.mdc rule", () => {
+  it("installs reponova-mcp.mdc rule (alwaysApply) and reponova-enrich COMMAND", () => {
     run("cursor", sandbox);
 
     // MCP rule
@@ -248,17 +253,58 @@ describe("install --target cursor (E2E)", () => {
     expect(mcpContent).toContain("graph_search");
     expect(mcpContent).toContain("Tool Selection Guide");
 
-    // Enrich rule
-    const enrichPath = join(sandbox, ".cursor", "rules", "reponova-enrich.mdc");
-    expect(existsSync(enrichPath)).toBe(true);
+    // Enrich COMMAND (in .cursor/commands/, NOT .cursor/rules/)
+    const enrichCommandPath = join(sandbox, ".cursor", "commands", "reponova-enrich.md");
+    expect(existsSync(enrichCommandPath)).toBe(true);
 
-    const enrichContent = readFileSync(enrichPath, "utf-8");
-    expect(enrichContent).not.toContain("alwaysApply: true"); // must NOT be always-on
+    const enrichContent = readFileSync(enrichCommandPath, "utf-8");
     expect(enrichContent).toContain("enrich:metrics");
+
+    // Old wrong path must NOT exist
+    const oldEnrichRule = join(sandbox, ".cursor", "rules", "reponova-enrich.mdc");
+    expect(existsSync(oldEnrichRule)).toBe(false);
 
     // Old filename must NOT exist
     const oldRulePath = join(sandbox, ".cursor", "rules", "reponova.mdc");
     expect(existsSync(oldRulePath)).toBe(false);
+  });
+
+  it("cursor command has NO frontmatter (plain markdown)", () => {
+    run("cursor", sandbox);
+
+    const enrichCommandPath = join(sandbox, ".cursor", "commands", "reponova-enrich.md");
+    const content = readFileSync(enrichCommandPath, "utf-8");
+
+    // Cursor commands are plain markdown — no YAML frontmatter
+    expect(content).not.toMatch(/^---/);
+    expect(content).toContain("# reponova enrich");
+  });
+
+  it("writes reponova.yml config in .cursor/ directory", () => {
+    run("cursor", sandbox);
+
+    const configYml = join(sandbox, ".cursor", "reponova.yml");
+    expect(existsSync(configYml)).toBe(true);
+
+    const content = readFileSync(configYml, "utf-8");
+    expect(content).toContain("output: ../reponova-out");
+    expect(content).toContain("repos:");
+  });
+
+  it("is idempotent (re-run does not duplicate)", () => {
+    run("cursor", sandbox);
+    run("cursor", sandbox);
+
+    // MCP config should still have only one reponova entry
+    const mcpPath = join(sandbox, ".cursor", "mcp.json");
+    const config = readJson(mcpPath);
+    const servers = config.mcpServers as Record<string, unknown>;
+    expect(servers.reponova).toBeDefined();
+
+    // Rule should still exist and be valid
+    const mcpRulePath = join(sandbox, ".cursor", "rules", "reponova-mcp.mdc");
+    const content = readFileSync(mcpRulePath, "utf-8");
+    expect(content).toContain("alwaysApply: true");
   });
 });
 
@@ -383,6 +429,27 @@ describe("install --target claude (E2E)", () => {
     const hookJson = JSON.stringify(hooks.PreToolUse);
     expect(hookJson).toContain("reponova-mcp");
   });
+
+  it("writes reponova.yml config in .claude/ directory", () => {
+    run("claude", sandbox);
+
+    const configYml = join(sandbox, ".claude", "reponova.yml");
+    expect(existsSync(configYml)).toBe(true);
+
+    const content = readFileSync(configYml, "utf-8");
+    expect(content).toContain("output: ../reponova-out");
+    expect(content).toContain("repos:");
+  });
+
+  it("enrich skill has correct description for behavioral activation", () => {
+    run("claude", sandbox);
+
+    const enrichPath = join(sandbox, ".claude", "skills", "reponova-enrich", "SKILL.md");
+    const content = readFileSync(enrichPath, "utf-8");
+
+    // Description must mention invocation — this controls behavioral activation in Claude Code
+    expect(content).toContain('Invoke with "/reponova-enrich"');
+  });
 });
 
 // ─── E2E: vscode ─────────────────────────────────────────────────────────────
@@ -447,51 +514,96 @@ describe("install --target vscode (E2E)", () => {
     expect(servers.reponova).toBeDefined();
   });
 
-  it("copilot-instructions has both ## reponova (tool guide) and ## reponova enrich", () => {
+  it("installs MCP skill (auto-loaded) and enrich skill (command-only) in .github/skills/", () => {
     run("vscode", sandbox);
 
+    // MCP skill — passive, auto-loaded
+    const mcpSkillPath = join(sandbox, ".github", "skills", "reponova-mcp", "SKILL.md");
+    expect(existsSync(mcpSkillPath)).toBe(true);
+
+    const mcpContent = readFileSync(mcpSkillPath, "utf-8");
+    expect(mcpContent).toContain("name: reponova-mcp");
+    expect(mcpContent).toContain("user-invocable: false");
+    expect(mcpContent).toContain("Tool Selection Guide");
+    expect(mcpContent).toContain("graph_search");
+    expect(mcpContent).toContain("graph_impact");
+
+    // Enrich skill — command-only, NOT auto-loaded
+    const enrichSkillPath = join(sandbox, ".github", "skills", "reponova-enrich", "SKILL.md");
+    expect(existsSync(enrichSkillPath)).toBe(true);
+
+    const enrichContent = readFileSync(enrichSkillPath, "utf-8");
+    expect(enrichContent).toContain("name: reponova-enrich");
+    expect(enrichContent).toContain("disable-model-invocation: true");
+    expect(enrichContent).toContain("enrich:metrics");
+    expect(enrichContent).toContain("enrich:finalize");
+
+    // copilot-instructions.md must NOT be created
     const instructionsPath = join(sandbox, ".github", "copilot-instructions.md");
-    expect(existsSync(instructionsPath)).toBe(true);
+    expect(existsSync(instructionsPath)).toBe(false);
+  });
 
-    const content = readFileSync(instructionsPath, "utf-8");
+  it("skill files are idempotent (overwritten on re-run)", () => {
+    run("vscode", sandbox);
+    run("vscode", sandbox);
 
-    // Has MCP tool guide section
-    expect(content).toContain("## reponova");
+    // Skills should still exist and be valid
+    const mcpSkillPath = join(sandbox, ".github", "skills", "reponova-mcp", "SKILL.md");
+    expect(existsSync(mcpSkillPath)).toBe(true);
+
+    const content = readFileSync(mcpSkillPath, "utf-8");
+    expect(content).toContain("name: reponova-mcp");
     expect(content).toContain("Tool Selection Guide");
-    expect(content).toContain("graph_search");
-    expect(content).toContain("graph_impact");
-
-    // Has enrich workflow section
-    expect(content).toContain("## reponova enrich");
-    expect(content).toContain("enrich:metrics");
-    expect(content).toContain("enrich:finalize");
   });
 
-  it("copilot-instructions is idempotent (skips if section exists)", () => {
-    run("vscode", sandbox);
-    const out1 = run("vscode", sandbox);
-
-    // Should say "already present"
-    expect(out1).toContain("already present");
-
-    const instructionsPath = join(sandbox, ".github", "copilot-instructions.md");
-    const content = readFileSync(instructionsPath, "utf-8");
-
-    // Should only have ONE occurrence of the section header
-    const matches = content.match(/## reponova\n/g);
-    expect(matches).toHaveLength(1);
-  });
-
-  it("appends to existing copilot-instructions without overwriting", () => {
+  it("does not touch existing copilot-instructions.md", () => {
     const githubDir = join(sandbox, ".github");
     mkdirSync(githubDir, { recursive: true });
     writeFileSync(join(githubDir, "copilot-instructions.md"), "# Project\n\nExisting instructions.\n");
 
     run("vscode", sandbox);
 
+    // copilot-instructions should be untouched
     const content = readFileSync(join(githubDir, "copilot-instructions.md"), "utf-8");
-    expect(content).toContain("# Project");
-    expect(content).toContain("Existing instructions.");
-    expect(content).toContain("## reponova");
+    expect(content).toBe("# Project\n\nExisting instructions.\n");
+
+    // Skills should exist separately
+    const mcpSkillPath = join(sandbox, ".github", "skills", "reponova-mcp", "SKILL.md");
+    expect(existsSync(mcpSkillPath)).toBe(true);
+  });
+
+  it("writes reponova.yml config in .vscode/ directory", () => {
+    run("vscode", sandbox);
+
+    const configYml = join(sandbox, ".vscode", "reponova.yml");
+    expect(existsSync(configYml)).toBe(true);
+
+    const content = readFileSync(configYml, "utf-8");
+    expect(content).toContain("output: ../reponova-out");
+    expect(content).toContain("repos:");
+  });
+
+  it("MCP skill does NOT have disable-model-invocation (should be auto-loaded)", () => {
+    run("vscode", sandbox);
+
+    const mcpSkillPath = join(sandbox, ".github", "skills", "reponova-mcp", "SKILL.md");
+    const content = readFileSync(mcpSkillPath, "utf-8");
+
+    // MCP skill must be auto-loadable — no disable-model-invocation
+    expect(content).not.toContain("disable-model-invocation");
+    // But not user-invocable (hidden from / menu)
+    expect(content).toContain("user-invocable: false");
+  });
+
+  it("enrich skill is NOT auto-loaded (disable-model-invocation: true)", () => {
+    run("vscode", sandbox);
+
+    const enrichSkillPath = join(sandbox, ".github", "skills", "reponova-enrich", "SKILL.md");
+    const content = readFileSync(enrichSkillPath, "utf-8");
+
+    // Enrich skill is command-only — agent won't load it autonomously
+    expect(content).toContain("disable-model-invocation: true");
+    // But should NOT have user-invocable: false (it IS a slash command)
+    expect(content).not.toContain("user-invocable: false");
   });
 });
