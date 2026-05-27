@@ -1,5 +1,3 @@
-import { array } from "zod/v4/mini";
-
 /**
  * Enrich command workflow — loaded ONLY when user explicitly requests enrichment.
  * This is the full multi-step workflow where the agent acts as the LLM.
@@ -33,6 +31,7 @@ Intelligent enrichment workflow — you are the LLM that reads structured input 
 | 3 | CLI | \`reponova enrich:merge routing\` |
 | 4 | CLI | \`reponova enrich:prepare restructure\` |
 | 4 | YOU | Read \`.enrich/input/restructure/\` → write \`.enrich/output/restructure/restructure.json\` |
+| 4 | CLI | \`reponova enrich:merge restructure\` |
 | 5 | CLI | \`reponova enrich:apply\` |
 | 6 | CLI | \`reponova enrich:prepare updated-profiles\` |
 | 6 | YOU | Read \`.enrich/input/updated-profiles/\` → write \`.enrich/output/updated-profiles/community-NNN.json\` |
@@ -42,13 +41,13 @@ Intelligent enrichment workflow — you are the LLM that reads structured input 
 
 ## Flow
 
-Steps 1, 2, 3, 6 follow the prepare → process → merge pattern:
+Steps 1, 2, 3, 4, 6 follow the prepare → process → merge pattern:
 
 1. **Prepare** (CLI): \`reponova enrich:prepare <step>\` — creates structured input batches in \`.enrich/input/<step>/\`
 2. **Process** (YOU): Read input batches, reason, write results to \`.enrich/output/<step>/\`
-3. **Merge** (CLI): \`reponova enrich:merge <step>\` — concatenates output batches into \`.enrich/<step>.json\`
+3. **Merge** (CLI): \`reponova enrich:merge <step>\` — merges/copies output into \`.enrich/<step>.json\`
 
-Step 4 (restructure) uses prepare → process but writes a single file (\`.enrich/restructure.json\`) directly — no merge needed.
+Step 4 (restructure) has a single input and single output file — the merge step simply copies it to the final location.
 
 You NEVER need to invent file paths or read raw source code directly. All context is pre-assembled in the input batches.
 

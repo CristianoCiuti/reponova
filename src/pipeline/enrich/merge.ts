@@ -7,12 +7,13 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
 
-export type MergeStep = "descriptions" | "profiles" | "routing" | "updated-profiles";
+export type MergeStep = "descriptions" | "profiles" | "routing" | "restructure" | "updated-profiles";
 
-const STEP_CONFIG: Record<MergeStep, { dir: string; pattern: RegExp; finalFile: string }> = {
+const STEP_CONFIG: Record<MergeStep, { dir: string; pattern: RegExp; finalFile: string; copyRaw?: boolean }> = {
   descriptions: { dir: "descriptions", pattern: /^batch-\d+\.json$/, finalFile: "descriptions.json" },
   profiles: { dir: "profiles", pattern: /^community-\d+\.json$/, finalFile: "profiles.json" },
   routing: { dir: "routing", pattern: /^batch-\d+\.json$/, finalFile: "routing.json" },
+  restructure: { dir: "restructure", pattern: /^restructure\.json$/, finalFile: "restructure.json", copyRaw: true },
   "updated-profiles": { dir: "updated-profiles", pattern: /^community-\d+\.json$/, finalFile: "updated-profiles.json" },
 };
 
@@ -30,6 +31,13 @@ export function runMerge(outputDir: string, step: MergeStep): { merged: number }
   const files = readdirSync(batchDir).filter((f) => config.pattern.test(f)).sort();
   if (files.length === 0) {
     throw new Error(`No batch files found in ${batchDir} matching pattern ${config.pattern}`);
+  }
+
+  // Restructure: single-object copy (not array-wrapped)
+  if (config.copyRaw) {
+    const content = JSON.parse(readFileSync(join(batchDir, files[0]!), "utf-8"));
+    atomicWriteJson(finalPath, content);
+    return { merged: 1 };
   }
 
   // Merge: all batch files contain JSON arrays or single objects — concatenate

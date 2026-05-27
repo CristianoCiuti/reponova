@@ -11,7 +11,7 @@ export const enrichMergeCommand: CommandModule = {
     yargs
       .positional("step", {
         type: "string",
-        choices: ["descriptions", "profiles", "routing", "updated-profiles"] as const,
+        choices: ["descriptions", "profiles", "routing", "restructure", "updated-profiles"] as const,
         describe: "Step to merge",
         demandOption: true,
       })

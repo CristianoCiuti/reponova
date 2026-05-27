@@ -395,6 +395,46 @@ describe("intelligent enrichment E2E", { timeout: 30000 }, () => {
     expect(mockProvider.callCount).toBe(0);
   });
 
+  it("IDE flow step 4: prepare → agent writes to output/ → merge → apply reads from .enrich/", () => {
+    writeFileSync(join(testDir, "graph.json"), JSON.stringify(makeGraph()));
+    const enrichDir = join(testDir, ".enrich");
+    mkdirSync(enrichDir, { recursive: true });
+
+    // Prerequisites: routing.json must exist for apply
+    writeFileSync(join(enrichDir, "routing.json"), JSON.stringify([
+      { node: "utils.hash", action: "move", to: "data", reason: "used by db" },
+    ]));
+
+    // Simulate agent writing restructure output (as the skill instructs)
+    mkdirSync(join(enrichDir, "output", "restructure"), { recursive: true });
+    const agentOutput = {
+      merges: [{ communities: ["auth", "data"], newLabel: "Auth+Data", reason: "tightly coupled" }],
+      splits: [],
+    };
+    writeFileSync(join(enrichDir, "output", "restructure", "restructure.json"), JSON.stringify(agentOutput));
+
+    // Run merge (this is what was missing before the fix!)
+    const mergeResult = runMerge(testDir, "restructure");
+    expect(mergeResult.merged).toBe(1);
+
+    // Verify .enrich/restructure.json now exists (what apply.ts reads)
+    expect(existsSync(join(enrichDir, "restructure.json"))).toBe(true);
+    const finalRestructure = JSON.parse(readFileSync(join(enrichDir, "restructure.json"), "utf-8"));
+    expect(finalRestructure.merges).toHaveLength(1);
+    expect(finalRestructure.merges[0].communities).toEqual(["auth", "data"]);
+
+    // Run apply — should succeed now (was failing before because restructure.json didn't exist)
+    const applyResult = runApply(testDir);
+    expect(applyResult.moved).toBe(1);
+    expect(applyResult.merged).toBe(1);
+
+    // Verify merge was applied
+    const applied = JSON.parse(readFileSync(join(enrichDir, "graph-applied.json"), "utf-8"));
+    // After merge, all "data" nodes should now be in "auth" (first community in merge list)
+    const dataNodes = applied.nodes.filter((n: any) => n.community === "data");
+    expect(dataNodes).toHaveLength(0); // all merged into "auth"
+  });
+
   it("orchestrator throws when no provider configured", async () => {
     writeFileSync(join(testDir, "graph.json"), JSON.stringify(makeGraph()));
 

@@ -432,6 +432,27 @@ describe("enrich:merge", () => {
     expect(merged[0].id).toBe("A"); // sorted by filename → batch-001 first
     expect(merged[1].id).toBe("C");
   });
+
+  it("merges restructure file as-is (copyRaw, no array wrapping)", () => {
+    const enrichDir = join(testDir, ".enrich");
+    mkdirSync(join(enrichDir, "output", "restructure"), { recursive: true });
+
+    const restructureData = {
+      merges: [{ communities: ["0", "1"], newLabel: "Merged", reason: "tightly coupled" }],
+      splits: [],
+    };
+    writeFileSync(join(enrichDir, "output", "restructure", "restructure.json"), JSON.stringify(restructureData));
+
+    const result = runMerge(testDir, "restructure");
+    expect(result.merged).toBe(1);
+
+    const final = JSON.parse(readFileSync(join(enrichDir, "restructure.json"), "utf-8"));
+    // Must be the object directly, NOT wrapped in an array
+    expect(final.merges).toBeDefined();
+    expect(final.splits).toBeDefined();
+    expect(Array.isArray(final)).toBe(false);
+    expect(final.merges[0].communities).toEqual(["0", "1"]);
+  });
 });
 
 // ─── APPLY ───────────────────────────────────────────────────────────────────
