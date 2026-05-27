@@ -1,3 +1,5 @@
+import { array } from "zod/v4/mini";
+
 /**
  * Enrich command workflow — loaded ONLY when user explicitly requests enrichment.
  * This is the full multi-step workflow where the agent acts as the LLM.
@@ -98,15 +100,21 @@ You NEVER need to invent file paths or read raw source code directly. All contex
 
 **Input**: \`.enrich/input/restructure/restructure-input.json\` — single file with full context:
 \`\`\`json
-{"profiles": [...], "topEdgeDensityPairs": [...], "gainedNodes": {...}, "sizeOutliers": [...]}
+{"profiles": [...], "topEdgeDensityPairs": [{"communityA": "...", "communityB": "...", "edgeCount": N}], "gainedNodes": {...}, "sizeOutliers": [...]}
 \`\`\`
 
 **Your job**: Propose merges (tightly coupled community pairs) and splits (oversized/incoherent clusters).
 
 **Output** (\`.enrich/output/restructure/restructure.json\`):
 \`\`\`json
-{"merges": [], "splits": []}
+{"merges": [{"communities": ["id1", "id2"], "newLabel": "Combined Label", "reason": "Why they should merge"}], "splits": [{"community": "id", "reason": "Why it should split", "into": [{"label": "Sub-group A", "nodes": ["nodeId1", "nodeId2"]}, {"label": "Sub-group B", "nodes": ["nodeId3"]}]}]}
 \`\`\`
+
+**IMPORTANT format notes:**
+- Merges use \`"communities": [array of IDs]\`
+- Merges require \`"newLabel"\` — the label for the merged community
+- Splits use \`"into"\` with explicit node assignments
+- Use empty arrays \`[]\` if no merges or splits are needed
 
 ### Step 6: Updated Profiles
 

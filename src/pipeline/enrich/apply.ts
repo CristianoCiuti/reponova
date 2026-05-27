@@ -42,9 +42,12 @@ export function runApply(outputDir: string): { moved: number; merged: number; sp
   // Apply merges
   let mergedCount = 0;
   for (const merge of restructure.merges) {
-    const targetId = merge.communities[0]; // first community becomes the merge target
+    // Normalize: accept both {communities: [...]} and {communityA, communityB} shapes
+    const communities: string[] = merge.communities
+      ?? [(merge as any).communityA, (merge as any).communityB].filter(Boolean);
+    const targetId = communities[0]; // first community becomes the merge target
     if (!targetId) continue;
-    for (const commId of merge.communities.slice(1)) {
+    for (const commId of communities.slice(1)) {
       for (const node of graphData.nodes) {
         if (node.community === commId) {
           node.community = targetId;
