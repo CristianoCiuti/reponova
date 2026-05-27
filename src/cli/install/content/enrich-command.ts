@@ -7,6 +7,12 @@ export const ENRICH_COMMAND_MD = `# reponova enrich
 
 Intelligent enrichment workflow — you are the LLM that reads structured input batches, reasons about architectural placement, and writes output batches that CLI commands merge and apply.
 
+## Prerequisites
+
+1. Run \`reponova check\` — it prints the resolved output path.
+   Or: inspect \`reponova.yml\` → \`output\` field (relative to the config file location).
+   The working directory for ALL enrichment files is: \`<output-dir>/.enrich/\`
+
 ## Quick Reference
 
 | Step | Type | Command / Action |
@@ -30,15 +36,17 @@ Intelligent enrichment workflow — you are the LLM that reads structured input 
 | 6 | YOU | Read \`.enrich/input/updated-profiles/\` → write \`.enrich/output/updated-profiles/community-NNN.json\` |
 | 6 | CLI | \`reponova enrich:merge updated-profiles\` |
 | 7 | CLI | \`reponova enrich:finalize\` |
-| 8 | CLI | \`reponova cache --target enrich\` then \`reponova build --start-after enrich\` |
+| 8 | CLI | \`reponova cache --seal enrich\` then \`reponova build --start-after enrich\` |
 
 ## Flow
 
-Each enrichment step follows the same pattern:
+Steps 1, 2, 3, 6 follow the prepare → process → merge pattern:
 
 1. **Prepare** (CLI): \`reponova enrich:prepare <step>\` — creates structured input batches in \`.enrich/input/<step>/\`
 2. **Process** (YOU): Read input batches, reason, write results to \`.enrich/output/<step>/\`
 3. **Merge** (CLI): \`reponova enrich:merge <step>\` — concatenates output batches into \`.enrich/<step>.json\`
+
+Step 4 (restructure) uses prepare → process but writes a single file (\`.enrich/restructure.json\`) directly — no merge needed.
 
 You NEVER need to invent file paths or read raw source code directly. All context is pre-assembled in the input batches.
 
@@ -108,8 +116,8 @@ Same as Step 2. Input/output use the same format but are in \`.enrich/input/upda
 
 - **SKIP** any step whose final merged file already exists (e.g., skip Step 1 if \`.enrich/descriptions.json\` exists).
 - **NEVER** modify \`graph.json\` — it is immutable after the communities phase.
-- **ALWAYS** seal the cache at the end: \`reponova cache --target enrich\`.
-- **ALWAYS** run \`reponova enrich:prepare <step>\` BEFORE processing that step.
+- **ALWAYS** seal the cache at the end: \`reponova cache --seal enrich\`.
+- For Steps 1, 2, 3, 4, 6: run \`reponova enrich:prepare <step>\` BEFORE processing. Steps 0, 5, 7 are pure CLI — no prepare needed.
 - Output batch file naming MUST match input batch file naming (same \`batch-NNN.json\` or \`community-NNN.json\` pattern).
 - If a step has no work (e.g., no modified communities in Step 6), write an empty array to the final file.
 - You read from \`.enrich/input/<step>/\`, you write to \`.enrich/output/<step>/\`. Never invent other paths.
