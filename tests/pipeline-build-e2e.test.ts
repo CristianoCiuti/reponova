@@ -125,4 +125,37 @@ describe("pipeline build E2E", { timeout: 30000 }, () => {
     expect(config.outlines.enabled).toBe(false);
     expect(existsSync(join(result.outputDir, "graph.json"))).toBe(true);
   });
+
+  it("enrich disabled still produces graph-enriched.json for downstream phases", async () => {
+    writeFile(tmpDir, "main.py", "def greet():\n    pass\n\ndef helper():\n    pass\n");
+
+    const config = makeConfig();
+    // enrich is already disabled in makeConfig(), enable html to test downstream
+    config.html = true;
+
+    const result = await runBuild(config, tmpDir, {});
+
+    // Passthrough files must exist
+    expect(existsSync(join(result.outputDir, "graph-enriched.json"))).toBe(true);
+    expect(existsSync(join(result.outputDir, "node_descriptions.json"))).toBe(true);
+    expect(existsSync(join(result.outputDir, "community_summaries.json"))).toBe(true);
+
+    // graph-enriched.json should be identical to graph.json (passthrough copy)
+    const graph = readFileSync(join(result.outputDir, "graph.json"), "utf-8");
+    const enriched = readFileSync(join(result.outputDir, "graph-enriched.json"), "utf-8");
+    expect(JSON.parse(enriched)).toEqual(JSON.parse(graph));
+
+    // node_descriptions.json and community_summaries.json should be empty arrays
+    const descriptions = JSON.parse(readFileSync(join(result.outputDir, "node_descriptions.json"), "utf-8"));
+    const summaries = JSON.parse(readFileSync(join(result.outputDir, "community_summaries.json"), "utf-8"));
+    expect(descriptions).toEqual([]);
+    expect(summaries).toEqual([]);
+
+    // HTML downstream should succeed (depends on graph-enriched.json)
+    expect(existsSync(join(result.outputDir, "graph.html"))).toBe(true);
+
+    // Enrich phase should report as skipped
+    const enrichPhase = result.phases.get("enrich");
+    expect(enrichPhase?.skipped).toBe(true);
+  });
 });

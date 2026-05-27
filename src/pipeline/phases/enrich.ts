@@ -3,7 +3,7 @@
  *
  * Algorithmic mode only in M1.
  */
-import { copyFileSync, existsSync, readFileSync, unlinkSync } from "node:fs";
+import { copyFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Config, GraphData } from "../../shared/types.js";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
@@ -46,9 +46,10 @@ class EnrichPhase extends BasePhase {
     const summariesPath = join(outputDir, "community_summaries.json");
 
     if (!enrichConfig.enabled) {
-      removeFile(graphEnrichedPath);
-      removeFile(descriptionsPath);
-      removeFile(summariesPath);
+      // Passthrough: downstream phases always need graph-enriched.json to exist
+      copyFileSync(graphJsonPath, graphEnrichedPath);
+      atomicWriteJson(descriptionsPath, []);
+      atomicWriteJson(summariesPath, []);
       return { processed: 0, skipped: true, skipReason: "disabled in config" };
     }
 
@@ -103,10 +104,6 @@ function buildCommunitySummaries(graphData: GraphData, maxCommunities: number): 
       repos,
     };
   });
-}
-
-function removeFile(path: string): void {
-  if (existsSync(path)) unlinkSync(path);
 }
 
 export const enrichPhase = new EnrichPhase();
