@@ -40,7 +40,13 @@ export function extractNodeCode(
   if (!node.source_file || node.start_line == null || node.end_line == null) return null;
 
   const repoRoot = repoRoots.get(node.repo ?? "") ?? "";
-  const filePath = `${repoRoot}/${node.source_file}`;
+  // source_file in multi-repo graphs is prefixed with repo name (e.g. "api/src/file.py")
+  // but repoRoot already resolves to the repo directory — strip the prefix to avoid duplication
+  const repoPrefix = node.repo ? `${node.repo}/` : "";
+  const relativePath = node.source_file.startsWith(repoPrefix)
+    ? node.source_file.slice(repoPrefix.length)
+    : node.source_file;
+  const filePath = `${repoRoot}/${relativePath}`;
 
   try {
     const content = readFileSync(filePath, "utf-8");
