@@ -5,7 +5,7 @@
  *        .enrich/updated-profiles.json (optional)
  * Produces: graph-enriched.json, node_descriptions.json, community_summaries.json
  */
-import { existsSync, readFileSync, copyFileSync } from "node:fs";
+import { existsSync, readFileSync, copyFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
 import type { CommunityProfile, DescriptionEntry } from "./types.js";
@@ -62,4 +62,10 @@ export function runFinalize(outputDir: string): void {
   }));
 
   atomicWriteJson(join(outputDir, "community_summaries.json"), summaries);
+
+  // Cleanup transient working directories (input/output batches)
+  const inputDir = join(enrichDir, "input");
+  const outputBatchDir = join(enrichDir, "output");
+  if (existsSync(inputDir)) rmSync(inputDir, { recursive: true, force: true });
+  if (existsSync(outputBatchDir)) rmSync(outputBatchDir, { recursive: true, force: true });
 }

@@ -64,15 +64,16 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
     const repoRoots = resolveRepoRoots(config, configDir);
     const batches = packBatches(graphData.nodes, repoRoots, enrichConfig.description_batch_tokens);
 
+    const outputStepDir = join(enrichDir, "output", "descriptions");
     const jobs: BatchJob<DescriptionEntry[]>[] = batches.map((batch) => ({
       batchId: batch.id,
       prompt: buildDescriptionPrompt(batch.items),
-      outputPath: join(enrichDir, "descriptions", `batch-${String(batch.id).padStart(3, "0")}.json`),
+      outputPath: join(outputStepDir, `batch-${String(batch.id).padStart(3, "0")}.json`),
       parse: (raw) => parseLlmJson<DescriptionEntry[]>(raw),
     }));
 
-    mkdirSync(join(enrichDir, "descriptions"), { recursive: true });
-    const result = await executeBatches(executorConfig, jobs, join(enrichDir, "descriptions"));
+    mkdirSync(outputStepDir, { recursive: true });
+    const result = await executeBatches(executorConfig, jobs, outputStepDir);
     totalLlmCalls += result.completed + result.failed;
     log.info(`  [enrich] Step 1 done: ${result.completed} batches (${result.failed} failed)`);
 
@@ -108,6 +109,7 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
       }
     }
 
+    const outputStepDir = join(enrichDir, "output", "profiles");
     const jobs: BatchJob<CommunityProfile>[] = [];
     let batchId = 0;
     for (const [commId, members] of communities) {
@@ -117,13 +119,13 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
       jobs.push({
         batchId,
         prompt: buildProfilePrompt(commId, members, edges),
-        outputPath: join(enrichDir, "profiles", `community-${String(batchId).padStart(3, "0")}.json`),
+        outputPath: join(outputStepDir, `community-${String(batchId).padStart(3, "0")}.json`),
         parse: (raw) => parseLlmJson<CommunityProfile>(raw),
       });
     }
 
-    mkdirSync(join(enrichDir, "profiles"), { recursive: true });
-    const result = await executeBatches(executorConfig, jobs, join(enrichDir, "profiles"));
+    mkdirSync(outputStepDir, { recursive: true });
+    const result = await executeBatches(executorConfig, jobs, outputStepDir);
     totalLlmCalls += result.completed + result.failed;
     log.info(`  [enrich] Step 2 done: ${result.completed} communities profiled`);
 
@@ -185,6 +187,7 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
     }));
 
     const batchSize = enrichConfig.routing_batch_size;
+    const outputStepDir = join(enrichDir, "output", "routing");
     const jobs: BatchJob<RoutingDecision[]>[] = [];
     for (let i = 0; i < candidateList.length; i += batchSize) {
       const batch = candidateList.slice(i, i + batchSize);
@@ -192,13 +195,13 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
       jobs.push({
         batchId,
         prompt: buildRoutingPrompt(batch, profileMap),
-        outputPath: join(enrichDir, "routing", `batch-${String(batchId).padStart(3, "0")}.json`),
+        outputPath: join(outputStepDir, `batch-${String(batchId).padStart(3, "0")}.json`),
         parse: (raw) => parseLlmJson<RoutingDecision[]>(raw),
       });
     }
 
-    mkdirSync(join(enrichDir, "routing"), { recursive: true });
-    const result = await executeBatches(executorConfig, jobs, join(enrichDir, "routing"));
+    mkdirSync(outputStepDir, { recursive: true });
+    const result = await executeBatches(executorConfig, jobs, outputStepDir);
     totalLlmCalls += result.completed + result.failed;
     log.info(`  [enrich] Step 3 done: ${result.completed} batches (${allCandidateIds.size} candidates)`);
 
@@ -276,6 +279,7 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
       const descMap = new Map(descriptions.map((d) => [d.id, d.description]));
       const nodeCommMap = new Map(graphApplied.nodes.map((n) => [n.id, n.community ?? "unclustered"]));
 
+      const outputStepDir = join(enrichDir, "output", "updated-profiles");
       const jobs: BatchJob<CommunityProfile>[] = [];
       let batchId = 0;
       for (const commId of allModified) {
@@ -296,13 +300,13 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
         jobs.push({
           batchId,
           prompt: buildProfilePrompt(commId, members, commEdges),
-          outputPath: join(enrichDir, "updated-profiles", `community-${String(batchId).padStart(3, "0")}.json`),
+          outputPath: join(outputStepDir, `community-${String(batchId).padStart(3, "0")}.json`),
           parse: (raw) => parseLlmJson<CommunityProfile>(raw),
         });
       }
 
-      mkdirSync(join(enrichDir, "updated-profiles"), { recursive: true });
-      const result = await executeBatches(executorConfig, jobs, join(enrichDir, "updated-profiles"));
+      mkdirSync(outputStepDir, { recursive: true });
+      const result = await executeBatches(executorConfig, jobs, outputStepDir);
       totalLlmCalls += result.completed + result.failed;
       log.info(`  [enrich] Step 6 done: ${result.completed} profiles regenerated`);
 

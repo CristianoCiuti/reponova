@@ -4,17 +4,18 @@
  * Covers: metrics, merge, apply, finalize, batcher, prompts, llm-executor.
  */
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runMetrics } from "../src/pipeline/enrich/metrics.js";
 import { runMerge } from "../src/pipeline/enrich/merge.js";
 import { runApply } from "../src/pipeline/enrich/apply.js";
 import { runFinalize } from "../src/pipeline/enrich/finalize.js";
+import { runPrepare } from "../src/pipeline/enrich/prepare.js";
 import { packBatches, extractNodeCode } from "../src/pipeline/enrich/batcher.js";
 import { buildDescriptionPrompt, buildProfilePrompt, buildRoutingPrompt, buildRestructurePrompt } from "../src/pipeline/enrich/prompts.js";
 import { parseLlmJson } from "../src/pipeline/enrich/llm-executor.js";
-import type { GraphData } from "../src/shared/types.js";
+import type { Config, GraphData } from "../src/shared/types.js";
 
 let testDir: string;
 
@@ -164,18 +165,217 @@ describe("enrich:metrics", () => {
   });
 });
 
+// ─── PREPARE ─────────────────────────────────────────────────────────────────
+
+describe("enrich:prepare", () => {
+  function makeMinimalConfig(repoPath: string): Config {
+    return {
+      output: ".",
+      repos: [{ name: "test-repo", path: repoPath }],
+      models: { cache_dir: "~/.cache/reponova/models", gpu: "auto", threads: 0, download_on_first_use: true },
+      providers: {},
+      patterns: [],
+      exclude: [],
+      exclude_common: true,
+      incremental: true,
+      docs: { enabled: true, patterns: [], exclude: [], max_file_size_kb: 500 },
+      images: { enabled: true, patterns: [], exclude: [], parse_puml: true, parse_svg_text: true },
+      embeddings: { enabled: true, batch_size: 128 },
+      enrich: {
+        enabled: true,
+        threshold: 0.8,
+        max_communities: 0,
+        candidate_threshold: 0.3,
+        description_batch_tokens: 40000,
+        routing_batch_size: 30,
+        concurrency: 4,
+        max_retry_depth: 3,
+      },
+      html: true,
+      outlines: { enabled: true },
+      server: {},
+    } as Config;
+  }
+
+  it("prepares description batches from candidates + graph", () => {
+    const repoDir = join(testDir, "repo");
+    mkdirSync(join(repoDir, "src"), { recursive: true });
+    writeFileSync(join(repoDir, "src", "a.py"), "def login():\n    pass\n");
+    writeFileSync(join(repoDir, "src", "b.py"), "def verify():\n    pass\n");
+    writeFileSync(join(repoDir, "src", "c.py"), "def query():\n    pass\n");
+    writeFileSync(join(repoDir, "src", "d.py"), "def store():\n    pass\n");
+    writeFileSync(join(repoDir, "src", "e.py"), "def helper():\n    pass\n");
+
+    // Graph with repo field set so batcher can resolve file paths
+    const graphData: GraphData = {
+      nodes: [
+        { id: "A", label: "A", type: "function", community: "0", repo: "test-repo", source_file: "src/a.py", start_line: 1, end_line: 2 },
+        { id: "B", label: "B", type: "function", community: "0", repo: "test-repo", source_file: "src/b.py", start_line: 1, end_line: 2 },
+        { id: "C", label: "C", type: "function", community: "1", repo: "test-repo", source_file: "src/c.py", start_line: 1, end_line: 2 },
+        { id: "D", label: "D", type: "function", community: "1", repo: "test-repo", source_file: "src/d.py", start_line: 1, end_line: 2 },
+        { id: "E", label: "E", type: "function", community: "0", repo: "test-repo", source_file: "src/e.py", start_line: 1, end_line: 2 },
+      ],
+      edges: [
+        { source: "A", target: "B", type: "calls" },
+        { source: "A", target: "C", type: "calls" },
+        { source: "B", target: "C", type: "calls" },
+        { source: "B", target: "D", type: "calls" },
+        { source: "E", target: "C", type: "calls" },
+        { source: "E", target: "D", type: "calls" },
+        { source: "C", target: "D", type: "calls" },
+      ],
+    };
+    writeJson(join(testDir, "graph.json"), graphData);
+    mkdirSync(join(testDir, ".cache"), { recursive: true });
+
+    // Run metrics first (creates candidates.json)
+    runMetrics({ outputDir: testDir, candidateThreshold: 0.3 });
+
+    const config = makeMinimalConfig(repoDir);
+    const result = runPrepare({ outputDir: testDir, config, configDir: repoDir }, "descriptions");
+
+    expect(result.step).toBe("descriptions");
+    expect(result.batchCount).toBeGreaterThan(0);
+    expect(existsSync(result.inputDir)).toBe(true);
+
+    // Verify batch files exist
+    const files = readdirSync(result.inputDir).filter(f => f.endsWith(".json"));
+    expect(files.length).toBe(result.batchCount);
+
+    // Verify batch content structure
+    const batch = JSON.parse(readFileSync(join(result.inputDir, files[0]), "utf-8"));
+    expect(batch.batchId).toBeDefined();
+    expect(batch.totalBatches).toBeDefined();
+    expect(batch.items).toBeDefined();
+    expect(Array.isArray(batch.items)).toBe(true);
+  });
+
+  it("cleans stale batch files on repeated call", () => {
+    const repoDir = join(testDir, "repo");
+    mkdirSync(join(repoDir, "src"), { recursive: true });
+    writeFileSync(join(repoDir, "src", "a.py"), "def login():\n    pass\n");
+    writeFileSync(join(repoDir, "src", "b.py"), "def verify():\n    pass\n");
+    writeFileSync(join(repoDir, "src", "c.py"), "def query():\n    pass\n");
+    writeFileSync(join(repoDir, "src", "d.py"), "def store():\n    pass\n");
+    writeFileSync(join(repoDir, "src", "e.py"), "def helper():\n    pass\n");
+
+    const graphData: GraphData = {
+      nodes: [
+        { id: "A", label: "A", type: "function", community: "0", repo: "test-repo", source_file: "src/a.py", start_line: 1, end_line: 2 },
+        { id: "B", label: "B", type: "function", community: "0", repo: "test-repo", source_file: "src/b.py", start_line: 1, end_line: 2 },
+        { id: "C", label: "C", type: "function", community: "1", repo: "test-repo", source_file: "src/c.py", start_line: 1, end_line: 2 },
+        { id: "D", label: "D", type: "function", community: "1", repo: "test-repo", source_file: "src/d.py", start_line: 1, end_line: 2 },
+        { id: "E", label: "E", type: "function", community: "0", repo: "test-repo", source_file: "src/e.py", start_line: 1, end_line: 2 },
+      ],
+      edges: [
+        { source: "A", target: "C", type: "calls" },
+        { source: "B", target: "D", type: "calls" },
+        { source: "E", target: "C", type: "calls" },
+        { source: "E", target: "D", type: "calls" },
+        { source: "C", target: "D", type: "calls" },
+      ],
+    };
+    writeJson(join(testDir, "graph.json"), graphData);
+    mkdirSync(join(testDir, ".cache"), { recursive: true });
+    runMetrics({ outputDir: testDir, candidateThreshold: 0.3 });
+
+    const config = makeMinimalConfig(repoDir);
+
+    // First call
+    const result1 = runPrepare({ outputDir: testDir, config, configDir: repoDir }, "descriptions");
+    expect(result1.batchCount).toBeGreaterThan(0);
+
+    // Plant a stale file that shouldn't survive a second prepare
+    writeFileSync(join(result1.inputDir, "batch-999.json"), JSON.stringify({ stale: true }));
+    expect(existsSync(join(result1.inputDir, "batch-999.json"))).toBe(true);
+
+    // Second call — should wipe stale files
+    const result2 = runPrepare({ outputDir: testDir, config, configDir: repoDir }, "descriptions");
+
+    expect(existsSync(join(result2.inputDir, "batch-999.json"))).toBe(false);
+    // Real batch files should still be there
+    const files = readdirSync(result2.inputDir).filter(f => f.endsWith(".json"));
+    expect(files.length).toBe(result2.batchCount);
+  });
+
+  it("throws when prerequisites are missing", () => {
+    const repoDir = join(testDir, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    const config = makeMinimalConfig(repoDir);
+
+    // No candidates.json → descriptions should fail
+    expect(() => runPrepare({ outputDir: testDir, config, configDir: repoDir }, "descriptions"))
+      .toThrow("Missing prerequisite");
+
+    // No descriptions.json → profiles should fail
+    expect(() => runPrepare({ outputDir: testDir, config, configDir: repoDir }, "profiles"))
+      .toThrow("Missing prerequisite");
+  });
+
+  it("prepares profiles from descriptions + graph", () => {
+    const repoDir = join(testDir, "repo");
+    mkdirSync(repoDir, { recursive: true });
+
+    // Graph with 2 communities of 3+ members each
+    const graphData: GraphData = {
+      nodes: [
+        { id: "A", label: "A", type: "function", community: "auth", source_file: "a.py", start_line: 1, end_line: 5 },
+        { id: "B", label: "B", type: "function", community: "auth", source_file: "b.py", start_line: 1, end_line: 5 },
+        { id: "C", label: "C", type: "function", community: "auth", source_file: "c.py", start_line: 1, end_line: 5 },
+        { id: "D", label: "D", type: "function", community: "data", source_file: "d.py", start_line: 1, end_line: 5 },
+        { id: "E", label: "E", type: "function", community: "data", source_file: "e.py", start_line: 1, end_line: 5 },
+        { id: "F", label: "F", type: "function", community: "data", source_file: "f.py", start_line: 1, end_line: 5 },
+      ],
+      edges: [
+        { source: "A", target: "B", type: "calls" },
+        { source: "B", target: "C", type: "calls" },
+        { source: "D", target: "E", type: "calls" },
+        { source: "E", target: "F", type: "calls" },
+      ],
+    };
+    writeJson(join(testDir, "graph.json"), graphData);
+
+    // Create prerequisite: descriptions.json
+    const enrichDir = join(testDir, ".enrich");
+    mkdirSync(enrichDir, { recursive: true });
+    writeFileSync(join(enrichDir, "descriptions.json"), JSON.stringify([
+      { id: "A", description: "desc A" },
+      { id: "B", description: "desc B" },
+      { id: "C", description: "desc C" },
+      { id: "D", description: "desc D" },
+      { id: "E", description: "desc E" },
+      { id: "F", description: "desc F" },
+    ]));
+
+    const config = makeMinimalConfig(repoDir);
+    const result = runPrepare({ outputDir: testDir, config, configDir: repoDir }, "profiles");
+
+    expect(result.step).toBe("profiles");
+    expect(result.batchCount).toBe(2); // 2 communities with 3+ members
+
+    const files = readdirSync(result.inputDir).filter(f => f.endsWith(".json"));
+    expect(files.length).toBe(2);
+
+    // Verify structure
+    const community = JSON.parse(readFileSync(join(result.inputDir, files[0]), "utf-8"));
+    expect(community.communityId).toBeDefined();
+    expect(community.members).toBeDefined();
+    expect(community.internalEdges).toBeDefined();
+  });
+});
+
 // ─── MERGE ───────────────────────────────────────────────────────────────────
 
 describe("enrich:merge", () => {
   it("merges description batch files into descriptions.json", () => {
     const enrichDir = join(testDir, ".enrich");
-    mkdirSync(join(enrichDir, "descriptions"), { recursive: true });
+    mkdirSync(join(enrichDir, "output", "descriptions"), { recursive: true });
 
-    writeFileSync(join(enrichDir, "descriptions", "batch-001.json"), JSON.stringify([
+    writeFileSync(join(enrichDir, "output", "descriptions", "batch-001.json"), JSON.stringify([
       { id: "A", description: "desc A" },
       { id: "B", description: "desc B" },
     ]));
-    writeFileSync(join(enrichDir, "descriptions", "batch-002.json"), JSON.stringify([
+    writeFileSync(join(enrichDir, "output", "descriptions", "batch-002.json"), JSON.stringify([
       { id: "C", description: "desc C" },
     ]));
 
@@ -190,12 +390,12 @@ describe("enrich:merge", () => {
 
   it("merges profile files into profiles.json", () => {
     const enrichDir = join(testDir, ".enrich");
-    mkdirSync(join(enrichDir, "profiles"), { recursive: true });
+    mkdirSync(join(enrichDir, "output", "profiles"), { recursive: true });
 
-    writeFileSync(join(enrichDir, "profiles", "community-001.json"), JSON.stringify({
+    writeFileSync(join(enrichDir, "output", "profiles", "community-001.json"), JSON.stringify({
       communityId: "0", label: "Auth", profile: "handles auth", misfits: [],
     }));
-    writeFileSync(join(enrichDir, "profiles", "community-002.json"), JSON.stringify({
+    writeFileSync(join(enrichDir, "output", "profiles", "community-002.json"), JSON.stringify({
       communityId: "1", label: "Data", profile: "handles data", misfits: [],
     }));
 
@@ -207,25 +407,25 @@ describe("enrich:merge", () => {
     expect(merged[0].communityId).toBe("0");
   });
 
-  it("throws when batch directory doesn't exist", () => {
-    expect(() => runMerge(testDir, "descriptions")).toThrow("Batch directory not found");
+  it("throws when output batch directory doesn't exist", () => {
+    expect(() => runMerge(testDir, "descriptions")).toThrow("Output batch directory not found");
   });
 
   it("throws when no batch files match pattern", () => {
     const enrichDir = join(testDir, ".enrich");
-    mkdirSync(join(enrichDir, "descriptions"), { recursive: true });
-    writeFileSync(join(enrichDir, "descriptions", "garbage.txt"), "not json");
+    mkdirSync(join(enrichDir, "output", "descriptions"), { recursive: true });
+    writeFileSync(join(enrichDir, "output", "descriptions", "garbage.txt"), "not json");
 
     expect(() => runMerge(testDir, "descriptions")).toThrow("No batch files found");
   });
 
   it("sorts batch files by name before merging", () => {
     const enrichDir = join(testDir, ".enrich");
-    mkdirSync(join(enrichDir, "descriptions"), { recursive: true });
+    mkdirSync(join(enrichDir, "output", "descriptions"), { recursive: true });
 
     // Write in reverse order
-    writeFileSync(join(enrichDir, "descriptions", "batch-003.json"), JSON.stringify([{ id: "C", description: "third" }]));
-    writeFileSync(join(enrichDir, "descriptions", "batch-001.json"), JSON.stringify([{ id: "A", description: "first" }]));
+    writeFileSync(join(enrichDir, "output", "descriptions", "batch-003.json"), JSON.stringify([{ id: "C", description: "third" }]));
+    writeFileSync(join(enrichDir, "output", "descriptions", "batch-001.json"), JSON.stringify([{ id: "A", description: "first" }]));
 
     runMerge(testDir, "descriptions");
     const merged = JSON.parse(readFileSync(join(enrichDir, "descriptions.json"), "utf-8"));

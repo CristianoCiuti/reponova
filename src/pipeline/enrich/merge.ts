@@ -19,11 +19,12 @@ const STEP_CONFIG: Record<MergeStep, { dir: string; pattern: RegExp; finalFile: 
 export function runMerge(outputDir: string, step: MergeStep): { merged: number } {
   const config = STEP_CONFIG[step];
   const enrichDir = join(outputDir, ".enrich");
-  const batchDir = join(enrichDir, config.dir);
+  // Read from output/<step>/ (agent-produced results)
+  const batchDir = join(enrichDir, "output", config.dir);
   const finalPath = join(enrichDir, config.finalFile);
 
   if (!existsSync(batchDir)) {
-    throw new Error(`Batch directory not found: ${batchDir}. Run the corresponding LLM step first.`);
+    throw new Error(`Output batch directory not found: ${batchDir}. Run the corresponding LLM step (or have the agent write results to .enrich/output/${config.dir}/) first.`);
   }
 
   const files = readdirSync(batchDir).filter((f) => config.pattern.test(f)).sort();

@@ -8,6 +8,7 @@ import { installCommand } from "./install/index.js";
 import { modelsCommand } from "./models.js";
 import { enrichCommand } from "./enrich.js";
 import { enrichMetricsCommand } from "./enrich-metrics.js";
+import { enrichPrepareCommand } from "./enrich-prepare.js";
 import { enrichMergeCommand } from "./enrich-merge.js";
 import { enrichApplyCommand } from "./enrich-apply.js";
 import { enrichFinalizeCommand } from "./enrich-finalize.js";
@@ -23,6 +24,7 @@ yargs(hideBin(process.argv))
   .command(modelsCommand)
   .command(enrichCommand)
   .command(enrichMetricsCommand)
+  .command(enrichPrepareCommand)
   .command(enrichMergeCommand)
   .command(enrichApplyCommand)
   .command(enrichFinalizeCommand)

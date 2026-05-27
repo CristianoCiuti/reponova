@@ -15,6 +15,7 @@ import { runMetrics } from "../src/pipeline/enrich/metrics.js";
 import { runMerge } from "../src/pipeline/enrich/merge.js";
 import { runApply } from "../src/pipeline/enrich/apply.js";
 import { runFinalize } from "../src/pipeline/enrich/finalize.js";
+import { runPrepare } from "../src/pipeline/enrich/prepare.js";
 import { hashFile, writeHashFile } from "../src/pipeline/cache/utils.js";
 
 let testDir: string;
@@ -240,13 +241,13 @@ describe("intelligent enrichment E2E", { timeout: 30000 }, () => {
 
   it("enrich:merge concatenates batch files correctly", () => {
     const enrichDir = join(testDir, ".enrich");
-    mkdirSync(join(enrichDir, "descriptions"), { recursive: true });
+    mkdirSync(join(enrichDir, "output", "descriptions"), { recursive: true });
 
-    writeFileSync(join(enrichDir, "descriptions", "batch-001.json"), JSON.stringify([
+    writeFileSync(join(enrichDir, "output", "descriptions", "batch-001.json"), JSON.stringify([
       { id: "auth.login", description: "Handles login" },
       { id: "auth.verify", description: "Verifies credentials" },
     ]));
-    writeFileSync(join(enrichDir, "descriptions", "batch-002.json"), JSON.stringify([
+    writeFileSync(join(enrichDir, "output", "descriptions", "batch-002.json"), JSON.stringify([
       { id: "db.query", description: "Runs database queries" },
     ]));
 
@@ -256,6 +257,30 @@ describe("intelligent enrichment E2E", { timeout: 30000 }, () => {
     const merged = JSON.parse(readFileSync(join(enrichDir, "descriptions.json"), "utf-8"));
     expect(merged).toHaveLength(3);
     expect(merged.map((d: any) => d.id)).toEqual(["auth.login", "auth.verify", "db.query"]);
+  });
+
+  it("enrich:prepare creates input batches and cleans stale files on repeat", () => {
+    const repoDir = join(testDir, "repo");
+    writeSourceFiles(repoDir);
+    writeFileSync(join(testDir, "graph.json"), JSON.stringify(makeGraph()));
+
+    // Run metrics (prerequisite for descriptions)
+    runMetrics({ outputDir: testDir, candidateThreshold: 0.3 });
+
+    const config = makeConfig(repoDir);
+
+    // First prepare call
+    const result1 = runPrepare({ outputDir: testDir, config, configDir: repoDir }, "descriptions");
+    expect(result1.batchCount).toBeGreaterThan(0);
+    expect(existsSync(result1.inputDir)).toBe(true);
+
+    // Plant a stale file
+    writeFileSync(join(result1.inputDir, "batch-999.json"), JSON.stringify({ stale: true }));
+
+    // Second prepare call — stale files removed
+    const result2 = runPrepare({ outputDir: testDir, config, configDir: repoDir }, "descriptions");
+    expect(existsSync(join(result2.inputDir, "batch-999.json"))).toBe(false);
+    expect(result2.batchCount).toBe(result1.batchCount); // same data → same batch count
   });
 
   it("enrich:apply moves nodes and writes modified-communities.json", () => {
