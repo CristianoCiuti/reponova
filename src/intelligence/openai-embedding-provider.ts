@@ -1,9 +1,11 @@
 /**
  * OpenAI-compatible embedding provider.
  *
- * Uses native fetch() (Node 18+). Retries on HTTP 429 only (3 attempts,
- * exponential backoff 1s → 2s → 4s). Fails immediately on other errors.
+ * Uses undici fetch with custom dispatcher to avoid Node.js default 300s
+ * headersTimeout. Retries on HTTP 429 only (3 attempts, exponential
+ * backoff 1s → 2s → 4s). Fails immediately on other errors.
  */
+import { fetch, Agent } from "undici";
 import { log, errorMessage } from "../shared/utils.js";
 import type { EmbeddingProvider } from "./llm-provider.js";
 import type { EmbeddingResult } from "./embeddings.js";
@@ -24,9 +26,15 @@ export class OpenAiEmbeddingProvider implements EmbeddingProvider {
   private options: OpenAiEmbeddingProviderOptions;
   private resolvedApiKey: string | undefined;
   private available = false;
+  private dispatcher: Agent;
 
   constructor(options: OpenAiEmbeddingProviderOptions) {
     this.options = options;
+    this.dispatcher = new Agent({
+      headersTimeout: options.timeout * 1000,
+      bodyTimeout: options.timeout * 1000,
+      connectTimeout: 30_000,
+    });
   }
 
   async initialize(): Promise<boolean> {
@@ -90,6 +98,7 @@ export class OpenAiEmbeddingProvider implements EmbeddingProvider {
           headers,
           body,
           signal: controller.signal,
+          dispatcher: this.dispatcher,
         });
 
         clearTimeout(timeoutId);
@@ -144,6 +153,7 @@ export class OpenAiEmbeddingProvider implements EmbeddingProvider {
 
   async dispose(): Promise<void> {
     this.available = false;
+    await this.dispatcher.close();
   }
 
   get isAvailable(): boolean {

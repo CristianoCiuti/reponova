@@ -34,6 +34,7 @@
     "jsonc-parser": "^3.3.1",
     "picomatch": "^4.0.4",
     "sql.js": "^1.11.0",
+    "undici": "^8.3.0",
     "web-tree-sitter": "^0.25.10",
     "yargs": "^17.7.0",
     "zod": "^3.22.0"

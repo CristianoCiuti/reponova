@@ -1,9 +1,12 @@
 /**
  * OpenAI-compatible LLM provider.
  *
- * Uses native fetch() (Node 18+). No retry on any error — returns null
- * and lets the generator fall back to algorithmic per-item.
+ * Uses undici fetch with custom dispatcher to avoid Node.js default 300s
+ * headersTimeout (which silently kills long-running LLM requests).
+ * No retry on any error — returns null and lets the generator fall back
+ * to algorithmic per-item.
  */
+import { fetch, Agent } from "undici";
 import { log, errorMessage } from "../shared/utils.js";
 import type { LlmProvider, LlmCompletionOptions } from "./llm-provider.js";
 
@@ -18,9 +21,15 @@ export class OpenAiLlmProvider implements LlmProvider {
   private options: OpenAiLlmProviderOptions;
   private resolvedApiKey: string | undefined;
   private available = false;
+  private dispatcher: Agent;
 
   constructor(options: OpenAiLlmProviderOptions) {
     this.options = options;
+    this.dispatcher = new Agent({
+      headersTimeout: options.timeout * 1000,
+      bodyTimeout: options.timeout * 1000,
+      connectTimeout: 30_000,
+    });
   }
 
   async initialize(): Promise<boolean> {
@@ -70,6 +79,7 @@ export class OpenAiLlmProvider implements LlmProvider {
         headers,
         body,
         signal: controller.signal,
+        dispatcher: this.dispatcher,
       });
 
       clearTimeout(timeoutId);
@@ -98,6 +108,7 @@ export class OpenAiLlmProvider implements LlmProvider {
 
   async dispose(): Promise<void> {
     this.available = false;
+    await this.dispatcher.close();
   }
 
   get isAvailable(): boolean {
