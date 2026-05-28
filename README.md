@@ -743,12 +743,12 @@ enrich:
   # Per-step max_tokens sent to the LLM provider (intelligent mode)
   # Controls the maximum output length for each enrichment step independently.
   # Type: object { descriptions, profiles, routing, restructure }
-  # Default: { descriptions: 2048, profiles: 1024, routing: 2048, restructure: 2048 }
-  # max_tokens:
-  #   descriptions: 2048            # node description batches
-  #   profiles: 1024                # community profiling
-  #   routing: 2048                 # routing decision batches
-  #   restructure: 2048             # merge/split detection
+  # Default: { descriptions: 32768, profiles: 2048, routing: 8192, restructure: 4096 }
+  max_tokens:
+    descriptions: 32768            # node description batches (scales with batch input)
+    profiles: 2048                 # community profiling (single object, bounded)
+    routing: 8192                  # routing decision batches (scales with routing_batch_size)
+    restructure: 4096              # merge/split detection
 
   # Profile generation limits (intelligent mode)
   # Controls how many nodes/edges are included in the community profile prompt.

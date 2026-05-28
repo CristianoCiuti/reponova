@@ -437,10 +437,10 @@ export const DEFAULT_CONFIG: Config = {
     concurrency: 4,
     max_retry_depth: 3,
     max_tokens: {
-      descriptions: 2048,
-      profiles: 1024,
-      routing: 2048,
-      restructure: 2048,
+      descriptions: 32768,
+      profiles: 2048,
+      routing: 8192,
+      restructure: 4096,
     },
     profile: {
       max_nodes: 80,

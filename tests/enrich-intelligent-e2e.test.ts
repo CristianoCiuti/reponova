@@ -81,7 +81,7 @@ function makeConfig(repoDir: string): Config {
       routing_batch_size: 30,
       concurrency: 2,
       max_retry_depth: 1,
-      max_tokens: { descriptions: 2048, profiles: 1024, routing: 2048, restructure: 2048 },
+      max_tokens: { descriptions: 32768, profiles: 2048, routing: 8192, restructure: 4096 },
       profile: { max_nodes: 80, max_edges: 50 },
       restructure_max_pairs: 20,
     },

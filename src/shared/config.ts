@@ -49,10 +49,10 @@ const EmbeddingsConfigSchema = z.object({
 });
 
 const EnrichMaxTokensSchema = z.object({
-  descriptions: z.number().min(1).default(2048),
-  profiles: z.number().min(1).default(1024),
-  routing: z.number().min(1).default(2048),
-  restructure: z.number().min(1).default(2048),
+  descriptions: z.number().min(1).default(32768),
+  profiles: z.number().min(1).default(2048),
+  routing: z.number().min(1).default(8192),
+  restructure: z.number().min(1).default(4096),
 });
 
 const EnrichProfileSchema = z.object({

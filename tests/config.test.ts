@@ -49,10 +49,10 @@ describe("loadConfig", () => {
     try {
       const { config } = loadConfig(undefined);
       expect(config.enrich.max_tokens).toEqual({
-        descriptions: 2048,
-        profiles: 1024,
-        routing: 2048,
-        restructure: 2048,
+        descriptions: 32768,
+        profiles: 2048,
+        routing: 8192,
+        restructure: 4096,
       });
     } finally {
       process.chdir(originalCwd);

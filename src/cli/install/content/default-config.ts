@@ -60,10 +60,10 @@ enrich:
   # max_communities: 0            # 0 = no limit; N = only top N largest communities
   # provider: local-llm           # uncomment for LLM-enhanced enrichments
   # max_tokens:                   # per-step LLM output token limits
-  #   descriptions: 2048
-  #   profiles: 1024
-  #   routing: 2048
-  #   restructure: 2048
+  #   descriptions: 32768
+  #   profiles: 2048
+  #   routing: 8192
+  #   restructure: 4096
   # profile:                      # community profile prompt limits
   #   max_nodes: 80
   #   max_edges: 50
