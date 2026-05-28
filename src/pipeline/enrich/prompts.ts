@@ -27,7 +27,11 @@ export function buildProfilePrompt(
   communityId: string,
   memberDescriptions: Array<{ id: string; description: string }>,
   internalEdges: Array<{ source: string; target: string; type: string }>,
+  limits?: { maxNodes?: number; maxEdges?: number },
 ): { system: string; user: string } {
+  const maxNodes = limits?.maxNodes ?? 80;
+  const maxEdges = limits?.maxEdges ?? 50;
+
   const system = `You are profiling a code community (cluster of related symbols). Provide:
 1. label: 3-5 words naming the community's purpose
 2. profile: 30-50 words describing architectural role
@@ -36,18 +40,18 @@ Output as JSON: {"communityId": "${communityId}", "label": "...", "profile": "..
 
   const userParts: string[] = [`This community (${communityId}) contains ${memberDescriptions.length} nodes:\n`];
   userParts.push("Nodes:");
-  for (const m of memberDescriptions.slice(0, 80)) {
+  for (const m of memberDescriptions.slice(0, maxNodes)) {
     userParts.push(`- ${m.id}: "${m.description}"`);
   }
-  if (memberDescriptions.length > 80) {
-    userParts.push(`... and ${memberDescriptions.length - 80} more nodes`);
+  if (memberDescriptions.length > maxNodes) {
+    userParts.push(`... and ${memberDescriptions.length - maxNodes} more nodes`);
   }
   userParts.push("\nInternal edges:");
-  for (const e of internalEdges.slice(0, 50)) {
+  for (const e of internalEdges.slice(0, maxEdges)) {
     userParts.push(`- ${e.source} \u2192 ${e.target} (${e.type})`);
   }
-  if (internalEdges.length > 50) {
-    userParts.push(`... and ${internalEdges.length - 50} more edges`);
+  if (internalEdges.length > maxEdges) {
+    userParts.push(`... and ${internalEdges.length - maxEdges} more edges`);
   }
   userParts.push("\nProvide: label, profile, misfits.");
 

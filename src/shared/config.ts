@@ -48,6 +48,18 @@ const EmbeddingsConfigSchema = z.object({
   batch_size: z.number().default(128),
 });
 
+const EnrichMaxTokensSchema = z.object({
+  descriptions: z.number().min(1).default(2048),
+  profiles: z.number().min(1).default(1024),
+  routing: z.number().min(1).default(2048),
+  restructure: z.number().min(1).default(2048),
+});
+
+const EnrichProfileSchema = z.object({
+  max_nodes: z.number().min(1).default(80),
+  max_edges: z.number().min(1).default(50),
+});
+
 const EnrichConfigSchema = z.object({
   enabled: z.boolean().default(true),
   provider: z.string().optional(),
@@ -58,6 +70,9 @@ const EnrichConfigSchema = z.object({
   routing_batch_size: z.number().default(30),
   concurrency: z.number().min(1).default(4),
   max_retry_depth: z.number().min(0).default(3),
+  max_tokens: EnrichMaxTokensSchema.default({}),
+  profile: EnrichProfileSchema.default({}),
+  restructure_max_pairs: z.number().min(1).default(20),
 });
 
 const OutlineConfigSchema = z.object({

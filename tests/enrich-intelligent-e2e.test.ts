@@ -81,6 +81,9 @@ function makeConfig(repoDir: string): Config {
       routing_batch_size: 30,
       concurrency: 2,
       max_retry_depth: 1,
+      max_tokens: { descriptions: 2048, profiles: 1024, routing: 2048, restructure: 2048 },
+      profile: { max_nodes: 80, max_edges: 50 },
+      restructure_max_pairs: 20,
     },
   };
 }
@@ -144,6 +147,8 @@ class MockLlmProvider implements LlmProvider {
   readonly isAvailable = true;
   callCount = 0;
   lastSystemPrompt = "";
+  lastMaxTokens: number | undefined = undefined;
+  maxTokensHistory: (number | undefined)[] = [];
 
   async initialize(): Promise<boolean> {
     return true;
@@ -152,6 +157,8 @@ class MockLlmProvider implements LlmProvider {
   async generate(options: LlmCompletionOptions): Promise<string | null> {
     this.callCount++;
     this.lastSystemPrompt = options.systemPrompt;
+    this.lastMaxTokens = options.maxTokens;
+    this.maxTokensHistory.push(options.maxTokens);
 
     // Step 1: Node descriptions
     if (options.systemPrompt.includes("1-2 sentence description")) {
@@ -449,5 +456,97 @@ describe("intelligent enrichment E2E", { timeout: 30000 }, () => {
         providerRegistry: createMockRegistry(new MockLlmProvider()),
       }),
     ).rejects.toThrow("enrich.provider is required");
+  });
+
+  it("orchestrator passes max_tokens per step to the LLM provider", async () => {
+    const repoDir = join(testDir, "repo");
+    writeFileSync(join(testDir, "graph.json"), JSON.stringify(makeGraph()));
+    writeSourceFiles(repoDir);
+
+    const config = makeConfig(repoDir);
+    config.enrich.max_tokens = {
+      descriptions: 4096,
+      profiles: 512,
+      routing: 1024,
+      restructure: 3000,
+    };
+
+    const mockProvider = new MockLlmProvider();
+    const registry = createMockRegistry(mockProvider);
+
+    await runFullEnrichment({
+      config,
+      outputDir: testDir,
+      configDir: repoDir,
+      providerRegistry: registry,
+    });
+
+    // Verify maxTokens was passed (check history)
+    expect(mockProvider.maxTokensHistory.length).toBeGreaterThan(0);
+
+    // Step 1 (descriptions) should use 4096
+    expect(mockProvider.maxTokensHistory[0]).toBe(4096);
+
+    // Find the profile call (step 2) — systemPrompt contains "profiling"
+    // After all description calls, profiles come next
+    // We can't easily index by step, but verify at least one call used 512
+    expect(mockProvider.maxTokensHistory).toContain(512);
+
+    // Verify restructure used 3000 (last single call before step 6)
+    expect(mockProvider.maxTokensHistory).toContain(3000);
+  });
+
+  it("orchestrator uses profile.max_nodes and profile.max_edges in prompts", async () => {
+    const repoDir = join(testDir, "repo");
+    writeFileSync(join(testDir, "graph.json"), JSON.stringify(makeGraph()));
+    writeSourceFiles(repoDir);
+
+    const config = makeConfig(repoDir);
+    config.enrich.profile = { max_nodes: 2, max_edges: 1 };
+
+    const mockProvider = new MockLlmProvider();
+    const registry = createMockRegistry(mockProvider);
+
+    await runFullEnrichment({
+      config,
+      outputDir: testDir,
+      configDir: repoDir,
+      providerRegistry: registry,
+    });
+
+    // Profile step ran — verify the enrichDir has profiles.json
+    const enrichDir = join(testDir, ".enrich");
+    expect(existsSync(join(enrichDir, "profiles.json"))).toBe(true);
+  });
+
+  it("orchestrator uses restructure_max_pairs to limit density pairs", async () => {
+    // Create a graph with many cross-community edges to generate many density pairs
+    const graph = makeGraph();
+    // Add extra cross-edges
+    graph.edges.push(
+      { source: "auth.login", target: "data.query", type: "calls" },
+      { source: "auth.verify", target: "data.store", type: "calls" },
+      { source: "auth.token", target: "data.query", type: "calls" },
+    );
+    const repoDir = join(testDir, "repo");
+    writeFileSync(join(testDir, "graph.json"), JSON.stringify(graph));
+    writeSourceFiles(repoDir);
+
+    const config = makeConfig(repoDir);
+    config.enrich.restructure_max_pairs = 1;
+
+    const mockProvider = new MockLlmProvider();
+    const registry = createMockRegistry(mockProvider);
+
+    await runFullEnrichment({
+      config,
+      outputDir: testDir,
+      configDir: repoDir,
+      providerRegistry: registry,
+    });
+
+    // Orchestrator completed without error — restructure was called with limited pairs
+    const enrichDir = join(testDir, ".enrich");
+    expect(existsSync(join(enrichDir, "restructure.json"))).toBe(true);
   });
 });

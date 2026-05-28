@@ -41,7 +41,7 @@ export function runPrepare(options: PrepareOptions, step: PrepareStep): PrepareR
     case "routing":
       return prepareRouting(enrichDir, outputDir, config);
     case "restructure":
-      return prepareRestructure(enrichDir, outputDir);
+      return prepareRestructure(enrichDir, outputDir, config);
     case "updated-profiles":
       return prepareUpdatedProfiles(enrichDir);
     default:
@@ -260,7 +260,7 @@ function prepareRouting(enrichDir: string, outputDir: string, config: Config): P
 
 // ─── Step 4: Restructure ─────────────────────────────────────────────────────
 
-function prepareRestructure(enrichDir: string, outputDir: string): PrepareResult {
+function prepareRestructure(enrichDir: string, outputDir: string, config: Config): PrepareResult {
   const profilesPath = join(enrichDir, "profiles.json");
   const edgeDensityPath = join(enrichDir, "edge-density.json");
   const routingPath = join(enrichDir, "routing.json");
@@ -308,7 +308,7 @@ function prepareRestructure(enrichDir: string, outputDir: string): PrepareResult
   // Single input file with full context
   atomicWriteJson(join(inputDir, "restructure-input.json"), {
     profiles: profiles.map((p) => ({ communityId: p.communityId, label: p.label, profile: p.profile })),
-    topEdgeDensityPairs: edgeDensity.pairs.slice(0, 20),
+    topEdgeDensityPairs: edgeDensity.pairs.slice(0, config.enrich.restructure_max_pairs),
     gainedNodes: Object.fromEntries(gainedNodes),
     sizeOutliers,
   });

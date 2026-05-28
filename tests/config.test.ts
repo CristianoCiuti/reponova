@@ -41,6 +41,53 @@ describe("loadConfig", () => {
     }
   });
 
+  it("returns default enrich.max_tokens per step", () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "rn-test-config-"));
+    tmpDirs.push(tmpDir);
+    const originalCwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      const { config } = loadConfig(undefined);
+      expect(config.enrich.max_tokens).toEqual({
+        descriptions: 2048,
+        profiles: 1024,
+        routing: 2048,
+        restructure: 2048,
+      });
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("returns default enrich.profile limits", () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "rn-test-config-"));
+    tmpDirs.push(tmpDir);
+    const originalCwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      const { config } = loadConfig(undefined);
+      expect(config.enrich.profile).toEqual({
+        max_nodes: 80,
+        max_edges: 50,
+      });
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("returns default enrich.restructure_max_pairs", () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "rn-test-config-"));
+    tmpDirs.push(tmpDir);
+    const originalCwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      const { config } = loadConfig(undefined);
+      expect(config.enrich.restructure_max_pairs).toBe(20);
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
   it("throws on non-existent explicit path", () => {
     expect(() => loadConfig("/nonexistent/path/config.yml")).toThrow("Config file not found");
   });

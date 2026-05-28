@@ -190,6 +190,9 @@ describe("enrich:prepare", () => {
         routing_batch_size: 30,
         concurrency: 4,
         max_retry_depth: 3,
+        max_tokens: { descriptions: 2048, profiles: 1024, routing: 2048, restructure: 2048 },
+        profile: { max_nodes: 80, max_edges: 50 },
+        restructure_max_pairs: 20,
       },
       html: true,
       outlines: { enabled: true },
@@ -361,6 +364,56 @@ describe("enrich:prepare", () => {
     expect(community.communityId).toBeDefined();
     expect(community.members).toBeDefined();
     expect(community.internalEdges).toBeDefined();
+  });
+
+  it("prepareRestructure respects config.enrich.restructure_max_pairs", () => {
+    const repoDir = join(testDir, "repo");
+    mkdirSync(repoDir, { recursive: true });
+
+    const graphData: GraphData = {
+      nodes: [
+        { id: "A", label: "A", type: "function", community: "0" },
+        { id: "B", label: "B", type: "function", community: "0" },
+        { id: "C", label: "C", type: "function", community: "0" },
+        { id: "D", label: "D", type: "function", community: "1" },
+        { id: "E", label: "E", type: "function", community: "1" },
+        { id: "F", label: "F", type: "function", community: "1" },
+      ],
+      edges: [
+        { source: "A", target: "D", type: "calls" },
+        { source: "B", target: "E", type: "calls" },
+      ],
+    };
+    writeJson(join(testDir, "graph.json"), graphData);
+
+    const enrichDir = join(testDir, ".enrich");
+    mkdirSync(enrichDir, { recursive: true });
+
+    // Create prerequisites
+    writeJson(join(enrichDir, "profiles.json"), [
+      { communityId: "0", label: "Auth", profile: "auth stuff", misfits: [] },
+      { communityId: "1", label: "Data", profile: "data stuff", misfits: [] },
+    ]);
+    // Generate 30 edge-density pairs
+    const pairs = Array.from({ length: 30 }, (_, i) => ({
+      communityA: `c${i}`, communityB: `c${i + 1}`, edgeCount: 30 - i,
+    }));
+    writeJson(join(enrichDir, "edge-density.json"), { pairs });
+    writeJson(join(enrichDir, "routing.json"), []);
+
+    // Set restructure_max_pairs to 5
+    const config = makeMinimalConfig(repoDir);
+    config.enrich.restructure_max_pairs = 5;
+
+    const result = runPrepare({ outputDir: testDir, config, configDir: repoDir }, "restructure");
+    expect(result.step).toBe("restructure");
+    expect(result.batchCount).toBe(1);
+
+    // Verify the input file only contains 5 pairs (not 30)
+    const input = JSON.parse(readFileSync(join(result.inputDir, "restructure-input.json"), "utf-8"));
+    expect(input.topEdgeDensityPairs).toHaveLength(5);
+    expect(input.topEdgeDensityPairs[0].communityA).toBe("c0");
+    expect(input.topEdgeDensityPairs[4].communityA).toBe("c4");
   });
 });
 
@@ -742,6 +795,32 @@ describe("prompts", () => {
     expect(user).toContain("Nodes:");
     expect(user).toContain("handles auth");
     expect(user).toContain("Internal edges:");
+  });
+
+  it("buildProfilePrompt respects custom maxNodes limit", () => {
+    const members = Array.from({ length: 100 }, (_, i) => ({ id: `N${i}`, description: `desc ${i}` }));
+    const edges = Array.from({ length: 10 }, (_, i) => ({ source: `N${i}`, target: `N${i + 1}`, type: "calls" }));
+
+    // Default (80)
+    const { user: defaultUser } = buildProfilePrompt("0", members, edges);
+    expect(defaultUser).toContain("... and 20 more nodes");
+
+    // Custom limit (5)
+    const { user: limitedUser } = buildProfilePrompt("0", members, edges, { maxNodes: 5 });
+    expect(limitedUser).toContain("... and 95 more nodes");
+    // Only 5 nodes should appear
+    expect(limitedUser).toContain("N0");
+    expect(limitedUser).toContain("N4");
+    expect(limitedUser).not.toContain("- N5:");
+  });
+
+  it("buildProfilePrompt respects custom maxEdges limit", () => {
+    const members = [{ id: "A", description: "x" }];
+    const edges = Array.from({ length: 100 }, (_, i) => ({ source: `N${i}`, target: `N${i + 1}`, type: "calls" }));
+
+    // Custom limit (3)
+    const { user } = buildProfilePrompt("0", members, edges, { maxEdges: 3 });
+    expect(user).toContain("... and 97 more edges");
   });
 
   it("buildRoutingPrompt includes community profiles and candidates", () => {

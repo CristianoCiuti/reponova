@@ -183,6 +183,18 @@ export interface VectorMetaModels {
   download_on_first_use: boolean;
 }
 
+export interface EnrichMaxTokens {
+  descriptions: number;
+  profiles: number;
+  routing: number;
+  restructure: number;
+}
+
+export interface EnrichProfileLimits {
+  max_nodes: number;
+  max_edges: number;
+}
+
 export interface EnrichConfig {
   enabled: boolean;
   provider?: string;
@@ -193,6 +205,9 @@ export interface EnrichConfig {
   routing_batch_size: number;
   concurrency: number;
   max_retry_depth: number;
+  max_tokens: EnrichMaxTokens;
+  profile: EnrichProfileLimits;
+  restructure_max_pairs: number;
 }
 
 /** Outline config — simplified. File selection comes from top-level patterns. */
@@ -421,6 +436,17 @@ export const DEFAULT_CONFIG: Config = {
     routing_batch_size: 30,
     concurrency: 4,
     max_retry_depth: 3,
+    max_tokens: {
+      descriptions: 2048,
+      profiles: 1024,
+      routing: 2048,
+      restructure: 2048,
+    },
+    profile: {
+      max_nodes: 80,
+      max_edges: 50,
+    },
+    restructure_max_pairs: 20,
   },
   outlines: {
     enabled: true,

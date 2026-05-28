@@ -67,7 +67,7 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
     const outputStepDir = join(enrichDir, "output", "descriptions");
     const jobs: BatchJob<DescriptionEntry[]>[] = batches.map((batch) => ({
       batchId: batch.id,
-      prompt: buildDescriptionPrompt(batch.items),
+      prompt: { ...buildDescriptionPrompt(batch.items), maxTokens: enrichConfig.max_tokens.descriptions },
       outputPath: join(outputStepDir, `batch-${String(batch.id).padStart(3, "0")}.json`),
       parse: (raw) => parseLlmJson<DescriptionEntry[]>(raw),
     }));
@@ -118,7 +118,13 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
       const edges = commEdges.get(commId) ?? [];
       jobs.push({
         batchId,
-        prompt: buildProfilePrompt(commId, members, edges),
+        prompt: {
+          ...buildProfilePrompt(commId, members, edges, {
+            maxNodes: enrichConfig.profile.max_nodes,
+            maxEdges: enrichConfig.profile.max_edges,
+          }),
+          maxTokens: enrichConfig.max_tokens.profiles,
+        },
         outputPath: join(outputStepDir, `community-${String(batchId).padStart(3, "0")}.json`),
         parse: (raw) => parseLlmJson<CommunityProfile>(raw),
       });
@@ -194,7 +200,7 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
       const batchId = Math.floor(i / batchSize) + 1;
       jobs.push({
         batchId,
-        prompt: buildRoutingPrompt(batch, profileMap),
+        prompt: { ...buildRoutingPrompt(batch, profileMap), maxTokens: enrichConfig.max_tokens.routing },
         outputPath: join(outputStepDir, `batch-${String(batchId).padStart(3, "0")}.json`),
         parse: (raw) => parseLlmJson<RoutingDecision[]>(raw),
       });
@@ -240,12 +246,12 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
 
     const prompt = buildRestructurePrompt(
       profiles,
-      edgeDensity.pairs.slice(0, 20),
+      edgeDensity.pairs.slice(0, enrichConfig.restructure_max_pairs),
       gainedNodes,
       sizeOutliers,
     );
 
-    const raw = await executeSingle(executorConfig, prompt);
+    const raw = await executeSingle(executorConfig, { ...prompt, maxTokens: enrichConfig.max_tokens.restructure });
     const restructure = parseLlmJson<RestructureFile>(raw);
     totalLlmCalls++;
 
@@ -299,7 +305,13 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
 
         jobs.push({
           batchId,
-          prompt: buildProfilePrompt(commId, members, commEdges),
+          prompt: {
+            ...buildProfilePrompt(commId, members, commEdges, {
+              maxNodes: enrichConfig.profile.max_nodes,
+              maxEdges: enrichConfig.profile.max_edges,
+            }),
+            maxTokens: enrichConfig.max_tokens.profiles,
+          },
           outputPath: join(outputStepDir, `community-${String(batchId).padStart(3, "0")}.json`),
           parse: (raw) => parseLlmJson<CommunityProfile>(raw),
         });

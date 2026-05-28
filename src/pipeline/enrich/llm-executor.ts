@@ -10,6 +10,7 @@ import { log } from "../../shared/utils.js";
 export interface LlmCallOptions {
   system: string;
   user: string;
+  maxTokens?: number;
 }
 
 export interface ExecutorConfig {
@@ -25,6 +26,7 @@ async function callLlm(config: ExecutorConfig, options: LlmCallOptions): Promise
   const result = await config.provider.generate({
     systemPrompt: options.system,
     userPrompt: options.user,
+    maxTokens: options.maxTokens,
     temperature: 0,
   });
   if (result === null) {
