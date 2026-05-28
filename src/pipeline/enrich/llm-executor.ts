@@ -5,7 +5,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import type { LlmProvider } from "../../intelligence/llm-provider.js";
-import { log } from "../../shared/utils.js";
+import { errorMessage, log } from "../../shared/utils.js";
 
 export interface LlmCallOptions {
   system: string;
@@ -21,18 +21,15 @@ export interface ExecutorConfig {
 
 /**
  * Execute a single LLM call. Returns the raw text response.
+ * Throws on failure — error message describes the reason.
  */
 async function callLlm(config: ExecutorConfig, options: LlmCallOptions): Promise<string> {
-  const result = await config.provider.generate({
+  return config.provider.generate({
     systemPrompt: options.system,
     userPrompt: options.user,
     maxTokens: options.maxTokens,
     temperature: 0,
   });
-  if (result === null) {
-    throw new Error("LLM provider returned null (unavailable or initialization failed)");
-  }
-  return result;
 }
 
 /**
@@ -103,12 +100,13 @@ export async function executeBatches<T>(
             return;
           } catch (err) {
             attempts++;
+            const reason = errorMessage(err);
             if (attempts > config.maxRetryDepth) {
-              log.warn(`    Batch ${job.batchId} failed after ${attempts} attempts: ${err instanceof Error ? err.message : String(err)}`);
+              log.warn(`    Batch ${job.batchId} failed after ${attempts} attempts: ${reason}`);
               failed++;
               return;
             }
-            log.info(`    Batch ${job.batchId} retry ${attempts}/${config.maxRetryDepth}`);
+            log.info(`    Batch ${job.batchId} retry ${attempts}/${config.maxRetryDepth} — ${reason}`);
           }
         }
       })().finally(() => {

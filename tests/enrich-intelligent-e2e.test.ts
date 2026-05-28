@@ -154,7 +154,7 @@ class MockLlmProvider implements LlmProvider {
     return true;
   }
 
-  async generate(options: LlmCompletionOptions): Promise<string | null> {
+  async generate(options: LlmCompletionOptions): Promise<string> {
     this.callCount++;
     this.lastSystemPrompt = options.systemPrompt;
     this.lastMaxTokens = options.maxTokens;

@@ -85,13 +85,12 @@ describe("OpenAiLlmProvider timeout", () => {
     await provider.initialize();
 
     const start = Date.now();
-    const result = await provider.generate({
+    await expect(provider.generate({
       systemPrompt: "You are a test",
       userPrompt: "Say hello",
-    });
+    })).rejects.toThrow("Request timed out after 1s");
     const elapsed = Date.now() - start;
 
-    expect(result).toBeNull();
     // Should abort around 1s, not 300s
     expect(elapsed).toBeLessThan(3000);
     await provider.dispose();
@@ -128,7 +127,7 @@ describe("OpenAiLlmProvider timeout", () => {
     await provider.dispose();
   });
 
-  it("returns null on HTTP error", async () => {
+  it("throws on HTTP error", async () => {
     const { server: s, port } = await startMockServer((_req, res) => {
       res.writeHead(500);
       res.end("Internal Server Error");
@@ -142,12 +141,10 @@ describe("OpenAiLlmProvider timeout", () => {
     });
     await provider.initialize();
 
-    const result = await provider.generate({
+    await expect(provider.generate({
       systemPrompt: "test",
       userPrompt: "test",
-    });
-
-    expect(result).toBeNull();
+    })).rejects.toThrow("HTTP 500");
     await provider.dispose();
   });
 

@@ -119,8 +119,10 @@ export class LlmEngine implements LlmProvider {
     }
   }
 
-  async generate(options: LlmCompletionOptions): Promise<string | null> {
-    if (!this.available || !this.sequence || !this.ChatSession) return null;
+  async generate(options: LlmCompletionOptions): Promise<string> {
+    if (!this.available || !this.sequence || !this.ChatSession) {
+      throw new Error("LLM engine not available (not initialized or initialization failed)");
+    }
 
     try {
       this.sequence.clearHistory();
@@ -139,8 +141,7 @@ export class LlmEngine implements LlmProvider {
       return result;
     } catch (err) {
       const msg = errorMessage(err);
-      log.warn(`LLM generation failed: ${msg}`);
-      return null;
+      throw new Error(`LLM generation failed: ${msg}`);
     }
   }
 

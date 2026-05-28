@@ -3,8 +3,7 @@
  *
  * Uses undici fetch with custom dispatcher to avoid Node.js default 300s
  * headersTimeout (which silently kills long-running LLM requests).
- * No retry on any error — returns null and lets the generator fall back
- * to algorithmic per-item.
+ * Throws on any error with a descriptive message — callers handle retry.
  */
 import { fetch, Agent } from "undici";
 import { log, errorMessage } from "../shared/utils.js";
@@ -49,8 +48,10 @@ export class OpenAiLlmProvider implements LlmProvider {
     return true;
   }
 
-  async generate(options: LlmCompletionOptions): Promise<string | null> {
-    if (!this.available) return null;
+  async generate(options: LlmCompletionOptions): Promise<string> {
+    if (!this.available) {
+      throw new Error("Provider not available (not initialized or initialization failed)");
+    }
 
     const url = `${this.options.baseUrl.replace(/\/+$/, "")}/chat/completions`;
     const headers: Record<string, string> = {
@@ -85,24 +86,29 @@ export class OpenAiLlmProvider implements LlmProvider {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        log.warn(`OpenAI LLM: HTTP ${response.status} from ${url}`);
-        return null;
+        throw new Error(`HTTP ${response.status} from ${url}`);
       }
 
       const json = await response.json() as {
         choices?: Array<{ message?: { content?: string } }>;
       };
 
-      const content = json.choices?.[0]?.message?.content;
-      return content?.trim() ?? null;
+      const content = json.choices?.[0]?.message?.content?.trim();
+      if (!content) {
+        throw new Error("Empty response from LLM (no content in choices)");
+      }
+      return content;
     } catch (err) {
+      // Re-throw our own errors (HTTP status, empty response)
+      if (err instanceof Error && (err.message.startsWith("HTTP ") || err.message.startsWith("Empty response"))) {
+        throw err;
+      }
+      // Wrap network/abort errors with context
       const msg = errorMessage(err);
       if (msg.includes("abort")) {
-        log.warn(`OpenAI LLM: request timed out after ${this.options.timeout}s`);
-      } else {
-        log.warn(`OpenAI LLM: request failed: ${msg}`);
+        throw new Error(`Request timed out after ${this.options.timeout}s`);
       }
-      return null;
+      throw new Error(`Request failed: ${msg}`);
     }
   }
 
