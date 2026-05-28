@@ -14,7 +14,7 @@ import {
   posixBasename,
 } from "../src/shared/paths.js";
 import { readJsonSafe, readJsonOr } from "../src/shared/fs.js";
-import { errorMessage, ProgressTimer } from "../src/shared/utils.js";
+import { errorMessage, ProgressTimer, countTokens } from "../src/shared/utils.js";
 import {
   atomicWriteJson,
   atomicWriteText,
@@ -367,5 +367,39 @@ describe("shared/community-labels", () => {
       const labels = loadCommunityLabels(tmpDir);
       expect(labels.size).toBe(0);
     });
+  });
+});
+
+// ─── countTokens ─────────────────────────────────────────────────────────────
+
+describe("countTokens", () => {
+  it("uses js-tiktoken (not fallback) and returns accurate token counts", () => {
+    // "hello world" is 2 tokens with gpt-4o tokenizer
+    // The fallback (Math.ceil(11/4)) would return 3
+    const result = countTokens("hello world");
+    expect(result).toBe(2);
+  });
+
+  it("counts code tokens accurately", () => {
+    const code = `function add(a, b) { return a + b; }`;
+    const tokens = countTokens(code);
+    // tiktoken gives a precise count; fallback would give Math.ceil(36/4) = 9
+    // tiktoken for gpt-4o gives ~12 tokens for this code
+    expect(tokens).toBeGreaterThan(5);
+    expect(tokens).toBeLessThan(20);
+    // Key assertion: NOT the fallback value
+    expect(tokens).not.toBe(Math.ceil(code.length / 4));
+  });
+
+  it("handles empty string", () => {
+    expect(countTokens("")).toBe(0);
+  });
+
+  it("handles multiline code", () => {
+    const code = `class Foo:\n    def bar(self):\n        return 42\n`;
+    const tokens = countTokens(code);
+    expect(tokens).toBeGreaterThan(0);
+    // Must differ from naive estimate for this input
+    expect(tokens).not.toBe(Math.ceil(code.length / 4));
   });
 });

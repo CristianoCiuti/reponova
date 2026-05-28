@@ -88,6 +88,35 @@ export function truncate(s: string, maxLen: number): string {
   return s.slice(0, maxLen - 3) + "...";
 }
 
+// ─── Token counting ─────────────────────────────────────────────────────────
+
+let tokenEncoder: { encode: (text: string) => number[] } | null = null;
+let tokenEncoderResolved = false;
+
+/**
+ * Count tokens using js-tiktoken (gpt-4o tokenizer).
+ * Falls back to conservative estimate (~4 chars/token) if unavailable.
+ */
+export function countTokens(text: string): number {
+  if (!tokenEncoderResolved) {
+    tokenEncoderResolved = true;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { encodingForModel } = require("js-tiktoken") as {
+        encodingForModel: (model: string) => { encode: (text: string) => number[] };
+      };
+      tokenEncoder = encodingForModel("gpt-4o");
+    } catch {
+      // js-tiktoken not available — use fallback
+      tokenEncoder = null;
+    }
+  }
+  if (tokenEncoder) {
+    return tokenEncoder.encode(text).length;
+  }
+  return Math.ceil(text.length / 4);
+}
+
 /**
  * Lightweight progress timer for long-running loops.
  *

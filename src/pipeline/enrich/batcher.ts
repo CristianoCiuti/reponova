@@ -4,6 +4,7 @@
  */
 import { readFileSync } from "node:fs";
 import type { GraphNode } from "../../shared/types.js";
+import { countTokens } from "../../shared/utils.js";
 
 export interface NodeCodeBlock {
   nodeId: string;
@@ -19,13 +20,6 @@ export interface Batch {
   id: number;
   items: NodeCodeBlock[];
   totalTokens: number;
-}
-
-/**
- * Estimate token count (conservative: ~4 chars/token for code).
- */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
 }
 
 /**
@@ -61,12 +55,19 @@ export function extractNodeCode(
 /**
  * Pack nodes into batches by token budget, grouped by directory.
  * Modeled on graphify's `_pack_chunks_by_tokens`.
+ *
+ * The token budget accounts for the full prompt payload:
+ * system prompt overhead + per-node header + code content.
  */
 export function packBatches(
   nodes: GraphNode[],
   repoRoots: Map<string, string>,
   tokenBudget: number,
 ): Batch[] {
+  // Reserve tokens for the system prompt (fixed overhead per batch)
+  const SYSTEM_PROMPT_RESERVE = 80;
+  const effectiveBudget = Math.max(tokenBudget - SYSTEM_PROMPT_RESERVE, 1);
+
   // Group by directory for better cross-reference in prompts
   const byDir = new Map<string, GraphNode[]>();
   for (const node of nodes) {
@@ -85,18 +86,24 @@ export function packBatches(
       const code = extractNodeCode(node, repoRoots);
       if (!code) continue;
 
-      const tokens = estimateTokens(code);
+      // Count tokens for the full per-node payload as it appears in the prompt:
+      // "=== filePath (qualifiedName, lines startLine-endLine) ===\n" + code + "\n"
+      const filePath = node.source_file ?? "";
+      const header = `=== ${filePath} (${node.id}, lines ${node.start_line ?? 0}-${node.end_line ?? 0}) ===\n`;
+      const nodePayload = header + code + "\n";
+      const tokens = countTokens(nodePayload);
+
       const block: NodeCodeBlock = {
         nodeId: node.id,
         qualifiedName: node.id,
-        filePath: node.source_file ?? "",
+        filePath,
         startLine: node.start_line ?? 0,
         endLine: node.end_line ?? 0,
         code,
         estimatedTokens: tokens,
       };
 
-      if (currentTokens + tokens > tokenBudget && currentBatch.length > 0) {
+      if (currentTokens + tokens > effectiveBudget && currentBatch.length > 0) {
         batches.push({ id: batchId++, items: currentBatch, totalTokens: currentTokens });
         currentBatch = [];
         currentTokens = 0;

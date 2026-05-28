@@ -30,6 +30,7 @@ import { join } from "node:path";
 import { resolveOutlinePath } from "../shared/path-resolver.js";
 import { readJsonSafe } from "../shared/fs.js";
 import { formatCommunityName } from "../shared/community-labels.js";
+import { countTokens } from "../shared/utils.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -71,24 +72,6 @@ interface ScoredCandidate {
   text_rank: number;
   vector_score: number;
   centrality: number;
-}
-
-// ─── Token counting ──────────────────────────────────────────────────────────
-
-let tokenEncoder: { encode: (text: string) => number[] } | null = null;
-
-function countTokens(text: string): number {
-  if (!tokenEncoder) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { encodingForModel } = require("js-tiktoken") as { encodingForModel: (model: string) => { encode: (text: string) => number[] } };
-      tokenEncoder = encodingForModel("gpt-4o");
-    } catch {
-      // Fallback: rough estimate (4 chars ≈ 1 token)
-      return Math.ceil(text.length / 4);
-    }
-  }
-  return tokenEncoder.encode(text).length;
 }
 
 // ─── Context Builder ─────────────────────────────────────────────────────────
