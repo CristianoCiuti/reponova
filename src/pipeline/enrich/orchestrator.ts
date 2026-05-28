@@ -59,10 +59,11 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
 
   // Step 1: Node descriptions
   if (!existsSync(join(enrichDir, "descriptions.json"))) {
-    log.info("  [enrich] Step 1: Generating node descriptions...");
     const graphData = JSON.parse(readFileSync(join(outputDir, "graph.json"), "utf-8")) as GraphData;
     const repoRoots = resolveRepoRoots(config, configDir);
     const batches = packBatches(graphData.nodes, repoRoots, enrichConfig.description_batch_tokens);
+    const totalNodes = batches.reduce((sum, b) => sum + b.items.length, 0);
+    log.info(`  [enrich] Step 1: Generating node descriptions (${totalNodes} nodes, ${batches.length} batches)...`);
 
     const outputStepDir = join(enrichDir, "output", "descriptions");
     const jobs: BatchJob<DescriptionEntry[]>[] = batches.map((batch) => ({
@@ -70,6 +71,7 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
       prompt: { ...buildDescriptionPrompt(batch.items), maxTokens: enrichConfig.max_tokens.descriptions },
       outputPath: join(outputStepDir, `batch-${String(batch.id).padStart(3, "0")}.json`),
       parse: (raw) => parseLlmJson<DescriptionEntry[]>(raw),
+      itemCount: batch.items.length,
     }));
 
     mkdirSync(outputStepDir, { recursive: true });

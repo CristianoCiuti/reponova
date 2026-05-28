@@ -52,6 +52,8 @@ export interface BatchJob<T> {
   prompt: LlmCallOptions;
   outputPath: string;
   parse: (raw: string) => T;
+  /** Number of items in this batch (for progress tracking). */
+  itemCount?: number;
 }
 
 /**
@@ -66,8 +68,11 @@ export async function executeBatches<T>(
 ): Promise<{ completed: number; failed: number }> {
   mkdirSync(batchDir, { recursive: true });
 
-  let completed = 0;
+  const totalBatches = jobs.length;
+  const totalItems = jobs.reduce((sum, j) => sum + (j.itemCount ?? 0), 0);
+  let completedBatches = 0;
   let failed = 0;
+  let itemsProcessed = 0;
 
   // Simple semaphore for concurrency
   let running = 0;
@@ -88,8 +93,13 @@ export async function executeBatches<T>(
             const raw = await callLlm(config, job.prompt);
             const parsed = job.parse(raw);
             writeFileSync(job.outputPath, JSON.stringify(parsed, null, 2));
-            completed++;
-            log.info(`    Batch ${job.batchId} completed`);
+            completedBatches++;
+            itemsProcessed += job.itemCount ?? 0;
+            if (totalItems > 0) {
+              log.info(`    Batch ${completedBatches}/${totalBatches} completed — ${itemsProcessed}/${totalItems} items`);
+            } else {
+              log.info(`    Batch ${completedBatches}/${totalBatches} completed`);
+            }
             return;
           } catch (err) {
             attempts++;
@@ -108,7 +118,7 @@ export async function executeBatches<T>(
   }
 
   await Promise.all(results);
-  return { completed, failed };
+  return { completed: completedBatches, failed };
 }
 
 /**
