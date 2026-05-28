@@ -740,6 +740,32 @@ enrich:
   # Default: 3
   max_retry_depth: 3
 
+  # Per-step max_tokens sent to the LLM provider (intelligent mode)
+  # Controls the maximum output length for each enrichment step independently.
+  # Type: object { descriptions, profiles, routing, restructure }
+  # Default: { descriptions: 2048, profiles: 1024, routing: 2048, restructure: 2048 }
+  # max_tokens:
+  #   descriptions: 2048            # node description batches
+  #   profiles: 1024                # community profiling
+  #   routing: 2048                 # routing decision batches
+  #   restructure: 2048             # merge/split detection
+
+  # Profile generation limits (intelligent mode)
+  # Controls how many nodes/edges are included in the community profile prompt.
+  # Lower values = cheaper prompts, less context for the LLM.
+  # Type: object { max_nodes, max_edges }
+  # Default: { max_nodes: 80, max_edges: 50 }
+  # profile:
+  #   max_nodes: 80                 # max nodes listed in profile prompt per community
+  #   max_edges: 50                 # max edges listed in profile prompt per community
+
+  # Maximum density pairs for restructure (intelligent mode)
+  # Limits how many cross-community (communityA, communityB) pairs are sent
+  # to the LLM for merge/split analysis. Pairs are ranked by edge density.
+  # Type: number (>= 1)
+  # Default: 20
+  # restructure_max_pairs: 20
+
   # Provider name — references a provider defined in the top-level `providers` map
   # When omitted: uses algorithmic enrichment (rule-based summaries + descriptions)
   # The referenced provider must be type "openai" or "llama-cpp" (LLM-capable)

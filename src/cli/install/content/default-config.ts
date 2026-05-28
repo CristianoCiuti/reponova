@@ -59,6 +59,15 @@ enrich:
   # threshold: 0.8                # top 20% of nodes by degree
   # max_communities: 0            # 0 = no limit; N = only top N largest communities
   # provider: local-llm           # uncomment for LLM-enhanced enrichments
+  # max_tokens:                   # per-step LLM output token limits
+  #   descriptions: 2048
+  #   profiles: 1024
+  #   routing: 2048
+  #   restructure: 2048
+  # profile:                      # community profile prompt limits
+  #   max_nodes: 80
+  #   max_edges: 50
+  # restructure_max_pairs: 20     # max cross-community pairs for merge/split analysis
 
 # ── HTML ──
 # html: true
