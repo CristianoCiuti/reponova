@@ -86,7 +86,6 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
 
   // Step 2: Community profiling
   if (!existsSync(join(enrichDir, "profiles.json"))) {
-    log.info("  [enrich] Step 2: Profiling communities...");
     const graphData = JSON.parse(readFileSync(join(outputDir, "graph.json"), "utf-8")) as GraphData;
     const descriptions: DescriptionEntry[] = JSON.parse(readFileSync(join(enrichDir, "descriptions.json"), "utf-8"));
     const descMap = new Map(descriptions.map((d) => [d.id, d.description]));
@@ -132,6 +131,7 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
       });
     }
 
+    log.info(`  [enrich] Step 2: Profiling communities (${jobs.length} communities, ${jobs.length} batches)...`);
     mkdirSync(outputStepDir, { recursive: true });
     const result = await executeBatches(executorConfig, jobs, outputStepDir);
     totalLlmCalls += result.completed + result.failed;
@@ -144,7 +144,6 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
 
   // Step 3: Candidate routing
   if (!existsSync(join(enrichDir, "routing.json"))) {
-    log.info("  [enrich] Step 3: Routing candidates...");
     const candidates = JSON.parse(readFileSync(join(enrichDir, "candidates.json"), "utf-8")) as { candidates: Array<{ status: string; nodeId: string }> };
     const profiles: CommunityProfile[] = JSON.parse(readFileSync(join(enrichDir, "profiles.json"), "utf-8"));
     const descriptions: DescriptionEntry[] = JSON.parse(readFileSync(join(enrichDir, "descriptions.json"), "utf-8"));
@@ -208,6 +207,7 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
       });
     }
 
+    log.info(`  [enrich] Step 3: Routing candidates (${allCandidateIds.size} candidates, ${jobs.length} batches)...`);
     mkdirSync(outputStepDir, { recursive: true });
     const result = await executeBatches(executorConfig, jobs, outputStepDir);
     totalLlmCalls += result.completed + result.failed;
@@ -274,11 +274,11 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
 
   // Step 6: Regenerate modified profiles
   if (!existsSync(join(enrichDir, "updated-profiles.json"))) {
-    log.info("  [enrich] Step 6: Regenerating modified profiles...");
     const modified = JSON.parse(readFileSync(join(enrichDir, "modified-communities.json"), "utf-8")) as { created: string[]; modified: string[] };
     const allModified = new Set([...modified.created, ...modified.modified]);
 
     if (allModified.size === 0) {
+      log.info("  [enrich] Step 6: Regenerating modified profiles (0 communities, 0 batches)...");
       atomicWriteJson(join(enrichDir, "updated-profiles.json"), []);
       log.info("  [enrich] Step 6 done: no communities modified");
     } else {
@@ -319,6 +319,7 @@ export async function runFullEnrichment(options: EnrichOrchestratorOptions): Pro
         });
       }
 
+      log.info(`  [enrich] Step 6: Regenerating modified profiles (${jobs.length} communities, ${jobs.length} batches)...`);
       mkdirSync(outputStepDir, { recursive: true });
       const result = await executeBatches(executorConfig, jobs, outputStepDir);
       totalLlmCalls += result.completed + result.failed;
