@@ -73,8 +73,7 @@ export interface BuildConfigFingerprint {
     provider?: string;
   };
   outlines: { enabled: boolean };
-  community_summaries: { enabled: boolean };
-  node_descriptions: { enabled: boolean };
+  enrich: { enabled: boolean };
 }
 
 /** Adjacency map for BFS/Dijkstra */
@@ -111,8 +110,7 @@ export interface Config {
   docs: DocsConfig;
   images: ImagesConfig;
   embeddings: EmbeddingsConfig;
-  community_summaries: CommunitySummariesConfig;
-  node_descriptions: NodeDescriptionsConfig;
+  enrich: EnrichConfig;
   /** Generate interactive HTML visualizations */
   html: boolean;
   /** Minimum node degree to include in HTML visualization */
@@ -166,19 +164,50 @@ export interface EmbeddingsConfig {
   batch_size: number;
 }
 
-/** Community summaries — independent from node descriptions */
-export interface CommunitySummariesConfig {
-  enabled: boolean;
-  max_number: number;
-  provider?: string;
+/**
+ * Vector store metadata — self-describing artifact written to vectors/_meta.json.
+ * `provider` uses the SAME ProviderConfig structure as reponova.yml.
+ * `models` carries the subset of ModelsConfig relevant to query-time bootstrapping.
+ */
+export interface VectorMeta {
+  provider: ProviderConfig | null;
+  models: VectorMetaModels | null;
+  dimensions: number;
+  record_count: number;
+  created_at: string;
 }
 
-/** Node descriptions — independent from community summaries */
-export interface NodeDescriptionsConfig {
+/** Subset of ModelsConfig needed at query time */
+export interface VectorMetaModels {
+  cache_dir: string;
+  download_on_first_use: boolean;
+}
+
+export interface EnrichMaxTokens {
+  descriptions: number;
+  profiles: number;
+  routing: number;
+  restructure: number;
+}
+
+export interface EnrichProfileLimits {
+  max_nodes: number;
+  max_edges: number;
+}
+
+export interface EnrichConfig {
   enabled: boolean;
-  /** Degree percentile threshold: 0.8 = top 20%, 0.0 = all */
-  threshold: number;
   provider?: string;
+  threshold: number;
+  max_communities: number;
+  candidate_threshold: number;
+  description_batch_tokens: number;
+  routing_batch_size: number;
+  concurrency: number;
+  max_retry_depth: number;
+  max_tokens: EnrichMaxTokens;
+  profile: EnrichProfileLimits;
+  restructure_max_pairs: number;
 }
 
 /** Outline config — simplified. File selection comes from top-level patterns. */
@@ -398,13 +427,26 @@ export const DEFAULT_CONFIG: Config = {
     enabled: true,
     batch_size: 128,
   },
-  community_summaries: {
-    enabled: true,
-    max_number: 0,
-  },
-  node_descriptions: {
+  enrich: {
     enabled: true,
     threshold: 0.8,
+    max_communities: 0,
+    candidate_threshold: 0.3,
+    description_batch_tokens: 40000,
+    routing_batch_size: 30,
+    concurrency: 4,
+    max_retry_depth: 3,
+    max_tokens: {
+      descriptions: 32768,
+      profiles: 2048,
+      routing: 8192,
+      restructure: 4096,
+    },
+    profile: {
+      max_nodes: 80,
+      max_edges: 50,
+    },
+    restructure_max_pairs: 20,
   },
   outlines: {
     enabled: true,

@@ -19,8 +19,7 @@ export function readBuildConfigStatusLines(graphJsonPath: string | null): string
     "Build config:",
     `  Embeddings: ${buildConfig.embeddings.enabled ? (buildConfig.embeddings.provider ? `provider: ${buildConfig.embeddings.provider}` : "TF-IDF (default)") : "disabled"}`,
     `  Outlines: ${buildConfig.outlines.enabled ? "enabled" : "disabled"}`,
-    `  Community summaries: ${buildConfig.community_summaries.enabled ? "enabled" : "disabled"}`,
-    `  Node descriptions: ${buildConfig.node_descriptions.enabled ? "enabled" : "disabled"}`,
+    `  Enrich: ${buildConfig.enrich.enabled ? "enabled" : "disabled"}`,
   ];
 }
 

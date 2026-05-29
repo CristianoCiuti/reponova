@@ -90,8 +90,7 @@ describe("BuildConfigFingerprint", () => {
     expect(bc.embeddings.enabled).toBe(true);
     expect(bc.embeddings.provider).toBeUndefined();
     expect(bc.outlines.enabled).toBe(true);
-    expect(bc.community_summaries.enabled).toBe(true);
-    expect(bc.node_descriptions.enabled).toBe(true);
+    expect(bc.enrich.enabled).toBe(true);
   });
 
   it("should write build_config with custom embeddings config", () => {
@@ -125,15 +124,19 @@ describe("BuildConfigFingerprint", () => {
     const tmpPath = join(tmpDir, "graph.json");
 
     const config = makeConfig();
-    config.community_summaries = {
-      enabled: true,
-      max_number: 10,
-      provider: "my-llm",
-    };
-    config.node_descriptions = {
+    config.enrich = {
       enabled: true,
       threshold: 0.5,
+      max_communities: 10,
+      candidate_threshold: 0.3,
+      description_batch_tokens: 40000,
+      routing_batch_size: 30,
+      concurrency: 4,
+      max_retry_depth: 3,
       provider: "my-llm",
+      max_tokens: { descriptions: 32768, profiles: 2048, routing: 8192, restructure: 4096 },
+      profile: { max_nodes: 80, max_edges: 50 },
+      restructure_max_pairs: 20,
     };
 
     exportJson({
@@ -146,9 +149,8 @@ describe("BuildConfigFingerprint", () => {
 
     const raw = JSON.parse(readFileSync(tmpPath, "utf-8"));
     const bc = raw.metadata.build_config;
-    // Fingerprint only stores enabled flag — not model/max_number/threshold
-    expect(bc.community_summaries.enabled).toBe(true);
-    expect(bc.node_descriptions.enabled).toBe(true);
+    // Fingerprint only stores enabled flag — not model/threshold/max_communities
+    expect(bc.enrich.enabled).toBe(true);
   });
 
   it("should write undefined build_config when no config provided", () => {
@@ -208,7 +210,6 @@ describe("BuildConfigFingerprint", () => {
     expect(bc.embeddings.enabled).toBe(true);
     expect(bc.embeddings.provider).toBeUndefined();
     expect(bc.outlines.enabled).toBe(true);
-    expect(bc.community_summaries.enabled).toBe(true);
-    expect(bc.node_descriptions.enabled).toBe(true);
+    expect(bc.enrich.enabled).toBe(true);
   });
 });

@@ -84,13 +84,10 @@ export function topologicalLevels(dag: Map<string, Phase>): Phase[][] {
     if (assigned.has(id)) return assigned.get(id)!;
 
     const phase = dag.get(id)!;
-    if (phase.dependencies.length === 0) {
-      assigned.set(id, 0);
-      return 0;
-    }
-
     let maxDepLevel = -1;
     for (const dep of phase.dependencies) {
+      // Skip dependencies not in the current (potentially pruned) DAG
+      if (!dag.has(dep)) continue;
       maxDepLevel = Math.max(maxDepLevel, getLevel(dep));
     }
 
@@ -142,6 +139,48 @@ export function resolveTransitiveDeps(
   }
 
   collect(targetId);
+  return result;
+}
+
+/**
+ * Resolve all strict descendants of a phase (phases that transitively depend on it).
+ * Does NOT include the source phase itself.
+ */
+export function resolveTransitiveDescendants(
+  dag: Map<string, Phase>,
+  sourceId: string,
+): Set<string> {
+  if (!dag.has(sourceId)) {
+    throw new Error(
+      `Phase "${sourceId}" not found. Available: ${[...dag.keys()].join(", ")}`,
+    );
+  }
+
+  const result = new Set<string>();
+
+  // Build reverse adjacency: for each phase, which phases depend on it?
+  const dependents = new Map<string, Set<string>>();
+  for (const [id, phase] of dag) {
+    for (const dep of phase.dependencies) {
+      if (!dependents.has(dep)) dependents.set(dep, new Set());
+      dependents.get(dep)!.add(id);
+    }
+  }
+
+  // BFS from sourceId through dependents
+  const queue = [sourceId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const children = dependents.get(current);
+    if (!children) continue;
+    for (const child of children) {
+      if (!result.has(child)) {
+        result.add(child);
+        queue.push(child);
+      }
+    }
+  }
+
   return result;
 }
 

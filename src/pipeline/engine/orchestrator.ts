@@ -8,17 +8,26 @@
  * 4. Executes level-by-level (phases within a level run in parallel)
  * 5. Collects results
  *
- * Phase-specific logic (skip criteria, cache, config invalidation) is
- * entirely internal to each phase.
+ * Cache logic (check/seal/invalidate) is entirely owned by each phase.
+ * The orchestrator never touches caching — it only sequences and parallelizes.
  */
 import type { Phase, PhaseContext, PhaseResult } from "./phase.js";
 import type { PhaseRegistry } from "./registry.js";
-import { buildDAG, validate, topologicalLevels, resolveTransitiveDeps, pruneDAG } from "./dag.js";
+import {
+  buildDAG,
+  validate,
+  topologicalLevels,
+  resolveTransitiveDeps,
+  resolveTransitiveDescendants,
+  pruneDAG,
+} from "./dag.js";
 import { errorMessage, log } from "../../shared/utils.js";
 
 export interface OrchestratorOptions {
   /** Run only this phase + its transitive deps (null = full DAG) */
   target?: string;
+  /** Run only strict descendants of this phase (null = full DAG) */
+  startAfter?: string;
   /** Force all phases to ignore cache */
   force: boolean;
   /** Max concurrent phases per level (0 = unlimited) */
@@ -53,6 +62,17 @@ export async function orchestrate(
     const keep = resolveTransitiveDeps(dag, options.target);
     dag = pruneDAG(dag, keep);
     log.info(`Target: ${options.target} (${keep.size} phases in dependency chain)`);
+  }
+
+  // Prune to strict descendants if --start-after specified
+  if (options.startAfter) {
+    const descendants = resolveTransitiveDescendants(dag, options.startAfter);
+    if (descendants.size === 0) {
+      log.info(`No phases downstream of "${options.startAfter}" — nothing to run.`);
+      return { outputDir: ctx.outputDir, phases: new Map(), totalProcessed: 0 };
+    }
+    dag = pruneDAG(dag, descendants);
+    log.info(`Start after: ${options.startAfter} (${descendants.size} downstream phases)`);
   }
 
   const levels = topologicalLevels(dag);
@@ -116,7 +136,7 @@ async function executeLevel(
 /**
  * Execute a single phase.
  *
- * Phases own their own timing, logging, and error handling.
+ * Phases own their own cache check/seal, timing, logging, and error handling.
  * The orchestrator only sequences and parallelizes.
  */
 async function executePhase(phase: Phase, ctx: PhaseContext): Promise<PhaseResult> {

@@ -54,16 +54,14 @@ describe("FIX-010v2: MCP build_config metadata", () => {
     const graphJsonPath = writeGraphJson(makeTempDir(), {
       embeddings: { enabled: true },
       outlines: { enabled: false },
-      community_summaries: { enabled: true },
-      node_descriptions: { enabled: false },
+      enrich: { enabled: true },
     });
 
     expect(readBuildConfigStatusLines(graphJsonPath)).toEqual([
       "Build config:",
       "  Embeddings: TF-IDF (default)",
       "  Outlines: disabled",
-      "  Community summaries: enabled",
-      "  Node descriptions: disabled",
+      "  Enrich: enabled",
     ]);
   });
 
@@ -71,16 +69,14 @@ describe("FIX-010v2: MCP build_config metadata", () => {
     const graphJsonPath = writeGraphJson(makeTempDir(), {
       embeddings: { enabled: true, provider: "my-openai" },
       outlines: { enabled: true },
-      community_summaries: { enabled: true },
-      node_descriptions: { enabled: true },
+      enrich: { enabled: true },
     });
 
     expect(readBuildConfigStatusLines(graphJsonPath)).toEqual([
       "Build config:",
       "  Embeddings: provider: my-openai",
       "  Outlines: enabled",
-      "  Community summaries: enabled",
-      "  Node descriptions: enabled",
+      "  Enrich: enabled",
     ]);
   });
 
@@ -152,8 +148,7 @@ function writeGraphJson(dir: string, overrides: Partial<BuildConfigFingerprint> 
   const buildConfig: BuildConfigFingerprint = {
     embeddings: { enabled: true },
     outlines: { enabled: true },
-    community_summaries: { enabled: true },
-    node_descriptions: { enabled: true },
+    enrich: { enabled: true },
     ...overrides,
   };
 

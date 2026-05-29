@@ -1,17 +1,14 @@
 /**
  * report phase — generates markdown build report.
  *
- * Reads graph.json and community_summaries.json.
- * Skip logic: mtime comparison of inputs vs report.md.
+ * Reads graph-enriched.json and generates report.md.
  */
-import { existsSync, statSync } from "node:fs";
-import { atomicWriteText } from "../../shared/atomic-write.js";
 import { extname, join } from "node:path";
-import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
-import type { GraphData, GraphNode } from "../../shared/types.js";
+import type { Config, GraphData, GraphNode } from "../../shared/types.js";
+import { atomicWriteText } from "../../shared/atomic-write.js";
 import { loadGraphData } from "../../graph/loader.js";
-import { log, errorMessage } from "../../shared/utils.js";
 import { formatCommunityName, loadCommunityLabels } from "../../shared/community-labels.js";
+import { BasePhase, type PhaseContext, type PhaseResult } from "../engine/phase.js";
 
 interface RankedCommunity {
   id: string;
@@ -21,68 +18,30 @@ interface RankedCommunity {
   keyMembers: string[];
 }
 
-export const reportPhase: Phase = {
-  id: "report",
-  label: "Report",
-  dependencies: ["community-summaries", "node-descriptions"],
+class ReportPhase extends BasePhase {
+  readonly id = "report";
+  readonly label = "Report";
+  readonly dependencies = ["enrich"];
+  readonly inputs = ["graph-enriched.json"];
 
-  async execute(ctx: PhaseContext): Promise<PhaseResult> {
-    const startedAt = new Date();
-    ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
-    log.info(`  [${this.id}] ${this.label}...`);
+  getExpectedOutputs(_config: Config): { files: string[]; dirs: string[] } {
+    return { files: ["report.md"], dirs: [] };
+  }
 
-    try {
-      const { outputDir, force } = ctx;
-      const outputPath = join(outputDir, "report.md");
-      const graphJsonPath = join(outputDir, "graph.json");
-      const summariesPath = join(outputDir, "community_summaries.json");
-      const descriptionsPath = join(outputDir, "node_descriptions.json");
+  getRelevantConfig(_config: Config): object {
+    return {};
+  }
 
-      if (!shouldRun(graphJsonPath, outputPath, summariesPath, descriptionsPath, force)) {
-        const finishedAt = new Date();
-        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-        log.info(`  [${this.id}] Skipped: up to date (${elapsed}s)`);
-        return { processed: 0, skipped: true, skipReason: "up to date" };
-      }
+  async doWork(ctx: PhaseContext): Promise<PhaseResult> {
+    const { outputDir } = ctx;
+    const outputPath = join(outputDir, "report.md");
+    const graphJsonPath = join(outputDir, "graph-enriched.json");
 
-      const graphData = loadGraphData(graphJsonPath);
-      generateGraphReport({ graphData, outputDir, outputPath });
+    const graphData = loadGraphData(graphJsonPath);
+    generateGraphReport({ graphData, outputDir, outputPath });
 
-      const result: PhaseResult = { processed: graphData.nodes.length, skipped: false };
-      const finishedAt = new Date();
-      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-      ctx.manifest.record(this.id, { status: "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
-
-      return result;
-    } catch (err) {
-      const finishedAt = new Date();
-      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-      const message = errorMessage(err);
-      ctx.manifest.record(this.id, { status: "failed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      log.warn(`  [${this.id}] Failed: ${message} (${elapsed}s)`);
-      return { processed: 0, skipped: true, skipReason: `error: ${message}` };
-    }
-  },
-};
-
-function shouldRun(
-  graphJsonPath: string,
-  outputPath: string,
-  summariesPath: string,
-  descriptionsPath: string,
-  force: boolean,
-): boolean {
-  if (force) return true;
-  if (!existsSync(outputPath)) return true;
-
-  const outputMtime = statSync(outputPath).mtimeMs;
-  let inputMtime = existsSync(graphJsonPath) ? statSync(graphJsonPath).mtimeMs : 0;
-  if (existsSync(summariesPath)) inputMtime = Math.max(inputMtime, statSync(summariesPath).mtimeMs);
-  if (existsSync(descriptionsPath)) inputMtime = Math.max(inputMtime, statSync(descriptionsPath).mtimeMs);
-
-  return inputMtime > outputMtime;
+    return { processed: graphData.nodes.length, skipped: false };
+  }
 }
 
 export function generateGraphReport(options: {
@@ -188,9 +147,9 @@ function buildCommunityGroups(nodes: GraphNode[]): Map<string, string[]> {
   for (const n of nodes) {
     if (n.community == null) continue;
     const id = String(n.community);
-    const m = g.get(id) ?? [];
-    m.push(n.id);
-    g.set(id, m);
+    const members = g.get(id) ?? [];
+    members.push(n.id);
+    g.set(id, members);
   }
   return g;
 }
@@ -213,11 +172,11 @@ function buildRankedCommunity(
 function renderCountTable(counts: Map<string, number>): string[] {
   return Array.from(counts.entries())
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([l, c]) => `| ${escapePipe(l)} | ${c} |`);
+    .map(([label, count]) => `| ${escapePipe(label)} | ${count} |`);
 }
 
 function renderTableRows(rows: string[][]): string[] {
-  return rows.map((r) => `| ${r.map(escapePipe).join(" | ")} |`);
+  return rows.map((row) => `| ${row.map(escapePipe).join(" | ")} |`);
 }
 
 function escapePipe(v: string): string { return escMd(v).replace(/\|/g, "\\|"); }
@@ -227,3 +186,5 @@ function isFileLevelNode(t: unknown): boolean { return t === "module" || t === "
 function godNodeLabel(n: GraphNode): string { return (isFileLevelNode(n.type) && n.source_file) ? n.source_file : (n.label || n.id); }
 function getFileTypeLabel(sf: string): string { return extname(sf).toLowerCase() || "[no extension]"; }
 function escMd(v: string): string { return v.replace(/\|/g, "\\|"); }
+
+export const reportPhase = new ReportPhase();

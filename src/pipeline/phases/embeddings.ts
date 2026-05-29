@@ -2,177 +2,170 @@
  * embeddings phase — generates vector representations for graph nodes.
  *
  * Enriched composeNodeText includes community summaries and node descriptions.
- * Per-node composed text comparison for incremental regeneration.
- * Config invalidation via .cache/embeddings-config-hash.txt.
+ * Per-node composed text comparison remains for fine-grained incrementality.
  */
 import { existsSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
-import type { Phase, PhaseContext, PhaseResult } from "../engine/phase.js";
-import type { GraphData } from "../../shared/types.js";
-import { atomicWriteJson, atomicWriteText } from "../../shared/atomic-write.js";
+import type { Config, GraphData, VectorMeta } from "../../shared/types.js";
+import { atomicWriteJson } from "../../shared/atomic-write.js";
 import { readJsonSafe } from "../../shared/fs.js";
 import { log, errorMessage } from "../../shared/utils.js";
 import { composeNodeText } from "../../intelligence/embeddings.js";
 import { TfidfEmbeddingEngine } from "../../intelligence/tfidf-embeddings.js";
-import { VectorStore, type VectorRecord } from "../../query/vector-store.js";
 import type { EmbeddingProvider } from "../../intelligence/llm-provider.js";
+import { VectorStore, type VectorRecord } from "../../query/vector-store.js";
+import { writeVectorMeta } from "../../query/vector-meta.js";
+import { hashObject, readHashFile } from "../cache/utils.js";
+import { BasePhase, type PhaseContext, type PhaseResult } from "../engine/phase.js";
 
-export const embeddingsPhase: Phase = {
-  id: "embeddings",
-  label: "Embeddings",
-  dependencies: ["community-summaries", "node-descriptions"],
+class EmbeddingsPhase extends BasePhase {
+  readonly id = "embeddings";
+  readonly label = "Embeddings";
+  readonly dependencies = ["enrich"];
+  readonly inputs = ["graph-enriched.json"];
 
-  async execute(ctx: PhaseContext): Promise<PhaseResult> {
-    const startedAt = new Date();
-    ctx.manifest.record(this.id, { status: "running", startedAt: startedAt.toISOString(), finishedAt: null, durationMs: null });
-    log.info(`  [${this.id}] ${this.label}...`);
+  getExpectedOutputs(config: Config): { files: string[]; dirs: string[] } {
+    const files: string[] = [];
+    const dirs: string[] = ["vectors"];
+    if (!config.embeddings.provider || config.embeddings.provider === "tfidf") {
+      files.push("tfidf_idf.json");
+    }
+    return { files, dirs };
+  }
+
+  getRelevantConfig(config: Config): object {
+    return { embeddings: config.embeddings };
+  }
+
+  async doWork(ctx: PhaseContext): Promise<PhaseResult> {
+    const { config, outputDir, force } = ctx;
+    const embConfig = config.embeddings;
+    const vectorsPath = join(outputDir, "vectors");
+    const tfidfPath = join(outputDir, "tfidf_idf.json");
+    const cachePath = join(outputDir, ".cache", "node-texts.json");
+    const inputHashPath = join(outputDir, ".cache", "embeddings-input-hash.txt");
+    const configHashPath = join(outputDir, ".cache", "embeddings-config-hash.txt");
+
+    if (!embConfig.enabled) {
+      removeDirectory(vectorsPath);
+      removeFile(tfidfPath);
+      removeFile(cachePath);
+      removeFile(inputHashPath);
+      removeFile(configHashPath);
+      return { processed: 0, skipped: true, skipReason: "disabled in config" };
+    }
+
+    const currentConfigHash = getEmbeddingsConfigHash(config.embeddings);
+    const configChanged = readHashFile(configHashPath) !== currentConfigHash;
+    const effectiveForce = force || configChanged || !config.incremental;
+
+    const graphJsonPath = join(outputDir, "graph-enriched.json");
+    const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
+
+    const communitySummaries = loadCommunitySummaries(outputDir);
+    const nodeDescriptions = loadNodeDescriptions(outputDir);
+
+    const items = graphData.nodes.map((node) => {
+      const communityId = node.community != null ? String(node.community) : undefined;
+      const summary = communityId ? communitySummaries.get(communityId) : undefined;
+      const description = nodeDescriptions.get(node.id);
+
+      return {
+        id: node.id,
+        text: composeNodeText(
+          {
+            id: node.id,
+            label: node.label,
+            type: node.type,
+            signature: node.signature,
+            docstring: node.docstring,
+            bases: node.bases,
+            source_file: node.source_file,
+          },
+          summary,
+          description,
+        ),
+      };
+    });
+
+    const currentTexts = new Map(items.map((item) => [item.id, item.text]));
+    const previousTexts = effectiveForce ? new Map<string, string>() : loadNodeTextCache(outputDir);
+    const changedIds = effectiveForce
+      ? new Set(items.map((item) => item.id))
+      : getChangedNodeIds(currentTexts, previousTexts);
+    const removedIds = effectiveForce ? new Set<string>() : getRemovedNodeIds(currentTexts, previousTexts);
+
+    const vectorStore = new VectorStore(outputDir);
+    await vectorStore.initialize();
 
     try {
-      const { config, outputDir, force } = ctx;
-      const embConfig = config.embeddings;
-      const vectorsPath = join(outputDir, "vectors");
-      const tfidfPath = join(outputDir, "tfidf_idf.json");
-      const cachePath = join(outputDir, ".cache", "node-texts.json");
-      const configHashPath = join(outputDir, ".cache", "embeddings-config-hash.txt");
+      const existingRecords = effectiveForce ? [] : await vectorStore.loadAllRecords();
+      const existingVectors = new Map(existingRecords.map((record) => [record.id, record.vector]));
+      const itemsNeedingEmbeddings = effectiveForce
+        ? items
+        : items.filter((item) => changedIds.has(item.id) || !existingVectors.has(item.id));
 
-      if (!embConfig.enabled) {
-        removeDirectory(vectorsPath);
-        removeFile(tfidfPath);
-        removeFile(cachePath);
-        removeFile(configHashPath);
-        const finishedAt = new Date();
-        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-        ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-        log.info(`  [${this.id}] Skipped: disabled in config (${elapsed}s)`);
-        return { processed: 0, skipped: true, skipReason: "disabled in config" };
+      const staleVectorIds = new Set<string>();
+      for (const id of existingVectors.keys()) {
+        if (!currentTexts.has(id)) staleVectorIds.add(id);
       }
 
-      // Config invalidation
-      const currentConfigHash = hashConfigFields(embConfig.provider);
-      const configChanged = checkConfigChanged(configHashPath, currentConfigHash);
-      const effectiveForce = force || configChanged;
+      if (itemsNeedingEmbeddings.length === 0 && removedIds.size === 0 && staleVectorIds.size === 0) {
+        atomicWriteJson(getNodeTextCachePath(outputDir), Object.fromEntries(currentTexts));
+        return { processed: 0, skipped: true, skipReason: "up to date" };
+      }
 
-      const graphJsonPath = join(outputDir, "graph.json");
-      const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
-
-      // Load community summaries and node descriptions for enriched text
-      const communitySummaries = loadCommunitySummaries(outputDir);
-      const nodeDescriptions = loadNodeDescriptions(outputDir);
-
-      // Compose text for each node (enriched with community summary + description)
-      const items = graphData.nodes.map((node) => {
-        const communityId = node.community != null ? String(node.community) : undefined;
-        const summary = communityId ? communitySummaries.get(communityId) : undefined;
-        const description = nodeDescriptions.get(node.id);
-
-        return {
-          id: node.id,
-          text: composeNodeText(
-            {
-              id: node.id,
-              label: node.label,
-              type: node.type,
-              signature: node.signature,
-              docstring: node.docstring,
-              bases: node.bases,
-              source_file: node.source_file,
-            },
-            summary,
-            description,
-          ),
-        };
-      });
-
-      const currentTexts = new Map(items.map((item) => [item.id, item.text]));
-      const previousTexts = effectiveForce ? new Map<string, string>() : loadNodeTextCache(outputDir);
-      const changedIds = effectiveForce
-        ? new Set(items.map((item) => item.id))
-        : getChangedNodeIds(currentTexts, previousTexts);
-      const removedIds = effectiveForce ? new Set<string>() : getRemovedNodeIds(currentTexts, previousTexts);
-
-      const vectorStore = new VectorStore(outputDir);
-      await vectorStore.initialize();
-
-      try {
-        const existingRecords = effectiveForce ? [] : await vectorStore.loadAllRecords();
-        const existingVectors = new Map(existingRecords.map((r) => [r.id, r.vector]));
-        const itemsNeedingEmbeddings = effectiveForce
-          ? items
-          : items.filter((item) => changedIds.has(item.id) || !existingVectors.has(item.id));
-
-        const staleVectorIds = new Set<string>();
-        for (const id of existingVectors.keys()) {
-          if (!currentTexts.has(id)) staleVectorIds.add(id);
-        }
-
-        if (itemsNeedingEmbeddings.length === 0 && removedIds.size === 0 && staleVectorIds.size === 0) {
-          atomicWriteJson(getNodeTextCachePath(outputDir), Object.fromEntries(currentTexts));
-          atomicWriteText(configHashPath, currentConfigHash);
-          const finishedAt = new Date();
-          const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-          ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-          log.info(`  [${this.id}] Skipped: up to date (${elapsed}s)`);
-          return { processed: 0, skipped: true, skipReason: "up to date" };
-        }
-
-        if (itemsNeedingEmbeddings.length === 0) {
-          if (!embConfig.provider && staleVectorIds.size > 0 && items.length > 0) {
-            const result = await generateTfidf(ctx, graphData, items, items, [], currentTexts, vectorStore);
-            const finishedAt = new Date();
-            const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-            ctx.manifest.record(this.id, { status: result.skipped ? "skipped" : "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-            if (result.skipped) {
-              log.info(`  [${this.id}] Skipped: ${result.skipReason ?? "up to date"} (${elapsed}s)`);
-            } else {
-              log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
-            }
-            atomicWriteText(configHashPath, currentConfigHash);
-            return result;
+      if (itemsNeedingEmbeddings.length === 0) {
+        if (!embConfig.provider && staleVectorIds.size > 0 && items.length > 0) {
+          const result = await generateTfidf(ctx, graphData, items, items, [], currentTexts, vectorStore);
+          if (!result.skipped) {
+            writeVectorMeta(ctx.outputDir, {
+              provider: null,
+              models: null,
+              dimensions: 384,
+              record_count: items.length,
+              created_at: new Date().toISOString(),
+            });
           }
-
-          const cleanedRecords = existingRecords.filter((r) => !staleVectorIds.has(r.id));
-          await vectorStore.upsert(cleanedRecords);
-          atomicWriteJson(getNodeTextCachePath(outputDir), Object.fromEntries(currentTexts));
-          atomicWriteText(configHashPath, currentConfigHash);
-          const finishedAt = new Date();
-          const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-          ctx.manifest.record(this.id, { status: "skipped", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-          log.info(`  [${this.id}] Skipped: stale cleanup only (${elapsed}s)`);
-          return { processed: 0, skipped: true, skipReason: "stale cleanup only" };
+          return result;
         }
 
-        let result: PhaseResult;
-        const embeddingProvider = await ctx.providerRegistry.acquireEmbedding(embConfig.provider);
-        if (!embeddingProvider) {
-          result = await generateTfidf(ctx, graphData, items, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
-        } else {
-          result = await generateWithProvider(ctx, embeddingProvider, graphData, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
-        }
-
-        const finishedAt = new Date();
-        const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-        ctx.manifest.record(this.id, { status: result.skipped ? "skipped" : "completed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-        if (result.skipped) {
-          log.info(`  [${this.id}] Skipped: ${result.skipReason ?? "up to date"} (${elapsed}s)`);
-        } else {
-          log.info(`  [${this.id}] Done: ${result.processed} processed (${elapsed}s)`);
-        }
-        atomicWriteText(configHashPath, currentConfigHash);
-        return result;
-      } finally {
-        await vectorStore.dispose();
+        const cleanedRecords = existingRecords.filter((record) => !staleVectorIds.has(record.id));
+        await vectorStore.upsert(cleanedRecords);
+        atomicWriteJson(getNodeTextCachePath(outputDir), Object.fromEntries(currentTexts));
+        return { processed: 0, skipped: true, skipReason: "stale cleanup only" };
       }
-    } catch (err) {
-      const finishedAt = new Date();
-      const elapsed = ((finishedAt.getTime() - startedAt.getTime()) / 1000).toFixed(1);
-      const message = errorMessage(err);
-      ctx.manifest.record(this.id, { status: "failed", startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), durationMs: finishedAt.getTime() - startedAt.getTime() });
-      log.warn(`  [${this.id}] Failed: ${message} (${elapsed}s)`);
-      return { processed: 0, skipped: true, skipReason: `error: ${message}` };
+
+      let result: PhaseResult;
+      const embeddingProvider = await ctx.providerRegistry.acquireEmbedding(embConfig.provider);
+      if (!embeddingProvider) {
+        result = await generateTfidf(ctx, graphData, items, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
+      } else {
+        result = await generateWithProvider(ctx, embeddingProvider, graphData, itemsNeedingEmbeddings, existingRecords, currentTexts, vectorStore);
+      }
+
+      if (!result.skipped) {
+        const providerConfig = embConfig.provider ? ctx.config.providers[embConfig.provider] ?? null : null;
+        const dimensions = items[0] ? (await vectorStore.loadAllRecords())[0]?.vector.length ?? 384 : 384;
+        const meta: VectorMeta = {
+          provider: providerConfig,
+          models: providerConfig?.type === "onnx" ? {
+            cache_dir: ctx.config.models.cache_dir,
+            download_on_first_use: ctx.config.models.download_on_first_use,
+          } : null,
+          dimensions,
+          record_count: items.length,
+          created_at: new Date().toISOString(),
+        };
+        writeVectorMeta(ctx.outputDir, meta);
+      }
+
+      return result;
+    } finally {
+      await vectorStore.dispose();
     }
-  },
-};
+  }
+}
 
 async function generateTfidf(
   ctx: PhaseContext,
@@ -236,8 +229,8 @@ async function storeEmbeddings(options: {
 }): Promise<void> {
   const { graphData, embeddings, existingRecords, currentTexts, vectorStore, outputDir, vocabulary } = options;
 
-  const updatedVectors = new Map(embeddings.map((e) => [e.id, Array.from(e.vector)]));
-  const existingVectorMap = new Map(existingRecords.map((r) => [r.id, r.vector]));
+  const updatedVectors = new Map(embeddings.map((embedding) => [embedding.id, Array.from(embedding.vector)]));
+  const existingVectorMap = new Map(existingRecords.map((record) => [record.id, record.vector]));
 
   const records: VectorRecord[] = graphData.nodes.flatMap((node) => {
     const vector = updatedVectors.get(node.id) ?? existingVectorMap.get(node.id);
@@ -295,23 +288,21 @@ function getRemovedNodeIds(currentTexts: Map<string, string>, previousTexts: Map
 function loadCommunitySummaries(outputDir: string): Map<string, string> {
   const path = join(outputDir, "community_summaries.json");
   const summaries = readJsonSafe<Array<{ id: string; summary: string }>>(path);
-  return summaries ? new Map(summaries.map((s) => [String(s.id), s.summary])) : new Map();
+  return summaries ? new Map(summaries.map((summary) => [String(summary.id), summary.summary])) : new Map();
 }
 
 function loadNodeDescriptions(outputDir: string): Map<string, string> {
   const path = join(outputDir, "node_descriptions.json");
-  const descs = readJsonSafe<Array<{ id: string; description: string }>>(path);
-  return descs ? new Map(descs.map((d) => [d.id, d.description])) : new Map();
+  const descriptions = readJsonSafe<Array<{ id: string; description: string }>>(path);
+  return descriptions ? new Map(descriptions.map((description) => [description.id, description.description])) : new Map();
 }
 
-function hashConfigFields(provider?: string): string {
-  return createHash("sha256").update(JSON.stringify({ provider: provider ?? null })).digest("hex");
-}
-
-function checkConfigChanged(hashPath: string, currentHash: string): boolean {
-  if (!existsSync(hashPath)) return true;
-  try { return readFileSync(hashPath, "utf-8").trim() !== currentHash; }
-  catch { return true; }
+function getEmbeddingsConfigHash(config: { enabled: boolean; provider?: string; batch_size: number }): string {
+  return hashObject({
+    enabled: config.enabled,
+    provider: config.provider ?? null,
+    batch_size: config.batch_size,
+  });
 }
 
 function removeDirectory(path: string): void {
@@ -321,3 +312,5 @@ function removeDirectory(path: string): void {
 function removeFile(path: string): void {
   if (existsSync(path)) unlinkSync(path);
 }
+
+export const embeddingsPhase = new EmbeddingsPhase();

@@ -48,16 +48,31 @@ const EmbeddingsConfigSchema = z.object({
   batch_size: z.number().default(128),
 });
 
-const CommunitySummariesConfigSchema = z.object({
-  enabled: z.boolean().default(true),
-  max_number: z.number().min(0).default(0),
-  provider: z.string().optional(),
+const EnrichMaxTokensSchema = z.object({
+  descriptions: z.number().min(1).default(32768),
+  profiles: z.number().min(1).default(2048),
+  routing: z.number().min(1).default(8192),
+  restructure: z.number().min(1).default(4096),
 });
 
-const NodeDescriptionsConfigSchema = z.object({
+const EnrichProfileSchema = z.object({
+  max_nodes: z.number().min(1).default(80),
+  max_edges: z.number().min(1).default(50),
+});
+
+const EnrichConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  threshold: z.number().min(0).max(1).default(0.8),
   provider: z.string().optional(),
+  threshold: z.number().min(0).max(1).default(0.8),
+  max_communities: z.number().min(0).default(0),
+  candidate_threshold: z.number().min(0).max(1).default(0.3),
+  description_batch_tokens: z.number().default(40000),
+  routing_batch_size: z.number().default(30),
+  concurrency: z.number().min(1).default(4),
+  max_retry_depth: z.number().min(0).default(3),
+  max_tokens: EnrichMaxTokensSchema.default({}),
+  profile: EnrichProfileSchema.default({}),
+  restructure_max_pairs: z.number().min(1).default(20),
 });
 
 const OutlineConfigSchema = z.object({
@@ -85,8 +100,7 @@ const ConfigSchema = z.object({
   docs: DocsConfigSchema.default({}),
   images: ImagesConfigSchema.default({}),
   embeddings: EmbeddingsConfigSchema.default({}),
-  community_summaries: CommunitySummariesConfigSchema.default({}),
-  node_descriptions: NodeDescriptionsConfigSchema.default({}),
+  enrich: EnrichConfigSchema.default({}),
   html: z.boolean().default(true),
   html_min_degree: z.number().int().min(1).optional(),
   outlines: OutlineConfigSchema.default({}),
@@ -98,17 +112,20 @@ const ConfigSchema = z.object({
  * If the raw YAML contains a `build` key, promote its children to root.
  */
 function migrateLegacyConfig(raw: Record<string, unknown>): Record<string, unknown> {
-  if (!raw.build || typeof raw.build !== "object") return raw;
-
-  const build = raw.build as Record<string, unknown>;
   const migrated = { ...raw };
-  delete migrated.build;
 
-  // Promote build children to root (only if not already set at root level)
-  for (const [key, value] of Object.entries(build)) {
-    if (!(key in migrated)) {
-      migrated[key] = value;
+  if (raw.build && typeof raw.build === "object") {
+    const build = raw.build as Record<string, unknown>;
+    delete migrated.build;
+
+    // Promote build children to root (only if not already set at root level)
+    for (const [key, value] of Object.entries(build)) {
+      if (!(key in migrated)) {
+        migrated[key] = value;
+      }
     }
+
+    log.info("Migrated legacy config: promoted build.* fields to root level");
   }
 
   // Migrate legacy outlines config (patterns/exclude/exclude_common under outlines)
@@ -118,7 +135,14 @@ function migrateLegacyConfig(raw: Record<string, unknown>): Record<string, unkno
     migrated.outlines = { enabled: outlines.enabled ?? true };
   }
 
-  log.info("Migrated legacy config: promoted build.* fields to root level");
+  // Reject legacy config keys — no backward compatibility
+  if (migrated.community_summaries || migrated.node_descriptions) {
+    throw new Error(
+      "Legacy config detected: 'community_summaries' and 'node_descriptions' are no longer supported. " +
+      "Replace with 'enrich:' section. See INTELLIGENT-ENRICHMENT.md for the new config format.",
+    );
+  }
+
   return migrated;
 }
 
@@ -178,12 +202,11 @@ function resolveConfigPath(explicitPath?: string): string | null {
 
 function validateProviderReferences(config: Config): void {
   for (const [providerName, provider] of Object.entries(config.providers)) {
-    validateProviderRequirements(providerName, provider);
+  validateProviderRequirements(providerName, provider);
   }
 
   validateEmbeddingProvider(config);
-  validateLlmProvider(config, "community_summaries", config.community_summaries.provider);
-  validateLlmProvider(config, "node_descriptions", config.node_descriptions.provider);
+  validateLlmProvider(config, "enrich", config.enrich.provider);
 }
 
 function validateEmbeddingProvider(config: Config): void {

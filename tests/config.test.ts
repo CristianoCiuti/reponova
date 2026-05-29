@@ -26,10 +26,9 @@ describe("loadConfig", () => {
       expect(config.incremental).toBe(true);
       expect(config.patterns).toEqual([]);
       expect(config.exclude).toEqual([]);
-      expect(config.community_summaries.enabled).toBe(true);
-      expect(config.community_summaries.max_number).toBe(0);
-      expect(config.node_descriptions.enabled).toBe(true);
-      expect(config.node_descriptions.threshold).toBe(0.8);
+      expect(config.enrich.enabled).toBe(true);
+      expect(config.enrich.max_communities).toBe(0);
+      expect(config.enrich.threshold).toBe(0.8);
       expect(config.models.gpu).toBe("auto");
       expect(config.models.cache_dir).toBe("~/.cache/reponova/models");
       expect(config.models.download_on_first_use).toBe(true);
@@ -37,6 +36,53 @@ describe("loadConfig", () => {
       expect(config.providers).toEqual({});
       expect(config.embeddings.enabled).toBe(true);
       expect(config.embeddings.batch_size).toBe(128);
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("returns default enrich.max_tokens per step", () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "rn-test-config-"));
+    tmpDirs.push(tmpDir);
+    const originalCwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      const { config } = loadConfig(undefined);
+      expect(config.enrich.max_tokens).toEqual({
+        descriptions: 32768,
+        profiles: 2048,
+        routing: 8192,
+        restructure: 4096,
+      });
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("returns default enrich.profile limits", () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "rn-test-config-"));
+    tmpDirs.push(tmpDir);
+    const originalCwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      const { config } = loadConfig(undefined);
+      expect(config.enrich.profile).toEqual({
+        max_nodes: 80,
+        max_edges: 50,
+      });
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("returns default enrich.restructure_max_pairs", () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "rn-test-config-"));
+    tmpDirs.push(tmpDir);
+    const originalCwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      const { config } = loadConfig(undefined);
+      expect(config.enrich.restructure_max_pairs).toBe(20);
     } finally {
       process.chdir(originalCwd);
     }

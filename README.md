@@ -58,9 +58,9 @@ AI agents read files one at a time. They don't understand how your codebase fits
 
   Python ¹                           1. tree-sitter AST parsing             graph_search
   Markdown / Docs    ──────────►     2. Symbol + edge extraction        ──► graph_impact
-  Diagrams / SVG                     3. Louvain communities            g    raph_path
-  Multi-repo                         4. TF-IDF / ONNX / API embeddings      graph_similar
-                                     5. Community summaries
+  Diagrams / SVG                     3. Louvain communities                 graph_path
+  Multi-repo                         4. Enrichment (summaries + descriptions)  graph_similar
+                                     5. TF-IDF / ONNX / API embeddings
                                      6. HTML visualizations                 ... (11 tools)
 ```
 
@@ -223,7 +223,7 @@ reponova install --target <editor> [--graph <path>]
 Build (or rebuild) the knowledge graph.
 
 ```bash
-reponova build [--config <path>] [--force] [--target <phase>]
+reponova build [--config <path>] [--force] [--target <phase>] [--start-after <phase>] [--check <phase>]
 ```
 
 | Option | Required | Description |
@@ -231,28 +231,37 @@ reponova build [--config <path>] [--force] [--target <phase>]
 | `--config` | No | Path to `reponova.yml`. Default: auto-detected (see [Config Resolution](#config-resolution)) |
 | `--force` | No | Ignore all caches and rerun every phase. Default: `false` |
 | `--target` | No | Run only this phase and its transitive dependencies. Useful for selective rebuilds without running the full pipeline. |
+| `--start-after` | No | Run only phases downstream of this phase (requires previous build outputs). Conflicts with `--target`. |
+| `--check` | No | Check if a phase needs to run. Exit 0 = up to date, exit 1 = needs run. Conflicts with `--target`, `--start-after`, `--force`. |
 
 **Target examples:**
 
 ```bash
-reponova build --target index       # file-detection → graph → communities → index
+reponova build --target index       # file-detection → graph → communities → enrich → index
 reponova build --target outlines    # file-detection → outlines
-reponova build --target html        # file-detection → graph → communities → community-summaries → node-descriptions → html
-reponova build --target embeddings  # file-detection → graph → communities → community-summaries → node-descriptions → embeddings
+reponova build --target html        # file-detection → graph → communities → enrich → html
+reponova build --target embeddings  # file-detection → graph → communities → enrich → embeddings
 ```
 
-When `--target` is omitted, all 10 phases run in DAG order.
+**Start-after examples:**
 
-**Build pipeline (10 DAG phases, 5 levels):**
+```bash
+reponova build --start-after enrich       # run only index, embeddings, html, report
+reponova build --start-after communities  # run only enrich + downstream
+```
+
+When `--target` is omitted, all 9 phases run in DAG order.
+
+**Build pipeline (9 DAG phases, 5 levels):**
 
 The pipeline executes as a directed acyclic graph — phases within the same level run in parallel:
 
 ```
 Level 0: file-detection
-Level 1: graph, outlines                                       (parallel)
+Level 1: graph, outlines                         (parallel)
 Level 2: communities
-Level 3: community-summaries, node-descriptions, search-index  (parallel)
-Level 4: embeddings, html, report                              (parallel)
+Level 3: enrich
+Level 4: search-index, embeddings, html, report  (parallel)
 ```
 
 | Phase | What it does |
@@ -261,8 +270,7 @@ Level 4: embeddings, html, report                              (parallel)
 | **graph** | Diff files against previous build, parse changed files with tree-sitter WASM, extract symbols/calls/imports/inheritance, build directed graph with cross-file/cross-repo edges |
 | **outlines** | Generate tree-sitter code outlines per file (SHA256 per-file hashing — skip unchanged) |
 | **communities** | Detect communities (Louvain algorithm) and write final `graph.json` with community assignments |
-| **community-summaries** | Generate community summaries (algorithmic or provider-enhanced) |
-| **node-descriptions** | Generate descriptions for high-degree nodes (algorithmic or provider-enhanced) |
+| **enrich** | Generate `graph-enriched.json`, community summaries, and node descriptions (algorithmic or LLM-enhanced via provider) |
 | **search-index** | Generate SQLite search index (`graph_search.db`) |
 | **embeddings** | Generate embeddings incrementally — only re-embed nodes whose text content changed (TF-IDF, ONNX, or remote provider). Clean up stale artifacts on config change. |
 | **html** | Generate `graph.html` and `graph_communities.html` interactive visualizations |
@@ -318,6 +326,71 @@ Checks performed:
 - Search index (`graph_search.db`) existence
 - Outlines directory existence
 - tree-sitter WASM availability
+
+### `reponova cache`
+
+Inspect and manage per-phase cache state.
+
+```bash
+reponova cache [--check <phase>] [--seal <phase>] [--invalidate <phase>] [--status]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--check` | No | Check if a phase cache is fresh (exit 0 = fresh, exit 1 = stale) |
+| `--seal` | No | Manually seal a phase cache (marks it as up-to-date) |
+| `--invalidate` | No | Invalidate a phase cache (forces re-run on next build) |
+| `--status` | No | Show cache status for all phases |
+| `--config` | No | Path to `reponova.yml`. Default: auto-detected |
+
+Only one operation at a time. Example:
+
+```bash
+reponova cache --status              # Show freshness of all phases
+reponova cache --seal enrich         # Mark enrich as done (after manual enrichment)
+reponova cache --invalidate html     # Force HTML regeneration on next build
+```
+
+### `reponova enrich`
+
+Run the full intelligent enrichment pipeline (requires `enrich.provider` configured). This is the automated provider-driven mode — for IDE/agent-driven enrichment, use the subcommands below.
+
+```bash
+reponova enrich [--config <path>]
+```
+
+The command:
+1. Builds up to `communities` phase (if needed)
+2. Runs all enrichment steps (metrics → descriptions → profiles → routing → restructure → apply → updated-profiles → finalize)
+3. Seals the enrich cache
+
+### `reponova enrich:*` (subcommands)
+
+Step-by-step enrichment for IDE/agent workflows. Each subcommand corresponds to one stage of the pipeline.
+
+```bash
+reponova enrich:metrics                        # Step 0: Compute candidates and edge density
+reponova enrich:prepare <step>                 # Prepare input batches for agent processing
+reponova enrich:merge <step>                   # Merge agent output batches into final file
+reponova enrich:apply                          # Apply routing + restructure decisions to graph
+reponova enrich:finalize                       # Assemble final output files
+```
+
+**Steps** (for `enrich:prepare` and `enrich:merge`): `descriptions`, `profiles`, `routing`, `restructure`, `updated-profiles`
+
+**Typical IDE workflow:**
+```bash
+reponova enrich:metrics                        # classify boundary nodes
+reponova enrich:prepare descriptions           # create input batches
+# → agent reads .enrich/input/descriptions/, writes .enrich/output/descriptions/
+reponova enrich:merge descriptions             # merge into .enrich/descriptions.json
+reponova enrich:prepare profiles               # ...repeat for each step
+# → agent processes → merge → prepare next → ...
+reponova enrich:apply                          # apply routing + restructure to graph
+reponova enrich:finalize                       # produce graph-enriched.json + final files
+reponova cache --seal enrich                   # seal cache
+reponova build --start-after enrich            # run downstream phases
+```
 
 ---
 
@@ -613,43 +686,17 @@ embeddings:
   # Default: 128
   batch_size: 128
 
-# ── Community Summaries ───────────────────────────────────────────────────────
-# Natural-language summaries for each detected community (cluster of related symbols).
-# Independent from node descriptions — can enable one without the other.
-# Default (no provider): algorithmic summaries (rule-based, still useful)
-# With provider: uses LLM for richer natural-language summaries
-community_summaries:
-  # Enable/disable community summary generation
+# ── Enrich ────────────────────────────────────────────────────────────────────
+# Unified enrichment: community summaries + node descriptions.
+# Default (no provider): algorithmic mode (rule-based summaries and descriptions)
+# With provider: enables intelligent multi-step LLM enrichment pipeline
+enrich:
+  # Enable/disable enrichment
   # Type: boolean
   # Default: true
   enabled: true
 
-  # Maximum number of communities to summarize
-  # Type: integer (>= 0)
-  # Default: 0 (no limit — summarize all communities)
-  # Communities are sorted by size (largest first). When max_number > 0,
-  # only the top N largest communities are summarized.
-  # Communities with fewer than 3 nodes are always excluded.
-  max_number: 0
-
-  # Provider name — references a provider defined in the top-level `providers` map
-  # When omitted: uses algorithmic summaries (rule-based)
-  # The referenced provider must be type "openai" or "llama-cpp" (LLM-capable)
-  # Type: string (optional)
-  # provider: local-llm
-
-# ── Node Descriptions ────────────────────────────────────────────────────────
-# Natural-language descriptions for high-degree (important) nodes.
-# Independent from community summaries — can enable one without the other.
-# Default (no provider): algorithmic descriptions
-# With provider: uses LLM for richer descriptions
-node_descriptions:
-  # Enable/disable node description generation
-  # Type: boolean
-  # Default: true
-  enabled: true
-
-  # Degree threshold for node description generation
+  # Degree percentile threshold for node descriptions
   # Type: number (0.0 – 1.0)
   # Default: 0.8
   # Meaning: top (1 - threshold)% of nodes by degree get descriptions.
@@ -659,8 +706,71 @@ node_descriptions:
   #   - 1.0 = no nodes
   threshold: 0.8
 
+  # Maximum number of communities to summarize
+  # Type: integer (>= 0)
+  # Default: 0 (no limit — summarize all communities)
+  # Communities are sorted by size (largest first). When max_communities > 0,
+  # only the top N largest communities are summarized.
+  # Communities with fewer than 3 nodes are always excluded.
+  max_communities: 0
+
+  # Boundary ratio threshold for candidate classification (intelligent mode)
+  # Nodes with external_edges / total_edges >= this value are candidates for rerouting
+  # Type: number (0.0 – 1.0)
+  # Default: 0.3
+  candidate_threshold: 0.3
+
+  # Token budget per description batch (intelligent mode)
+  # Type: number
+  # Default: 40000
+  description_batch_tokens: 40000
+
+  # Batch size for routing decisions (intelligent mode)
+  # Type: number
+  # Default: 30
+  routing_batch_size: 30
+
+  # LLM concurrency — max parallel LLM calls (intelligent mode)
+  # Type: number (>= 1)
+  # Default: 4
+  concurrency: 4
+
+  # Max retry depth for failed LLM calls (intelligent mode)
+  # Type: number (>= 0)
+  # Default: 3
+  max_retry_depth: 3
+
+  # Per-step max_tokens sent to the LLM provider (intelligent mode)
+  # Controls the maximum output length for each enrichment step independently.
+  # Type: object { descriptions, profiles, routing, restructure }
+  # Default: { descriptions: 32768, profiles: 2048, routing: 8192, restructure: 4096 }
+  # Note: descriptions output scales ~0.75× with description_batch_tokens input.
+  #       With default 40k input, expect ~30k output tokens.
+  #       Ensure your model context window fits input + output (e.g. 40k + 32k = 72k minimum).
+  max_tokens:
+    descriptions: 32768            # node description batches (scales with batch input)
+    profiles: 2048                 # community profiling (single object, bounded)
+    routing: 8192                  # routing decision batches (scales with routing_batch_size)
+    restructure: 4096              # merge/split detection
+
+  # Profile generation limits (intelligent mode)
+  # Controls how many nodes/edges are included in the community profile prompt.
+  # Lower values = cheaper prompts, less context for the LLM.
+  # Type: object { max_nodes, max_edges }
+  # Default: { max_nodes: 80, max_edges: 50 }
+  # profile:
+  #   max_nodes: 80                 # max nodes listed in profile prompt per community
+  #   max_edges: 50                 # max edges listed in profile prompt per community
+
+  # Maximum density pairs for restructure (intelligent mode)
+  # Limits how many cross-community (communityA, communityB) pairs are sent
+  # to the LLM for merge/split analysis. Pairs are ranked by edge density.
+  # Type: number (>= 1)
+  # Default: 20
+  # restructure_max_pairs: 20
+
   # Provider name — references a provider defined in the top-level `providers` map
-  # When omitted: uses algorithmic descriptions
+  # When omitted: uses algorithmic enrichment (rule-based summaries + descriptions)
   # The referenced provider must be type "openai" or "llama-cpp" (LLM-capable)
   # Type: string (optional)
   # provider: local-llm
@@ -721,7 +831,7 @@ repos:
 
 ### Provider-based Config
 
-For richer AI-enhanced summaries, descriptions, or embeddings, define providers and reference them from features:
+For richer AI-enhanced enrichment or embeddings, define providers and reference them:
 
 ```yaml
 output: ../reponova-out
@@ -736,13 +846,10 @@ providers:
 models:
   gpu: auto                 # auto-detect GPU, falls back to CPU
   download_on_first_use: true
-community_summaries:
-  enabled: true
-  provider: local-llm       # use local LLM for richer summaries
-node_descriptions:
+enrich:
   enabled: true
   threshold: 0.5            # describe top 50% nodes by degree
-  provider: local-llm       # same provider — engine instance is shared
+  provider: local-llm       # use local LLM for intelligent enrichment
 ```
 
 > When multiple features reference the same `llama-cpp` provider, RepoNova shares a single engine instance — no double memory usage.
@@ -763,7 +870,7 @@ providers:
 embeddings:
   enabled: true
   provider: openai-embed
-community_summaries:
+enrich:
   enabled: true
   provider: ollama-llm
 ```
@@ -832,7 +939,7 @@ Any model under the `sentence-transformers/` org on HuggingFace that provides an
 
 ### LLM / GGUF (local)
 
-Local language models for richer community summaries and node descriptions, powered by [node-llama-cpp](https://github.com/withcatai/node-llama-cpp).
+Local language models for enrichment (community summaries and node descriptions), powered by [node-llama-cpp](https://github.com/withcatai/node-llama-cpp).
 
 | Property | Value |
 |----------|-------|
@@ -840,7 +947,7 @@ Local language models for richer community summaries and node descriptions, powe
 | **Config** | `providers.<name>.model` — `hf:` URI (e.g., `hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M`) |
 | **Format** | `hf:{user}/{repo}:{quantization}` |
 | **Cache path** | `{models.cache_dir}/llm/` |
-| **Used when** | `community_summaries.provider` or `node_descriptions.provider` references a `llama-cpp` provider |
+| **Used when** | `enrich.provider` references a `llama-cpp` provider |
 | **Dependency** | `node-llama-cpp` (optional peer dependency) |
 
 When multiple features reference the same `llama-cpp` provider, RepoNova shares a single engine instance — no double memory usage.
@@ -855,7 +962,7 @@ Any OpenAI-compatible API — including OpenAI itself, Azure OpenAI, Ollama, LM 
 |----------|-------|
 | **Provider type** | `openai` |
 | **Config** | `providers.<name>.base_url`, `.model`, `.api_key`, `.timeout` |
-| **Used for** | Embeddings (`embeddings.provider`) or LLM (`community_summaries.provider`, `node_descriptions.provider`) |
+| **Used for** | Embeddings (`embeddings.provider`) or LLM enrichment (`enrich.provider`) |
 | **Retry policy** | 3 retries with exponential backoff (1s/2s/4s) on HTTP 429 (embeddings only) |
 | **Timeout** | Configurable per provider (default: 30s) |
 
@@ -883,6 +990,7 @@ reponova-out/
 ├── graph.json                                # Full graph: nodes, edges, community assignments, metadata
 │                                             #   metadata.build_config: config fingerprint for change detection
 │                                             #   nodes include: docstring, signature, bases (when available)
+├── graph-enriched.json                       # Enriched graph: summaries + descriptions merged into nodes/communities
 ├── graph-nodes.json                          # Intermediate graph (pre-community detection, no Louvain assignments)
 ├── detected-files.json                       # Detected file list (intermediate, consumed by graph + outlines)
 ├── graph.html                                # Interactive visualization (vis.js) — click, search, filter
@@ -893,6 +1001,7 @@ reponova-out/
 ├── node_descriptions.json                    # Descriptions for high-degree nodes
 ├── tfidf_idf.json                            # TF-IDF vocabulary weights (for query-time embedding)
 ├── vectors/                                  # LanceDB vector store — semantic similarity search
+│   ├── _meta.json                            #   self-describing metadata (provider, dimensions, model)
 │   └── (LanceDB internal files)              #   fallback: vectors.json when @lancedb/lancedb unavailable
 ├── outlines/                                 # Pre-computed code outlines per file
 │   └── <repo>/<path>.outline.json
@@ -902,10 +1011,8 @@ reponova-out/
     ├── node-texts.json                       # node id → text hash map for incremental embeddings
     ├── graph-nodes-hash.txt                  # SHA256 of graph-nodes.json (skip community detection)
     ├── embeddings-config-hash.txt            # config fingerprint for embeddings phase
-    ├── community-summaries-config-hash.txt   # config fingerprint for community summaries phase
-    ├── community-summary-fingerprints.json   # per-community content fingerprint (incremental)
-    ├── node-descriptions-config-hash.txt     # config fingerprint for node descriptions phase
-    ├── node-description-fingerprints.json    # per-node content fingerprint (incremental)
+    ├── embeddings-input-hash.txt             # input hash for embeddings (detect upstream changes)
+    ├── enrich-input-hash.txt                 # graph.json hash for enrich invalidation
     └── extractions/                          # cached FileExtraction per file
         └── <hash>.json
 ```

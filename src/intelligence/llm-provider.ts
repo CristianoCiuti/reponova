@@ -16,11 +16,14 @@ export interface LlmCompletionOptions {
 /**
  * Abstract LLM provider contract.
  * Both local (node-llama-cpp) and remote (OpenAI-compatible) implement this.
+ *
+ * generate() throws on failure with a descriptive message (HTTP error, timeout,
+ * network failure, etc.). Callers should catch and handle/retry as needed.
  */
 export interface LlmProvider {
   readonly isAvailable: boolean;
   initialize(): Promise<boolean>;
-  generate(options: LlmCompletionOptions): Promise<string | null>;
+  generate(options: LlmCompletionOptions): Promise<string>;
   dispose(): Promise<void>;
 }
 
