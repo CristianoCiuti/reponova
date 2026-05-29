@@ -85,6 +85,15 @@ enrich:
   concurrency: 4
   max_retry_depth: 3
   # provider: local-llm           # reference a provider defined above
+  # max_tokens:                   # per-step LLM output token limits
+  #   descriptions: 32768
+  #   profiles: 2048
+  #   routing: 8192
+  #   restructure: 4096
+  # profile:                      # community profile prompt limits
+  #   max_nodes: 80
+  #   max_edges: 50
+  # restructure_max_pairs: 20     # max cross-community pairs for merge/split analysis
 
 # ── Outlines ─────────────────────────────────────────────────────────────────
 outlines:

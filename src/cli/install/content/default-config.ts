@@ -58,6 +58,11 @@ enrich:
   enabled: true
   # threshold: 0.8                # top 20% of nodes by degree
   # max_communities: 0            # 0 = no limit; N = only top N largest communities
+  # candidate_threshold: 0.3      # boundary ratio for candidate classification
+  # description_batch_tokens: 40000
+  # routing_batch_size: 30
+  # concurrency: 4                # max parallel LLM calls
+  # max_retry_depth: 3
   # provider: local-llm           # uncomment for LLM-enhanced enrichments
   # max_tokens:                   # per-step LLM output token limits
   #   descriptions: 32768

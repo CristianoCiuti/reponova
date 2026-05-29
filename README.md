@@ -744,6 +744,9 @@ enrich:
   # Controls the maximum output length for each enrichment step independently.
   # Type: object { descriptions, profiles, routing, restructure }
   # Default: { descriptions: 32768, profiles: 2048, routing: 8192, restructure: 4096 }
+  # Note: descriptions output scales ~0.75× with description_batch_tokens input.
+  #       With default 40k input, expect ~30k output tokens.
+  #       Ensure your model context window fits input + output (e.g. 40k + 32k = 72k minimum).
   max_tokens:
     descriptions: 32768            # node description batches (scales with batch input)
     profiles: 2048                 # community profiling (single object, bounded)
