@@ -183,6 +183,8 @@ The agent uses `reponova enrich:*` subcommands for batch preparation and merging
 
 ### `reponova install`
 
+Set up editor integration (MCP server, plugin/hook, skills, enrich command, config).
+
 ```bash
 reponova install --target <editor> [--graph <path>]
 ```
@@ -194,17 +196,19 @@ reponova install --target <editor> [--graph <path>]
 
 ### `reponova build`
 
+Run the full build pipeline (incremental by default).
+
 ```bash
 reponova build [--config <path>] [--force] [--target <phase>] [--start-after <phase>] [--check <phase>]
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--config` | Path to `reponova.yml` (default: auto-detected) |
-| `--force` | Ignore all caches and rerun every phase |
-| `--target` | Run only this phase and its dependencies |
-| `--start-after` | Run only phases downstream of this phase |
-| `--check` | Check if a phase needs to run (exit 0 = up to date, exit 1 = needs run) |
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--config` | No | Path to `reponova.yml` (default: auto-detected) |
+| `--force` | No | Ignore all caches and rerun every phase |
+| `--target` | No | Run only this phase and its dependencies |
+| `--start-after` | No | Run only phases downstream of this phase |
+| `--check` | No | Check if a phase needs to run (exit 0 = up to date, exit 1 = needs run) |
 
 **Build pipeline (9 DAG phases, 5 levels):**
 
@@ -230,22 +234,21 @@ Level 4: search-index, embeddings, html, report  (parallel)
 
 ### `reponova enrich`
 
-Run the full intelligent enrichment pipeline (requires `enrich.provider` configured). This is the automated provider-driven mode — for IDE/agent-driven enrichment, use the subcommands below.
+Run the intelligent enrichment pipeline with a configured LLM provider. Builds up to `communities` if needed, runs all enrichment steps, seals the cache.
 
 ```bash
 reponova enrich [--config <path>]
 ```
 
-The command:
-1. Builds up to `communities` phase (if needed)
-2. Runs all enrichment steps (metrics → descriptions → profiles → routing → restructure → apply → updated-profiles → finalize)
-3. Seals the enrich cache
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--config` | No | Path to `reponova.yml` (default: auto-detected) |
 
-> **Note:** This does NOT run downstream phases (search-index, embeddings, html, report). Run `reponova build --start-after enrich` afterwards to complete the full pipeline.
+> **Note:** Does NOT run downstream phases (search-index, embeddings, html, report). Run `reponova build --start-after enrich` afterwards to complete the pipeline.
 
-### `reponova enrich:*` (subcommands)
+### `reponova enrich:*`
 
-Step-by-step enrichment for IDE/agent workflows:
+Step-by-step enrichment subcommands for IDE/agent workflows.
 
 ```bash
 reponova enrich:metrics                        # Step 0: candidates + edge density
@@ -255,40 +258,71 @@ reponova enrich:apply                          # Step 5: apply routing + restruc
 reponova enrich:finalize                       # Step 7: produce final output files
 ```
 
-Steps: `descriptions`, `profiles`, `routing`, `restructure`, `updated-profiles`
+| Step | What it produces |
+|------|-----------------|
+| `descriptions` | Architectural descriptions for high-degree nodes |
+| `profiles` | Community profiles (label, purpose, misfits) |
+| `routing` | Routing decisions for boundary candidates |
+| `restructure` | Merge/split proposals across communities |
+| `updated-profiles` | Re-profiled communities after mutations |
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--config` | No | Path to `reponova.yml` (default: auto-detected) |
 
 ### `reponova mcp`
+
+Start the MCP server (stdio transport). Normally launched automatically by the editor.
 
 ```bash
 reponova mcp [--graph <path>]
 ```
 
-Starts the MCP server (stdio transport). Normally launched automatically by the editor.
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--graph` | No | Path to output directory. Default: `./reponova-out` |
 
 ### `reponova check`
+
+Validate config, grammar availability, and display resolved paths.
 
 ```bash
 reponova check [--config <path>]
 ```
 
-Validates config, grammar availability, and displays resolved paths.
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--config` | No | Path to `reponova.yml` (default: auto-detected) |
 
 ### `reponova cache`
 
+Inspect and manage per-phase cache state. Exactly one operation is required. Phases are the same as in [`reponova build`](#reponova-build).
+
 ```bash
-reponova cache [--check <phase>] [--seal <phase>] [--invalidate <phase>] [--status]
+reponova cache --status                        # Show cache status for all phases
+reponova cache --check <phase>                 # Check if fresh (exit 0 = fresh, exit 1 = stale)
+reponova cache --seal <phase>                  # Manually seal (marks as up-to-date)
+reponova cache --invalidate <phase>            # Invalidate (forces re-run on next build)
 ```
 
-Inspect and manage per-phase cache state.
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--config` | No | Path to `reponova.yml` (default: auto-detected) |
 
 ### `reponova models`
 
+Manage local AI models (ONNX embeddings, GGUF LLM weights).
+
 ```bash
-reponova models status              # Show configured and cached models
-reponova models download            # Pre-download all models needed by config
-reponova models remove <name>       # Remove a specific cached model
-reponova models clear               # Remove all cached models
+reponova models <subcommand>
 ```
+
+| Subcommand | Description |
+|------------|-------------|
+| `status` | Show configured and cached models |
+| `download` | Pre-download all models needed by config |
+| `remove <name>` | Remove a specific cached model |
+| `clear` | Remove all cached models |
 
 ---
 
