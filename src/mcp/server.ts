@@ -6,6 +6,7 @@ import {
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { statSync } from "node:fs";
 import { resolveGraphPath, resolveSearchDb, resolveGraphJson } from "../shared/graph-resolver.js";
 import { errorMessage, log } from "../shared/utils.js";
 import type { PathResolver } from "../shared/path-resolver.js";
@@ -26,34 +27,191 @@ export function resolveEmbeddingsConfig(graphJsonPath: string | null): Embedding
   return embeddingsConfigFromFingerprint(buildConfig);
 }
 
-/**
- * Resources initialized in background after server.connect().
- * All tool handlers await this promise before accessing any resource.
- */
+// ─── Resource Manager ────────────────────────────────────────────────────────
+
 interface ServerResources {
   db: Database;
   graphDir: string;
-  graphJsonPath: string | null;
+  graphJsonPath: string;
   resolvePaths: PathResolver | null;
 }
 
+/**
+ * Manages lazy loading and hot-reloading of graph resources.
+ * - At startup: loads if reponova-out exists, otherwise stays idle.
+ * - At each tool call: checks graph.json mtime. If changed (or first load), reloads.
+ */
+class ResourceManager {
+  private resources: ServerResources | null = null;
+  private loadingPromise: Promise<ServerResources | null> | null = null;
+  private cachedMtimeMs: number = 0;
+  private graphPathHint: string | undefined;
+
+  constructor(graphPathHint: string | undefined) {
+    this.graphPathHint = graphPathHint;
+  }
+
+  /**
+   * Try initial load. Does NOT throw — if dir missing, server stays idle.
+   */
+  async tryInitialLoad(): Promise<void> {
+    const graphDir = resolveGraphPath(this.graphPathHint);
+    if (!graphDir) {
+      log.info("Graph output not found — server will load resources on first tool call after build.");
+      return;
+    }
+    const graphJsonPath = resolveGraphJson(graphDir);
+    if (!graphJsonPath) {
+      log.info("graph.json not found — server will load resources on first tool call after build.");
+      return;
+    }
+    await this.loadResources(graphDir, graphJsonPath);
+  }
+
+  /**
+   * Called before every tool call. Returns resources or throws a user-friendly error.
+   */
+  async getResources(): Promise<ServerResources> {
+    // Re-resolve graph path each time (handles dir appearing after startup)
+    const graphDir = resolveGraphPath(this.graphPathHint);
+    if (!graphDir) {
+      throw new Error("Graph output directory not found. Run 'reponova build' first, or pass --graph <path>.");
+    }
+    const graphJsonPath = resolveGraphJson(graphDir);
+    if (!graphJsonPath) {
+      throw new Error(`graph.json not found in ${graphDir}. Run 'reponova build' first.`);
+    }
+
+    // Check mtime
+    const currentMtime = this.getGraphJsonMtime(graphJsonPath);
+
+    // If already loaded and mtime matches, use cached
+    if (this.resources && currentMtime === this.cachedMtimeMs && this.resources.graphDir === graphDir) {
+      return this.resources;
+    }
+
+    // Need to load/reload
+    return await this.loadResources(graphDir, graphJsonPath);
+  }
+
+  private getGraphJsonMtime(graphJsonPath: string): number {
+    try {
+      return statSync(graphJsonPath).mtimeMs;
+    } catch {
+      return 0;
+    }
+  }
+
+  private async loadResources(graphDir: string, graphJsonPath: string): Promise<ServerResources> {
+    // Deduplicate concurrent loads
+    if (this.loadingPromise) {
+      const result = await this.loadingPromise;
+      if (result) return result;
+    }
+
+    this.loadingPromise = this.doLoad(graphDir, graphJsonPath);
+    try {
+      const result = await this.loadingPromise;
+      if (!result) {
+        throw new Error("Failed to load graph resources.");
+      }
+      return result;
+    } finally {
+      this.loadingPromise = null;
+    }
+  }
+
+  private async doLoad(graphDir: string, graphJsonPath: string): Promise<ServerResources | null> {
+    try {
+      // Close previous DB if reloading
+      if (this.resources) {
+        try {
+          this.resources.db.close();
+        } catch { /* ignore */ }
+        // Dispose embeddings from previous load
+        try {
+          const { disposeSimilaritySearch } = await import("./tools/similar.js");
+          const { disposeContextBuilder } = await import("./tools/context.js");
+          await disposeSimilaritySearch();
+          await disposeContextBuilder();
+        } catch { /* ignore */ }
+        this.resources = null;
+      }
+
+      const dbPath = resolveSearchDb(graphDir);
+      if (!dbPath) {
+        log.warn(`Search database not found in ${graphDir}. Run 'reponova build' to generate it.`);
+        return null;
+      }
+
+      log.info(`Loading graph from ${graphJsonPath}`);
+
+      const { openDatabase } = await import("../query/db.js");
+      const db = await openDatabase(dbPath, { readonly: true });
+
+      // Reconstruct repo mappings from graph.json metadata
+      let resolvePaths: PathResolver | null = null;
+      try {
+        const { loadGraphData } = await import("../graph/loader.js");
+        const { reconstructRepos, resolveFilePaths } = await import("../shared/path-resolver.js");
+        const graphData = loadGraphData(graphJsonPath);
+        if (graphData.metadata) {
+          const repos = reconstructRepos(graphDir, graphData.metadata.config_dir, graphData.metadata.repos);
+          const mode = graphData.metadata.mode ?? "single";
+          if (repos) {
+            resolvePaths = (sourceFile: string) => resolveFilePaths(graphDir, repos, mode, sourceFile);
+          }
+        }
+      } catch {
+        log.warn("Could not load graph metadata for path resolution — on-the-fly outlines may fail");
+      }
+
+      // Initialize embeddings in background (non-blocking)
+      let defaultEmbeddingsConfig: EmbeddingsConfig | null = null;
+      try {
+        defaultEmbeddingsConfig = resolveEmbeddingsConfig(graphJsonPath);
+      } catch { /* no embeddings config */ }
+
+      if (defaultEmbeddingsConfig) {
+        const eConfig = defaultEmbeddingsConfig;
+        const defaultCacheDir = "~/.cache/reponova/models";
+        import("./tools/similar.js").then(({ initSimilaritySearch }) =>
+          initSimilaritySearch(graphDir, eConfig, defaultCacheDir)
+        ).catch(() => {});
+        import("./tools/context.js").then(({ initContextBuilder }) =>
+          initContextBuilder(db, graphDir, eConfig, defaultCacheDir)
+        ).catch(() => {});
+      }
+
+      this.cachedMtimeMs = this.getGraphJsonMtime(graphJsonPath);
+      this.resources = { db, graphDir, graphJsonPath, resolvePaths };
+
+      log.info(`Graph loaded: ${graphDir}`);
+      return this.resources;
+    } catch (err) {
+      log.error(`Failed to load resources: ${errorMessage(err)}`);
+      return null;
+    }
+  }
+
+  async dispose(): Promise<void> {
+    if (this.resources) {
+      try {
+        const { disposeSimilaritySearch } = await import("./tools/similar.js");
+        const { disposeContextBuilder } = await import("./tools/context.js");
+        await disposeSimilaritySearch();
+        await disposeContextBuilder();
+        this.resources.db.close();
+      } catch { /* ignore */ }
+      this.resources = null;
+    }
+  }
+}
+
+// ─── Server Entry Point ──────────────────────────────────────────────────────
+
 export async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
-  // --- Phase 1: Minimal validation (fast, sync-ish) ---
-  const graphDir = resolveGraphPath(options.graphPath);
-  if (!graphDir) {
-    log.error("Could not find reponova-out directory. Use --graph flag, set REPONOVA_GRAPH_PATH, or run from a directory containing reponova-out/.");
-    process.exit(1);
-  }
-
-  const dbPath = resolveSearchDb(graphDir);
-  if (!dbPath) {
-    log.error(`Search database not found in ${graphDir}. Run 'reponova index' first.`);
-    process.exit(1);
-  }
-
-  const graphJsonPath = resolveGraphJson(graphDir);
-
-  // --- Phase 2: Connect transport IMMEDIATELY ---
+  // --- Phase 1: Connect transport IMMEDIATELY (no validation, no crash) ---
   const server = new Server(
     { name: "reponova", version: "0.1.0" },
     { capabilities: { tools: {}, resources: {} } },
@@ -63,68 +221,12 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   await server.connect(transport);
   log.info("reponova MCP server running on stdio");
 
-  // --- Phase 3: Initialize resources in background (ALL imports are lazy) ---
-  let resourcesResolve!: (r: ServerResources) => void;
-  let resourcesReject!: (e: Error) => void;
-  const resourcesReady: Promise<ServerResources> = new Promise((resolve, reject) => {
-    resourcesResolve = resolve;
-    resourcesReject = reject;
-  });
+  // --- Phase 2: Try loading resources (non-blocking, no crash) ---
+  const resourceManager = new ResourceManager(options.graphPath);
+  // Fire initial load attempt — does not block, does not crash
+  resourceManager.tryInitialLoad().catch(() => {});
 
-  // Fire initialization immediately (non-blocking relative to transport)
-  (async () => {
-    try {
-      const { openDatabase } = await import("../query/db.js");
-      const db = await openDatabase(dbPath, { readonly: true });
-
-      // Reconstruct repo mappings from graph.json metadata
-      let resolvePaths: PathResolver | null = null;
-      if (graphJsonPath) {
-        try {
-          const { loadGraphData } = await import("../graph/loader.js");
-          const { reconstructRepos, resolveFilePaths } = await import("../shared/path-resolver.js");
-          const graphData = loadGraphData(graphJsonPath);
-          if (graphData.metadata) {
-            const repos = reconstructRepos(graphDir, graphData.metadata.config_dir, graphData.metadata.repos);
-            const mode = graphData.metadata.mode ?? "single";
-            if (repos) {
-              resolvePaths = (sourceFile: string) => resolveFilePaths(graphDir, repos, mode, sourceFile);
-            }
-          }
-        } catch {
-          log.warn("Could not load graph metadata for path resolution — on-the-fly outlines may fail");
-        }
-      }
-
-      // Embeddings config
-      let defaultEmbeddingsConfig;
-      try {
-        defaultEmbeddingsConfig = resolveEmbeddingsConfig(graphJsonPath);
-      } catch {
-        defaultEmbeddingsConfig = null;
-      }
-
-      const defaultCacheDir = "~/.cache/reponova/models";
-
-      // Initialize similarity search (non-blocking)
-      if (defaultEmbeddingsConfig) {
-        import("./tools/similar.js").then(({ initSimilaritySearch }) =>
-          initSimilaritySearch(graphDir, defaultEmbeddingsConfig!, defaultCacheDir)
-        ).catch(() => {});
-
-        // Initialize context builder (non-blocking)
-        import("./tools/context.js").then(({ initContextBuilder }) =>
-          initContextBuilder(db, graphDir, defaultEmbeddingsConfig!, defaultCacheDir)
-        ).catch(() => {});
-      }
-
-      resourcesResolve({ db, graphDir, graphJsonPath, resolvePaths });
-    } catch (err) {
-      resourcesReject(err instanceof Error ? err : new Error(String(err)));
-    }
-  })();
-
-  // --- Phase 4: Register handlers (all await resourcesReady) ---
+  // --- Phase 3: Register handlers ---
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
@@ -145,8 +247,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     try {
-      // Semaphore: wait for all resources to be ready before handling any tool call
-      const { db, graphDir: gDir, graphJsonPath: gjPath, resolvePaths: rp } = await resourcesReady;
+      const { db, graphDir: gDir, graphJsonPath: gjPath, resolvePaths: rp } = await resourceManager.getResources();
 
       switch (name) {
         case "graph_search": {
@@ -206,36 +307,23 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     if (request.params.uri === "graph://status") {
-      const { db, graphDir: gDir, graphJsonPath: gjPath } = await resourcesReady;
-      const { handleStatus } = await import("./tools/status.js");
-      const result = handleStatus(db, gDir, gjPath);
-      return { contents: [{ uri: request.params.uri, text: result.content[0]?.text ?? "", mimeType: "text/plain" }] };
+      try {
+        const { db, graphDir: gDir, graphJsonPath: gjPath } = await resourceManager.getResources();
+        const { handleStatus } = await import("./tools/status.js");
+        const result = handleStatus(db, gDir, gjPath);
+        return { contents: [{ uri: request.params.uri, text: result.content[0]?.text ?? "", mimeType: "text/plain" }] };
+      } catch (error) {
+        return { contents: [{ uri: request.params.uri, text: `Error: ${errorMessage(error)}`, mimeType: "text/plain" }] };
+      }
     }
     return { contents: [{ uri: request.params.uri, text: "Not found", mimeType: "text/plain" }] };
   });
 
-  process.on("SIGINT", async () => {
-    try {
-      const r = await resourcesReady;
-      const { disposeSimilaritySearch } = await import("./tools/similar.js");
-      const { disposeContextBuilder } = await import("./tools/context.js");
-      await disposeSimilaritySearch();
-      await disposeContextBuilder();
-      r.db.close();
-    } catch { /* resources never initialized */ }
+  const shutdown = async () => {
+    await resourceManager.dispose();
     await server.close();
     process.exit(0);
-  });
-  process.on("SIGTERM", async () => {
-    try {
-      const r = await resourcesReady;
-      const { disposeSimilaritySearch } = await import("./tools/similar.js");
-      const { disposeContextBuilder } = await import("./tools/context.js");
-      await disposeSimilaritySearch();
-      await disposeContextBuilder();
-      r.db.close();
-    } catch { /* resources never initialized */ }
-    await server.close();
-    process.exit(0);
-  });
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
