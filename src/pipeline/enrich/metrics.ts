@@ -2,13 +2,12 @@
  * Step 0: Compute graph metrics — candidate classification and inter-community edge density.
  *
  * Produces: .enrich/candidates.json, .enrich/edge-density.json
- * Invalidates .enrich/ when graph.json hash differs from sealed hash.
+ * Always starts fresh: deletes .enrich/ and recomputes from graph.json.
  */
 import { existsSync, readFileSync, rmSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { GraphData } from "../../shared/types.js";
 import { atomicWriteJson } from "../../shared/atomic-write.js";
-import { hashFile, readHashFile } from "../cache/utils.js";
 import type { CandidatesFile, EdgeDensityFile, CandidateClassification, EdgeDensityEntry } from "./types.js";
 
 export interface MetricsOptions {
@@ -21,25 +20,14 @@ export function runMetrics(options: MetricsOptions): { candidateCount: number; t
   const enrichDir = join(outputDir, ".enrich");
   const graphJsonPath = join(outputDir, "graph.json");
 
-  // Invalidation check: if graph.json hash differs from sealed, delete .enrich/
+  // Always start fresh
   if (existsSync(enrichDir)) {
-    const currentHash = hashFile(graphJsonPath);
-    const sealedHash = readHashFile(join(outputDir, ".cache", "enrich-input-hash.txt"));
-    if (!sealedHash || currentHash !== sealedHash) {
-      rmSync(enrichDir, { recursive: true, force: true });
-    }
+    rmSync(enrichDir, { recursive: true, force: true });
   }
-
-  // Skip if already computed
-  const candidatesPath = join(enrichDir, "candidates.json");
-  const edgeDensityPath = join(enrichDir, "edge-density.json");
-  if (existsSync(candidatesPath) && existsSync(edgeDensityPath)) {
-    const existing = JSON.parse(readFileSync(candidatesPath, "utf-8")) as CandidatesFile;
-    return { candidateCount: existing.candidateCount, totalNodes: existing.totalNodes };
-  }
-
   mkdirSync(enrichDir, { recursive: true });
 
+  const candidatesPath = join(enrichDir, "candidates.json");
+  const edgeDensityPath = join(enrichDir, "edge-density.json");
   const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
 
   // Build adjacency index

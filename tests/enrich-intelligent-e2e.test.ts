@@ -16,7 +16,7 @@ import { runMerge } from "../src/pipeline/enrich/merge.js";
 import { runApply } from "../src/pipeline/enrich/apply.js";
 import { runFinalize } from "../src/pipeline/enrich/finalize.js";
 import { runPrepare } from "../src/pipeline/enrich/prepare.js";
-import { hashFile, writeHashFile } from "../src/pipeline/cache/utils.js";
+
 
 let testDir: string;
 
@@ -233,7 +233,6 @@ describe("intelligent enrichment E2E", { timeout: 30000 }, () => {
   it("enrich:metrics invalidates .enrich/ when graph.json changes", () => {
     const graph1 = makeGraph();
     writeFileSync(join(testDir, "graph.json"), JSON.stringify(graph1));
-    writeFileSync(join(testDir, ".cache", "enrich-input-hash.txt"), "old-hash-that-wont-match");
 
     // Create stale .enrich directory
     mkdirSync(join(testDir, ".enrich"), { recursive: true });
@@ -241,7 +240,7 @@ describe("intelligent enrichment E2E", { timeout: 30000 }, () => {
 
     runMetrics({ outputDir: testDir, candidateThreshold: 0.3 });
 
-    // Stale file should be gone (directory was invalidated and recreated)
+    // Stale file should be gone (directory was wiped and recreated)
     expect(existsSync(join(testDir, ".enrich", "stale-file.txt"))).toBe(false);
     expect(existsSync(join(testDir, ".enrich", "candidates.json"))).toBe(true);
   });
@@ -376,7 +375,9 @@ describe("intelligent enrichment E2E", { timeout: 30000 }, () => {
     expect(enriched.nodes).toHaveLength(8);
   });
 
-  it("resumption: skips completed steps on re-run", async () => {
+  it("BasePhase seal: enrich phase skips when graph.json unchanged", async () => {
+    // This tests the REAL resumability mechanism: BasePhase.checkCacheFreshness()
+    // prevents doWork() from being called when the seal matches the current inputs.
     const repoDir = join(testDir, "repo");
     writeSourceFiles(repoDir);
     writeFileSync(join(testDir, "graph.json"), JSON.stringify(makeGraph()));
@@ -385,20 +386,35 @@ describe("intelligent enrichment E2E", { timeout: 30000 }, () => {
     const config = makeConfig(repoDir);
     const mockRegistry = createMockRegistry(mockProvider);
 
-    // First run
-    await runFullEnrichment({ config, outputDir: testDir, configDir: repoDir, providerRegistry: mockRegistry });
-    const firstCallCount = mockProvider.callCount;
-    expect(firstCallCount).toBeGreaterThan(0);
+    // Import enrichPhase to test the BasePhase mechanism directly
+    const { enrichPhase } = await import("../src/pipeline/phases/enrich.js");
+    const { BuildManifest } = await import("../src/pipeline/engine/manifest.js");
 
-    // Seal the cache (simulates `reponova cache --target enrich`)
-    const graphHash = hashFile(join(testDir, "graph.json"));
-    writeHashFile(join(testDir, ".cache", "enrich-input-hash.txt"), graphHash);
+    const manifest = new BuildManifest(testDir);
+    const ctx = {
+      config,
+      outputDir: testDir,
+      configDir: repoDir,
+      workspace: repoDir,
+      force: false,
+      providerRegistry: mockRegistry,
+      manifest,
+    };
 
-    // Second run — should skip all LLM steps (all final files exist + hash sealed)
+    // First run: enrichPhase.execute() does the work
+    const result1 = await enrichPhase.execute(ctx);
+    expect(result1.skipped).toBe(false);
+    expect(mockProvider.callCount).toBeGreaterThan(0);
+
+    // After execute(), BasePhase auto-seals the cache (writes .cache/enrich/ hashes).
+    // Outputs exist: graph-enriched.json, node_descriptions.json, community_summaries.json.
+    expect(existsSync(join(testDir, ".cache", "enrich", "input-graph.json.hash"))).toBe(true);
+    expect(existsSync(join(testDir, "graph-enriched.json"))).toBe(true);
+
+    // Second run with same graph.json: seal is fresh → skip
     mockProvider.callCount = 0;
-    await runFullEnrichment({ config, outputDir: testDir, configDir: repoDir, providerRegistry: mockRegistry });
-
-    // Second run should have 0 LLM calls (all steps skipped)
+    const result2 = await enrichPhase.execute(ctx);
+    expect(result2.skipped).toBe(true);
     expect(mockProvider.callCount).toBe(0);
   });
 
