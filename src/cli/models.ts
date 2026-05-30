@@ -427,6 +427,39 @@ function clearAction(cacheDir: string): void {
   console.log(`✓ Model cache cleared (${formatSize(totalSize)} freed).`);
 }
 
+export async function modelsHandler(argv: Record<string, unknown>): Promise<void> {
+  const action = argv.action as string;
+  const name = argv.name as string | undefined;
+  const configPath = argv.config as string | undefined;
+  const cacheDirOverride = argv["cache-dir"] as string | undefined;
+
+  try {
+    const context = loadCliContext(configPath, cacheDirOverride);
+
+    switch (action) {
+      case "status":
+        await statusAction(context);
+        break;
+      case "download":
+        await downloadAction(context);
+        break;
+      case "remove":
+        if (!name) throw new Error("Model name is required for 'remove'.");
+        removeAction(context.cacheDir, name);
+        break;
+      case "clear":
+        clearAction(context.cacheDir);
+        break;
+      default:
+        throw new Error(`Unknown action: ${action}. Use: status, download, remove, or clear`);
+    }
+  } catch (error) {
+    console.error(errorMessage(error));
+    process.exit(1);
+  }
+}
+
+/** @deprecated Use modelsHandler directly */
 export const modelsCommand: CommandModule = {
   command: "models <action> [name]",
   describe: "Manage downloaded AI models",
@@ -441,43 +474,9 @@ export const modelsCommand: CommandModule = {
         type: "string",
         describe: "Model name (required for remove)",
       })
-      .option("config", {
-        type: "string",
-        describe: "Path to reponova.yml",
-      })
-      .option("cache-dir", {
-        type: "string",
-        describe: "Override model cache directory",
-      }),
+      .option("config", { type: "string", describe: "Path to reponova.yml" })
+      .option("cache-dir", { type: "string", describe: "Override model cache directory" }),
   handler: async (argv) => {
-    const action = argv.action as string;
-    const name = argv.name as string | undefined;
-    const configPath = argv.config as string | undefined;
-    const cacheDirOverride = argv["cache-dir"] as string | undefined;
-
-    try {
-      const context = loadCliContext(configPath, cacheDirOverride);
-
-      switch (action) {
-        case "status":
-          await statusAction(context);
-          break;
-        case "download":
-          await downloadAction(context);
-          break;
-        case "remove":
-          if (!name) throw new Error("Model name is required for 'remove'.");
-          removeAction(context.cacheDir, name);
-          break;
-        case "clear":
-          clearAction(context.cacheDir);
-          break;
-        default:
-          throw new Error(`Unknown action: ${action}. Use: status, download, remove, or clear`);
-      }
-    } catch (error) {
-      console.error(errorMessage(error));
-      process.exit(1);
-    }
+    await modelsHandler(argv as Record<string, unknown>);
   },
 };

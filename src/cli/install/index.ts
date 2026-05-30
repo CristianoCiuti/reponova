@@ -7,6 +7,28 @@ import { installVSCode } from "./targets/vscode.js";
 
 export { _testing } from "./utils.js";
 
+export async function installHandler(argv: Record<string, unknown>): Promise<void> {
+  const target = argv.target as Target;
+  const graphDir = (argv.graph as string) ?? "./reponova-out";
+  const ctx = { projectDir: process.cwd(), graphDir };
+
+  switch (target) {
+    case "opencode":
+      installOpenCode(ctx);
+      break;
+    case "cursor":
+      installCursor(ctx);
+      break;
+    case "claude":
+      installClaude(ctx);
+      break;
+    case "vscode":
+      installVSCode(ctx);
+      break;
+  }
+}
+
+/** @deprecated Use installHandler directly */
 export const installCommand: CommandModule = {
   command: "install",
   describe: "Install reponova MCP server and hooks for your editor",
@@ -23,23 +45,6 @@ export const installCommand: CommandModule = {
         describe: "Path to reponova-out/ directory (default: ./reponova-out)",
       }),
   handler: async (argv) => {
-    const target = argv.target as Target;
-    const graphDir = (argv.graph as string) ?? "./reponova-out";
-    const ctx = { projectDir: process.cwd(), graphDir };
-
-    switch (target) {
-      case "opencode":
-        installOpenCode(ctx);
-        break;
-      case "cursor":
-        installCursor(ctx);
-        break;
-      case "claude":
-        installClaude(ctx);
-        break;
-      case "vscode":
-        installVSCode(ctx);
-        break;
-    }
+    await installHandler(argv as Record<string, unknown>);
   },
 };

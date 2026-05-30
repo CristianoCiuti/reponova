@@ -39,16 +39,8 @@ export function verifyGraphArtifacts(graphDir: string, graphJsonPath: string): C
   return checks;
 }
 
-export const checkCommand: CommandModule = {
-  command: "check",
-  describe: "Verify graph status and system capabilities",
-  builder: (yargs) =>
-    yargs.option("graph", {
-      type: "string",
-      describe: "Path to reponova-out/ directory",
-    }),
-  handler: async (argv) => {
-    const checks: CheckItem[] = [];
+export async function checkHandler(argv: Record<string, unknown>): Promise<void> {
+  const checks: CheckItem[] = [];
 
     // Check Graph
     const graphDir = resolveGraphPath(argv.graph as string | undefined);
@@ -108,12 +100,25 @@ export const checkCommand: CommandModule = {
       console.log(`${check.label}:${padding}${check.status}`);
     }
 
-    // Exit code
-    const allOk = checks.every((c) => c.ok);
-    if (!allOk) {
-      console.log("");
-      console.log("Run `reponova build` to generate the knowledge graph.");
-      process.exit(1);
-    }
+  // Exit code
+  const allOk = checks.every((c) => c.ok);
+  if (!allOk) {
+    console.log("");
+    console.log("Run `reponova build` to generate the knowledge graph.");
+    process.exit(1);
+  }
+}
+
+/** @deprecated Use checkHandler directly */
+export const checkCommand: CommandModule = {
+  command: "check",
+  describe: "Verify graph status and system capabilities",
+  builder: (yargs) =>
+    yargs.option("graph", {
+      type: "string",
+      describe: "Path to reponova-out/ directory",
+    }),
+  handler: async (argv) => {
+    await checkHandler(argv as Record<string, unknown>);
   },
 };
