@@ -43,44 +43,28 @@ AI agents read files one at a time. They don't understand how your codebase fits
 
 - **Zero external dependencies** — no Python, no Docker, no database servers. Pure Node.js
 - **Multi-repo support** — build one graph spanning multiple repositories
-- **Smart incremental builds** — SHA256 file hashing, per-phase config change detection, selective subsystem regeneration
-- **Provider-based AI** — optional local or remote AI providers for embeddings, summaries, and descriptions (local CPU/GPU or OpenAI-compatible APIs)
+- **Smart incremental builds** — SHA256 file hashing, per-phase config change detection
+- **Intelligent enrichment** — your AI agent or a configured LLM provider generates architectural descriptions, community profiles, and routing decisions
 - **11 MCP tools** — from text search to weighted Dijkstra, semantic similarity to structural queries
-- **Works with any MCP client** — OpenCode, Cursor, Claude Code, VS Code Copilot
+- **Works with any AI coding agent** — OpenCode, Cursor, Claude Code, VS Code Copilot
 
 ---
 
 ## How it works
 
 ```
-  Your Codebase                      reponova build                         AI Agent
-  ─────────────                      ──────────────                         ────────
+  Your Codebase                      /reponova-enrich                             AI Agent
+  ─────────────                      ────────────────                             ────────
 
-  Python ¹                           1. tree-sitter AST parsing             graph_search
-  Markdown / Docs    ──────────►     2. Symbol + edge extraction        ──► graph_impact
-  Diagrams / SVG                     3. Louvain communities                 graph_path
-  Multi-repo                         4. Enrichment (summaries + descriptions)  graph_similar
+  Python ¹                           1. tree-sitter AST parsing                   graph_search
+  Markdown / Docs    ──────────►     2. Symbol + edge extraction        ──────►   graph_impact
+  Diagrams / SVG                     3. Louvain communities                       graph_path
+  Multi-repo                         4. Enrichment (summaries + descriptions)     graph_similar
                                      5. TF-IDF / ONNX / API embeddings
-                                     6. HTML visualizations                 ... (11 tools)
+                                     6. HTML visualizations                       ... (11 tools)
 ```
 
-¹ More languages coming soon — [contributions welcome](#contributing).
-
----
-
-## Install
-
-```bash
-npm install -g reponova
-```
-
-Or run directly without installing:
-
-```bash
-npx reponova
-```
-
-Requires **Node.js >= 18**.
+¹ More languages coming soon — [contributing](#contributing).
 
 ---
 
@@ -92,30 +76,52 @@ Requires **Node.js >= 18**.
 reponova install --target opencode
 ```
 
-This registers the MCP server, installs hooks/skills, and writes the default `reponova.yml` config.
+Supported targets: `opencode`, `cursor`, `claude`, `vscode`
 
-Supported editors: `opencode`, `cursor`, `claude`, `vscode`
+Artifacts installed per editor:
 
-### 2. Build the knowledge graph
+| Editor | MCP Config | Hook / Plugin | MCP Skill | Enrich Command | Config |
+|--------|-----------|---------------|-----------|----------------|--------|
+| OpenCode | `.opencode/opencode.json` | `.opencode/plugins/reponova.js` | `.opencode/skills/reponova-mcp/SKILL.md` | `.opencode/commands/reponova-enrich.md` | `.opencode/reponova.yml` |
+| Cursor | `.cursor/mcp.json` | `.cursor/rules/reponova-mcp.mdc` | *(embedded in rule)* | `.cursor/commands/reponova-enrich.md` | `.cursor/reponova.yml` |
+| Claude Code | `claude mcp add` (manual) | `.claude/settings.json` (PreToolUse) | `.claude/skills/reponova-mcp/SKILL.md` | `.claude/skills/reponova-enrich/SKILL.md` | `.claude/reponova.yml` |
+| VS Code | `.vscode/mcp.json` | *(skill auto-loads)* | `.github/skills/reponova-mcp/SKILL.md` | `.github/skills/reponova-enrich/SKILL.md` | `.vscode/reponova.yml` |
 
-```bash
-reponova build
-```
+### 2. Build and enrich the graph
+
+Type `/reponova-enrich` in your editor. This single command handles the entire pipeline:
+
+- Builds the structural graph (file detection, AST parsing, community detection)
+- Generates architectural node descriptions
+- Profiles communities with meaningful labels
+- Routes misplaced nodes to correct communities
+- Proposes and applies structural merges/splits
+- Runs downstream phases (search index, embeddings, HTML visualizations)
+
+Your AI agent acts as the reasoning engine — no API keys, no local models, no downloads.
+
+> **Headless alternative:** Run `reponova build` from the CLI for a fully algorithmic build (no LLM). For automated LLM enrichment, configure `enrich.provider` in `reponova.yml` — then `reponova build` handles everything including intelligent enrichment.
 
 ### 3. Use it
 
-The MCP server starts automatically with your editor. Your AI agent now has access to all 11 graph tools.
+The MCP server starts automatically. Your AI agent now has 11 graph tools.
 
 ```
 You: "What would be the impact of refactoring the authenticate function?"
 Agent: [calls graph_impact] → shows upstream/downstream blast radius across repos
 ```
 
+### Keeping the graph fresh
+
+After code changes, re-run `/reponova-enrich` — only changed files are re-parsed, only affected steps re-run.
+
+For CI or headless environments: `reponova build` (incremental by default, `--force` for full rebuild).
+
 ---
 
 ## MCP Tools
 
-11 specialized tools exposed over MCP (stdio). Each tool is designed for a specific query pattern.
+11 specialized tools exposed over MCP (stdio):
 
 | Tool | Description |
 |------|-------------|
@@ -129,77 +135,47 @@ Agent: [calls graph_impact] → shows upstream/downstream blast radius across re
 | `graph_hotspots` | 🔥 God nodes / architectural bottlenecks — most connected symbols in the graph. |
 | `graph_outline` | 🗂️ Tree-sitter code outline: functions, classes, imports with signatures and line ranges. |
 | `graph_docs` | 📄 Search documentation nodes (markdown, text, rst). |
-| `graph_status` | 📊 Graph metadata: node/edge counts, repos, build timestamp, reponova version, build config. |
+| `graph_status` | 📊 Graph metadata: node/edge counts, repos, build timestamp, version. |
 
 ---
 
-## Agentic Workflows
+## Enrichment
 
-RepoNova is designed to be the **structural memory layer** for AI coding agents. Here's how to use it effectively in agentic workflows.
+RepoNova supports two enrichment modes:
 
-### Recommended agent patterns
+| Mode | How it works | Requires |
+|------|-------------|----------|
+| **Agent-driven** | `/reponova-enrich` — your AI agent builds the graph AND acts as the reasoning engine for enrichment. Complete pipeline in one command. | Any AI coding agent |
+| **Automated** | `reponova build` with `enrich.provider` configured — an external LLM generates descriptions, profiles, and routing decisions during the build. | A configured LLM provider in `reponova.yml` |
 
-**Before any refactoring:**
+### What enrichment does
+
+The enrichment pipeline (7 steps) transforms a raw structural graph into an architecturally-aware knowledge base:
+
+| Step | What |
+|------|------|
+| 0 | Classify boundary nodes (candidates for rerouting) + compute edge density |
+| 1 | Generate architectural descriptions for high-degree nodes |
+| 2 | Profile each community (label, purpose, misfits) |
+| 3 | Route misfit nodes to better communities based on profiles |
+| 4 | Detect merge/split opportunities across communities |
+| 5 | Apply routing + restructure mutations to the graph |
+| 6 | Re-profile affected communities |
+| 7 | Finalize output files (`graph-enriched.json`, `node_descriptions.json`, `community_summaries.json`) |
+
+### Agent-driven enrichment (`/reponova-enrich`)
+
+The installed command guides the agent through the full pipeline:
+
 ```
-1. graph_impact "TargetFunction" → understand blast radius
-2. graph_path "ModuleA" "ModuleB" → see dependency chain
-3. graph_community 5 → understand the module cluster
-4. Make changes with full structural awareness
-```
-
-**When exploring unfamiliar code:**
-```
-1. graph_status → understand graph size and repos
-2. graph_hotspots → identify architectural pillars
-3. graph_search "authentication" → find entry points
-4. graph_explain "Function:authenticate" → deep dive
-```
-
-**When answering "where is X used?":**
-```
-1. graph_search "X" → find the node
-2. graph_impact "X" direction=downstream → who depends on it
-3. graph_similar "X" → find semantically related code
-```
-
-### Integration with editor skills
-
-The `reponova install` command installs a **skill file** and a **hook/rule** that teaches your AI agent when and how to use each tool. The agent automatically reaches for graph tools when it needs structural information.
-
-| Editor | MCP Config | Hook / Rule | Skill | Config |
-|--------|-----------|-------------|-------|--------|
-| OpenCode | `.opencode/opencode.json` | `.opencode/plugins/reponova.js` | `.opencode/skills/reponova/SKILL.md` | `.opencode/reponova.yml` |
-| Cursor | `.cursor/mcp.json` | `.cursor/rules/reponova.mdc` | *(embedded in rule)* | `.cursor/reponova.yml` |
-| Claude Code | `claude mcp add` | `.claude/settings.json` | `.claude/skills/reponova/SKILL.md` | `.claude/reponova.yml` |
-| VS Code | `.vscode/mcp.json` | `.github/copilot-instructions.md` | *(embedded in instructions)* | `.vscode/reponova.yml` |
-
-### Keeping the graph fresh
-
-```bash
-# Incremental rebuild — only processes changed files
-reponova build
-
-# Force rebuild — ignores all caches, reruns every phase
-reponova build --force
+You: /reponova-enrich
+Agent: [builds structural graph]
+       [reads input batches, reasons about architecture, writes output batches]
+       [CLI merges results, applies mutations]
+       [runs downstream phases: search index, embeddings, HTML]
 ```
 
-> **Tip:** Add `reponova build` to your CI pipeline or as a post-commit hook to keep the graph always up-to-date.
-
-### How incremental builds work
-
-RepoNova's incremental build goes beyond simple file-change detection. It minimizes redundant work at every stage of the pipeline:
-
-| Layer | What it does | When it kicks in |
-|-------|-------------|-----------------|
-| **File hashing** | SHA256 per file — only re-parse changed/added files. Detects removed files too. | Every incremental build |
-| **Config fingerprinting** | Compares a hash of build-relevant config fields across builds. | When `reponova.yml` changes between builds |
-| **Selective subsystem regeneration** | Only reruns the subsystems affected by config changes (e.g. changing `embeddings.provider` reruns embeddings but not parsing). | Config-only changes (no file changes) |
-| **Incremental embeddings** | Tracks text content per node. Only re-embeds nodes whose text changed. | Every incremental build with embeddings enabled |
-| **Outline hashing** | SHA256 per source file for outlines. Skips outline regeneration for unchanged files. | Every incremental build with outlines enabled |
-| **Stale artifact cleanup** | Removes outdated artifacts when config changes invalidate them (e.g. deletes `tfidf_idf.json` after switching to a different embedding provider). | After config change detection |
-| **Per-phase skip** | Each phase independently checks its cache and config fingerprint. If nothing relevant changed, the phase is skipped. | Every incremental build |
-
-The build config fingerprint is stored in `graph.json` metadata. Each phase also stores its own config hash in `.cache/` for per-phase change detection.
+The agent uses `reponova enrich:*` subcommands for batch preparation and merging. All reasoning (descriptions, profiles, routing decisions) comes from the agent itself.
 
 ---
 
@@ -207,54 +183,30 @@ The build config fingerprint is stored in `graph.json` metadata. Each phase also
 
 ### `reponova install`
 
-Set up editor integration. Creates MCP config, hook, skill, and `reponova.yml`.
-
 ```bash
 reponova install --target <editor> [--graph <path>]
 ```
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--target` | **Yes** | Editor to configure. Values: `opencode`, `cursor`, `claude`, `vscode` |
-| `--graph` | No | Path to the `reponova-out/` directory. Default: `./reponova-out` |
+| `--target` | Yes | `opencode`, `cursor`, `claude`, `vscode` |
+| `--graph` | No | Path to output directory. Default: `./reponova-out` |
 
 ### `reponova build`
-
-Build (or rebuild) the knowledge graph.
 
 ```bash
 reponova build [--config <path>] [--force] [--target <phase>] [--start-after <phase>] [--check <phase>]
 ```
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--config` | No | Path to `reponova.yml`. Default: auto-detected (see [Config Resolution](#config-resolution)) |
-| `--force` | No | Ignore all caches and rerun every phase. Default: `false` |
-| `--target` | No | Run only this phase and its transitive dependencies. Useful for selective rebuilds without running the full pipeline. |
-| `--start-after` | No | Run only phases downstream of this phase (requires previous build outputs). Conflicts with `--target`. |
-| `--check` | No | Check if a phase needs to run. Exit 0 = up to date, exit 1 = needs run. Conflicts with `--target`, `--start-after`, `--force`. |
-
-**Target examples:**
-
-```bash
-reponova build --target index       # file-detection → graph → communities → enrich → index
-reponova build --target outlines    # file-detection → outlines
-reponova build --target html        # file-detection → graph → communities → enrich → html
-reponova build --target embeddings  # file-detection → graph → communities → enrich → embeddings
-```
-
-**Start-after examples:**
-
-```bash
-reponova build --start-after enrich       # run only index, embeddings, html, report
-reponova build --start-after communities  # run only enrich + downstream
-```
-
-When `--target` is omitted, all 9 phases run in DAG order.
+| Option | Description |
+|--------|-------------|
+| `--config` | Path to `reponova.yml` (default: auto-detected) |
+| `--force` | Ignore all caches and rerun every phase |
+| `--target` | Run only this phase and its dependencies |
+| `--start-after` | Run only phases downstream of this phase |
+| `--check` | Check if a phase needs to run (exit 0 = up to date, exit 1 = needs run) |
 
 **Build pipeline (9 DAG phases, 5 levels):**
-
-The pipeline executes as a directed acyclic graph — phases within the same level run in parallel:
 
 ```
 Level 0: file-detection
@@ -266,90 +218,15 @@ Level 4: search-index, embeddings, html, report  (parallel)
 
 | Phase | What it does |
 |-------|-------------|
-| **file-detection** | Detect source files, documentation, and diagrams (centralized glob matching via [picomatch](https://github.com/micromatch/picomatch)) |
-| **graph** | Diff files against previous build, parse changed files with tree-sitter WASM, extract symbols/calls/imports/inheritance, build directed graph with cross-file/cross-repo edges |
-| **outlines** | Generate tree-sitter code outlines per file (SHA256 per-file hashing — skip unchanged) |
-| **communities** | Detect communities (Louvain algorithm) and write final `graph.json` with community assignments |
-| **enrich** | Generate `graph-enriched.json`, community summaries, and node descriptions (algorithmic or LLM-enhanced via provider) |
-| **search-index** | Generate SQLite search index (`graph_search.db`) |
-| **embeddings** | Generate embeddings incrementally — only re-embed nodes whose text content changed (TF-IDF, ONNX, or remote provider). Clean up stale artifacts on config change. |
-| **html** | Generate `graph.html` and `graph_communities.html` interactive visualizations |
-| **report** | Generate `report.md` build report |
-
-Each phase internally handles its own incremental logic: file diffing, config fingerprint comparison, cache invalidation, and stale artifact cleanup.
-
-### `reponova mcp`
-
-Start the MCP server over stdio. Normally launched automatically by the editor.
-
-```bash
-reponova mcp [--graph <path>]
-```
-
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--graph` | No | Path to `reponova-out/` directory. Default: auto-detected |
-
-### `reponova models`
-
-Manage local AI models (ONNX embeddings, LLM). See [Models](#models) for details.
-
-```bash
-reponova models status              # Show configured and cached models
-reponova models download            # Pre-download all models needed by config
-reponova models remove <name>       # Remove a specific cached model
-reponova models clear               # Remove all cached models
-```
-
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--config` | No | Path to `reponova.yml`. Default: auto-detected |
-| `--cache-dir` | No | Override model cache directory |
-
-### `reponova check`
-
-Verify graph installation, build integrity, and report stats.
-
-```bash
-reponova check [--graph <path>]
-```
-
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--graph` | No | Path to `reponova-out/` directory. Default: auto-detected |
-
-Checks performed:
-- Graph file (`graph.json`) exists and is readable
-- Build metadata presence (`build_config` fingerprint)
-- Embedding artifacts consistency (TF-IDF IDF file, vector store)
-- Warns if embedding provider in config doesn't match the built artifacts
-- Search index (`graph_search.db`) existence
-- Outlines directory existence
-- tree-sitter WASM availability
-
-### `reponova cache`
-
-Inspect and manage per-phase cache state.
-
-```bash
-reponova cache [--check <phase>] [--seal <phase>] [--invalidate <phase>] [--status]
-```
-
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--check` | No | Check if a phase cache is fresh (exit 0 = fresh, exit 1 = stale) |
-| `--seal` | No | Manually seal a phase cache (marks it as up-to-date) |
-| `--invalidate` | No | Invalidate a phase cache (forces re-run on next build) |
-| `--status` | No | Show cache status for all phases |
-| `--config` | No | Path to `reponova.yml`. Default: auto-detected |
-
-Only one operation at a time. Example:
-
-```bash
-reponova cache --status              # Show freshness of all phases
-reponova cache --seal enrich         # Mark enrich as done (after manual enrichment)
-reponova cache --invalidate html     # Force HTML regeneration on next build
-```
+| **file-detection** | Discover source files, docs, diagrams — respects patterns/exclude/incremental |
+| **graph** | Parse with tree-sitter, extract symbols/calls/imports/inheritance, build graph |
+| **outlines** | Generate tree-sitter code outlines per file (SHA256 hashing — skip unchanged) |
+| **communities** | Louvain community detection, write `graph.json` |
+| **enrich** | Generate `graph-enriched.json`, community summaries, node descriptions (algorithmic or LLM) |
+| **search-index** | SQLite search index (`graph_search.db`) |
+| **embeddings** | Incremental embeddings (TF-IDF, ONNX, or remote provider) |
+| **html** | Interactive visualizations (`graph.html`, `graph_communities.html`) |
+| **report** | Build report with stats, hotspots, community breakdown |
 
 ### `reponova enrich`
 
@@ -364,32 +241,53 @@ The command:
 2. Runs all enrichment steps (metrics → descriptions → profiles → routing → restructure → apply → updated-profiles → finalize)
 3. Seals the enrich cache
 
+> **Note:** This does NOT run downstream phases (search-index, embeddings, html, report). Run `reponova build --start-after enrich` afterwards to complete the full pipeline.
+
 ### `reponova enrich:*` (subcommands)
 
-Step-by-step enrichment for IDE/agent workflows. Each subcommand corresponds to one stage of the pipeline.
+Step-by-step enrichment for IDE/agent workflows:
 
 ```bash
-reponova enrich:metrics                        # Step 0: Compute candidates and edge density
-reponova enrich:prepare <step>                 # Prepare input batches for agent processing
-reponova enrich:merge <step>                   # Merge agent output batches into final file
-reponova enrich:apply                          # Apply routing + restructure decisions to graph
-reponova enrich:finalize                       # Assemble final output files
+reponova enrich:metrics                        # Step 0: candidates + edge density
+reponova enrich:prepare <step>                 # Prepare input batches
+reponova enrich:merge <step>                   # Merge output batches
+reponova enrich:apply                          # Step 5: apply routing + restructure
+reponova enrich:finalize                       # Step 7: produce final output files
 ```
 
-**Steps** (for `enrich:prepare` and `enrich:merge`): `descriptions`, `profiles`, `routing`, `restructure`, `updated-profiles`
+Steps: `descriptions`, `profiles`, `routing`, `restructure`, `updated-profiles`
 
-**Typical IDE workflow:**
+### `reponova mcp`
+
 ```bash
-reponova enrich:metrics                        # classify boundary nodes
-reponova enrich:prepare descriptions           # create input batches
-# → agent reads .enrich/input/descriptions/, writes .enrich/output/descriptions/
-reponova enrich:merge descriptions             # merge into .enrich/descriptions.json
-reponova enrich:prepare profiles               # ...repeat for each step
-# → agent processes → merge → prepare next → ...
-reponova enrich:apply                          # apply routing + restructure to graph
-reponova enrich:finalize                       # produce graph-enriched.json + final files
-reponova cache --seal enrich                   # seal cache
-reponova build --start-after enrich            # run downstream phases
+reponova mcp [--graph <path>]
+```
+
+Starts the MCP server (stdio transport). Normally launched automatically by the editor.
+
+### `reponova check`
+
+```bash
+reponova check [--config <path>]
+```
+
+Validates config, grammar availability, and displays resolved paths.
+
+### `reponova cache`
+
+```bash
+reponova cache [--check <phase>] [--seal <phase>] [--invalidate <phase>] [--status]
+```
+
+Inspect and manage per-phase cache state.
+
+### `reponova models`
+
+```bash
+reponova models status              # Show configured and cached models
+reponova models download            # Pre-download all models needed by config
+reponova models remove <name>       # Remove a specific cached model
+reponova models clear               # Remove all cached models
 ```
 
 ---
@@ -398,33 +296,21 @@ reponova build --start-after enrich            # run downstream phases
 
 ### Extraction (AST parsing + graph building)
 
-| Language | Extensions | Parser | Node Types |
-|----------|-----------|--------|------------|
-| Python | `.py`, `.pyw` | tree-sitter-python (WASM) | `function`, `class`, `method`, `module`, `constant` |
-| Markdown | `.md`, `.txt`, `.rst` | Built-in | `document`, `section` |
-| Diagrams | `.puml`, `.plantuml`, `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif` | Built-in | `diagram`, `component`, `interface`, `section` |
-
-### Outline (tree-sitter code outline)
-
-| Language | Extensions | Outline Support |
-|----------|-----------|-----------------|
-| Python | `.py`, `.pyw` | Full: functions, classes, methods, imports, signatures, decorators, docstrings |
-
-> **Adding a new language:** Create `src/extract/languages/<lang>.ts` implementing `LanguageExtractor`, register it in `registry.ts`, add the `.wasm` grammar to `grammars/`. See [Contributing > Adding Language Support](#adding-language-support-extraction) for the full interface reference.
->
-> **Note:** Extraction and outline are **separate systems** with different registries and interfaces. Registering an extractor gives you graph building (symbols, edges, imports). For code outlines (`graph_outline`), you also need a `LanguageSupport` implementation in `src/outline/languages/` — see [Contributing > Adding Outline Support](#adding-outline-support).
+| Language | Extensions | Parser | Symbols Extracted |
+|----------|-----------|--------|-------------------|
+| Python | `.py`, `.pyw` | tree-sitter | Functions, classes, methods, decorators, docstrings, variables, imports, calls, inheritance |
+| Markdown | `.md` | Regex | Documents, sections (as containment hierarchy) |
+| Diagrams | `.puml`, `.plantuml`, `.svg` | Regex | Components, relationships (PlantUML); text content (SVG) |
 
 ### Edge Types
 
-Every edge in the graph has a type that describes the relationship:
-
-| Edge Type | Description | Example |
-|-----------|-------------|---------|
-| `calls` | Function/method invocation | `process_data` → `validate_input` |
-| `imports` | Module-level import | `api.py` → `models.py` |
-| `imports_from` | Named import of a specific symbol | `api.py` → `UserModel` |
-| `extends` | Class inheritance | `AdminUser` → `BaseUser` |
-| `contains` | Parent contains a child (module→symbol, class→method, document→section) | `auth.py` → `login()` |
+| Edge Type | Description |
+|-----------|-------------|
+| `calls` | Function/method invocation |
+| `imports` | Module-level import |
+| `imports_from` | Named import of a specific symbol |
+| `extends` | Class inheritance |
+| `contains` | Parent contains child (module→symbol, class→method, document→section) |
 
 ---
 
@@ -432,110 +318,43 @@ Every edge in the graph has a type that describes the relationship:
 
 ### Config Resolution
 
-The config file is auto-detected from these locations (first match wins):
+Auto-detected from (first match wins):
 
-1. Explicit `--config` argument
-2. `reponova.yml` in the project root
+1. `--config` argument
+2. `reponova.yml` in project root
 3. `.opencode/reponova.yml`
 4. `.cursor/reponova.yml`
 5. `.claude/reponova.yml`
 6. `.vscode/reponova.yml`
 
-All paths inside the config are **relative to the config file's location**. When placed inside an editor directory (e.g. `.opencode/`), use `../` to reference the project root.
-
-### Pattern Resolution
-
-All glob patterns (`patterns`, `exclude`, `docs.patterns`, etc.) are matched against **workspace-relative paths**. How those paths look depends on the number of repos.
-
-#### Single-repo
-
-With one repo, file paths are relative to the repo root — no prefix:
-
-```
-src/core.py
-src/utils/helpers.py
-tests/test_core.py
-```
-
-Patterns work as you'd expect:
-
-```yaml
-repos:
-  - name: my-project
-    path: .
-patterns: ["src/**/*.py"]            # matches src/core.py ✓
-exclude: ["tests/**"]                # excludes tests/test_core.py ✓
-```
-
-#### Multi-repo
-
-With multiple repos, each file path is **prefixed with the repo name** from the config:
-
-```
-api/src/routes.py          # ← "api" comes from repos[].name
-api/src/handlers.py
-core/src/models.py         # ← "core" comes from repos[].name
-core/src/db.py
-```
-
-Patterns are tested against **both forms** — the full prefixed path and the repo-relative path — so the same pattern works in single and multi-repo:
-
-```yaml
-repos:
-  - name: api
-    path: ../services/api
-  - name: core
-    path: ../services/core
-patterns: ["src/**/*.py"]            # matches api/src/routes.py, api/src/handlers.py, core/src/models.py, core/src/db.py ✓ (via repo-relative)
-exclude: ["**/test_*.py"]            # works across all repos
-```
-
-#### Filtering a specific repo
-
-Use the repo name as a path prefix to target one repo only:
-
-```yaml
-exclude:
-  - "api/src/generated/**"           # excludes only in the api repo
-  - "**/migrations/**"               # excludes in all repos
-```
-
-This works because the full workspace path is always `<repo-name>/<path>`. The repo name is the `name` field from your `repos` config — not the directory name on disk.
+All paths are **relative to the config file's location**.
 
 ### Full Config Reference
-
-Every field, every valid value, every default.
 
 ```yaml
 # ──────────────────────────────────────────────────────────────────────────────
 # reponova.yml — Full Configuration Reference
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Where to write build output (graph.json, graph.html, graph_search.db, etc.)
-# Type: string
+# Where to write build output
 # Default: "reponova-out"
 output: ../reponova-out
 
 # ── Repositories ──────────────────────────────────────────────────────────────
-# List of repositories to include in the build.
-# Each repo needs a unique name and a path (relative to this config file).
 repos:
-  - name: api-service           # string — unique identifier for this repo
-    path: ../services/api       # string — path to repo root (relative to this file)
+  - name: api-service           # unique identifier
+    path: ../services/api       # path relative to this file
   - name: core-lib
     path: ../services/core
 
 # ── Providers (optional — AI backends) ────────────────────────────────────────
-# Define named providers here, then reference them from features below.
-# Default (no provider) = algorithmic mode (TF-IDF embeddings, rule-based summaries).
-# Type: Record<string, ProviderConfig>
-# Default: {} (empty — fully algorithmic)
+# Default (no provider) = fully algorithmic. No downloads, no API keys.
 # providers:
 #   my-openai:
-#     type: openai                  # "openai" (remote), "llama-cpp" (local LLM), "onnx" (local embeddings)
+#     type: openai                  # "openai" | "llama-cpp" | "onnx"
 #     base_url: https://api.openai.com/v1
 #     model: text-embedding-3-small
-#     api_key: ${OPENAI_API_KEY}    # env var reference (resolved at runtime)
+#     api_key: ${OPENAI_API_KEY}    # env var (resolved at runtime)
 #     timeout: 30                   # seconds (default: 30)
 #   local-llm:
 #     type: llama-cpp
@@ -545,270 +364,83 @@ repos:
 #     type: onnx
 #     model: all-MiniLM-L6-v2
 #   ollama:
-#     type: openai                  # Ollama is OpenAI-compatible
+#     type: openai
 #     base_url: http://localhost:11434/v1
 #     model: nomic-embed-text
 
-# ── Centralized Model Management ─────────────────────────────────────────────
-# Shared settings for local AI models (ONNX embeddings + GGUF LLM weights).
-# These apply to providers of type "onnx" and "llama-cpp".
+# ── Model Management ─────────────────────────────────────────────────────────
 models:
-  # Directory to cache downloaded models (ONNX embeddings + LLM weights)
-  # Type: string
-  # Default: "~/.cache/reponova/models"
-  cache_dir: ~/.cache/reponova/models
-
-  # GPU acceleration backend for LLM inference
-  # Values: "auto" | "cpu" | "cuda" | "metal" | "vulkan"
-  #   - auto:    auto-detect best available backend
-  #   - cpu:     force CPU inference (slower but always works)
-  #   - cuda:    NVIDIA GPU (requires CUDA drivers)
-  #   - metal:   Apple Silicon GPU (macOS only)
-  #   - vulkan:  Cross-platform GPU (AMD, Intel, NVIDIA)
-  # Default: "auto"
-  gpu: auto
-
-  # Number of CPU threads for LLM inference
-  # Type: number
-  # Default: 0 (auto-detect based on available cores)
-  threads: 0
-
-  # Automatically download models on first use
-  # Type: boolean
-  # Default: true
+  cache_dir: ~/.cache/reponova/models   # default
+  gpu: auto                             # "auto" | "cpu" | "cuda" | "metal" | "vulkan"
+  threads: 0                            # 0 = auto-detect
   download_on_first_use: true
 
-# ── Source Code File Filters ──────────────────────────────────────────────────
-# Shared by graph + outlines — a single file-detection phase produces
-# the file list consumed by both.
+# ── Source Code Filters ───────────────────────────────────────────────────────
+patterns: []                    # empty = auto-detect by extension
+exclude: []                     # e.g. ["**/generated/**", "**/*.test.ts"]
+exclude_common: true            # skip node_modules, __pycache__, .git, venv, dist, build, ...
+incremental: true               # SHA256 file hashing — only re-parse changed files
 
-# Glob patterns for source code files to include
-# Type: string[]
-# Default: [] (empty = auto-detect by file extension using registered extractors)
-# Example: ["src/**/*.py", "lib/**/*.ts"]
-patterns: []
-
-# Glob patterns to exclude from source code detection
-# Type: string[]
-# Default: []
-# Example: ["**/generated/**", "**/*.test.ts", "**/vendor/**"]
-exclude: []
-
-# Exclude common non-source directories from all file detection
-# (source code, documentation and diagrams).
-# When true, the following directories are skipped at any depth:
-#   node_modules, __pycache__, .git, .svn, .hg, venv, .venv, env, .env, .tox,
-#   site-packages, dist, build, .eggs, .mypy_cache, .pytest_cache, .ruff_cache,
-#   target, bin, obj
-# Set to false if you need to index files inside these directories
-# (e.g. vendored code in node_modules). You can still exclude specific
-# directories via the `exclude` patterns above.
-# Type: boolean
-# Default: true
-exclude_common: true
-
-# Incremental builds: only re-process files whose SHA256 hash changed
-# Type: boolean
-# Default: true
-incremental: true
-
-# ── Documentation Extraction ─────────────────────────────────────────────────
+# ── Documentation ─────────────────────────────────────────────────────────────
 docs:
-  # Enable/disable documentation extraction
-  # Type: boolean
-  # Default: true
   enabled: true
-
-  # Glob patterns for documentation files (relative to repo root)
-  # Type: string[]
-  # Default: [] (empty = auto-detect by file extension: .md, .txt, .rst)
-  # Example: ["docs/**/*.md", "**/*.rst"]
-  patterns: []
-
-  # Glob patterns to exclude from documentation extraction
-  # Type: string[]
-  # Default: []
-  # Example: ["**/CHANGELOG.md", "**/node_modules/**"]
+  patterns: []                  # empty = auto-detect (.md, .txt, .rst)
   exclude: []
-
-  # Maximum file size in KB — files larger than this are skipped
-  # Type: number
-  # Default: 500
   max_file_size_kb: 500
 
-# ── Diagram / Image Extraction ───────────────────────────────────────────────
+# ── Diagrams / Images ─────────────────────────────────────────────────────────
 images:
-  # Enable/disable diagram extraction
-  # Type: boolean
-  # Default: true
   enabled: true
-
-  # Glob patterns for diagram files (relative to repo root)
-  # Type: string[]
-  # Default: [] (empty = auto-detect by file extension: .puml, .plantuml, .svg, .png, .jpg, .jpeg, .gif)
-  # Example: ["diagrams/**/*.puml", "**/*.svg"]
-  patterns: []
-
-  # Glob patterns to exclude
-  # Type: string[]
-  # Default: []
-  # Example: ["**/node_modules/**"]
+  patterns: []                  # empty = auto-detect (.puml, .plantuml, .svg, ...)
   exclude: []
-
-  # Parse PlantUML files to extract components and relationships
-  # Type: boolean
-  # Default: true
   parse_puml: true
-
-  # Extract text content from SVG files
-  # Type: boolean
-  # Default: true
   parse_svg_text: true
 
 # ── Embeddings ────────────────────────────────────────────────────────────────
-# Vector representations for semantic search (graph_similar, graph_context)
-# Default (no provider): TF-IDF (384-dim, fast, no download required)
-# With provider: uses the named provider for embedding generation
+# Default: TF-IDF (fast, no download). Set provider for ONNX or remote embeddings.
 embeddings:
-  # Enable/disable embedding generation
-  # Type: boolean
-  # Default: true
   enabled: true
-
-  # Reference a named provider from the `providers` section above
-  # When omitted: uses built-in TF-IDF (384-dim, no download)
-  # Type: string | undefined
-  # Default: (none — algorithmic TF-IDF)
   # provider: my-openai
-
-  # Batch size for embedding generation
-  # Type: number
-  # Default: 128
   batch_size: 128
 
 # ── Enrich ────────────────────────────────────────────────────────────────────
-# Unified enrichment: community summaries + node descriptions.
-# Default (no provider): algorithmic mode (rule-based summaries and descriptions)
-# With provider: enables intelligent multi-step LLM enrichment pipeline
+# Default (no provider): algorithmic (rule-based summaries + descriptions)
+# With provider: intelligent multi-step LLM enrichment pipeline
 enrich:
-  # Enable/disable enrichment
-  # Type: boolean
-  # Default: true
   enabled: true
-
-  # Degree percentile threshold for node descriptions
-  # Type: number (0.0 – 1.0)
-  # Default: 0.8
-  # Meaning: top (1 - threshold)% of nodes by degree get descriptions.
-  #   - 0.8 = top 20% of nodes
-  #   - 0.5 = top 50% of nodes
-  #   - 0.0 = all nodes (expensive!)
-  #   - 1.0 = no nodes
-  threshold: 0.8
-
-  # Maximum number of communities to summarize
-  # Type: integer (>= 0)
-  # Default: 0 (no limit — summarize all communities)
-  # Communities are sorted by size (largest first). When max_communities > 0,
-  # only the top N largest communities are summarized.
-  # Communities with fewer than 3 nodes are always excluded.
-  max_communities: 0
-
-  # Boundary ratio threshold for candidate classification (intelligent mode)
-  # Nodes with external_edges / total_edges >= this value are candidates for rerouting
-  # Type: number (0.0 – 1.0)
-  # Default: 0.3
-  candidate_threshold: 0.3
-
-  # Token budget per description batch (intelligent mode)
-  # Type: number
-  # Default: 40000
-  description_batch_tokens: 40000
-
-  # Batch size for routing decisions (intelligent mode)
-  # Type: number
-  # Default: 30
+  threshold: 0.8                  # top 20% of nodes by degree get descriptions
+  max_communities: 0              # 0 = no limit
+  candidate_threshold: 0.3        # boundary ratio for routing candidates
+  description_batch_tokens: 40000 # token budget per description batch
   routing_batch_size: 30
-
-  # LLM concurrency — max parallel LLM calls (intelligent mode)
-  # Type: number (>= 1)
-  # Default: 4
-  concurrency: 4
-
-  # Max retry depth for failed LLM calls (intelligent mode)
-  # Type: number (>= 0)
-  # Default: 3
+  concurrency: 4                  # max parallel LLM calls
   max_retry_depth: 3
-
-  # Per-step max_tokens sent to the LLM provider (intelligent mode)
-  # Controls the maximum output length for each enrichment step independently.
-  # Type: object { descriptions, profiles, routing, restructure }
-  # Default: { descriptions: 32768, profiles: 2048, routing: 8192, restructure: 4096 }
-  # Note: descriptions output scales ~0.75× with description_batch_tokens input.
-  #       With default 40k input, expect ~30k output tokens.
-  #       Ensure your model context window fits input + output (e.g. 40k + 32k = 72k minimum).
-  max_tokens:
-    descriptions: 32768            # node description batches (scales with batch input)
-    profiles: 2048                 # community profiling (single object, bounded)
-    routing: 8192                  # routing decision batches (scales with routing_batch_size)
-    restructure: 4096              # merge/split detection
-
-  # Profile generation limits (intelligent mode)
-  # Controls how many nodes/edges are included in the community profile prompt.
-  # Lower values = cheaper prompts, less context for the LLM.
-  # Type: object { max_nodes, max_edges }
-  # Default: { max_nodes: 80, max_edges: 50 }
-  # profile:
-  #   max_nodes: 80                 # max nodes listed in profile prompt per community
-  #   max_edges: 50                 # max edges listed in profile prompt per community
-
-  # Maximum density pairs for restructure (intelligent mode)
-  # Limits how many cross-community (communityA, communityB) pairs are sent
-  # to the LLM for merge/split analysis. Pairs are ranked by edge density.
-  # Type: number (>= 1)
-  # Default: 20
+  # provider: local-llm           # enables intelligent enrichment
+  max_tokens:                     # per-step LLM output token limits
+    descriptions: 32768
+    profiles: 2048
+    routing: 8192
+    restructure: 4096
+  # profile:                      # community profile prompt limits
+  #   max_nodes: 80
+  #   max_edges: 50
   # restructure_max_pairs: 20
 
-  # Provider name — references a provider defined in the top-level `providers` map
-  # When omitted: uses algorithmic enrichment (rule-based summaries + descriptions)
-  # The referenced provider must be type "openai" or "llama-cpp" (LLM-capable)
-  # Type: string (optional)
-  # provider: local-llm
-
-# ── HTML Visualizations ──────────────────────────────────────────────────────
-
-# Generate interactive HTML visualizations (graph.html + graph_communities.html)
-# Type: boolean
-# Default: true
+# ── HTML ──────────────────────────────────────────────────────────────────────
 html: true
-
-# Minimum node degree to include in HTML visualization
-# Useful for large graphs — filters out leaf nodes to reduce clutter
-# Type: integer (>= 1)
-# Default: not set (include all nodes)
 # html_min_degree: 3
 
 # ── Outlines ──────────────────────────────────────────────────────────────────
-# Tree-sitter code outlines: functions, classes, imports with signatures.
-# Language is auto-detected from file extension (no need to specify it).
-# File selection comes from top-level patterns / exclude / exclude_common.
 outlines:
-  # Enable/disable outline generation
-  # Type: boolean
-  # Default: true
   enabled: true
 
 # ── Server ────────────────────────────────────────────────────────────────────
-# MCP server options (reserved for future use)
-# Type: object
-# Default: {}
 server: {}
 ```
 
-### Minimal Config
+### Config Examples
 
-Most fields have sensible defaults. A minimal config for a single repo:
-
+**Minimal (single repo, algorithmic):**
 ```yaml
 output: ../reponova-out
 repos:
@@ -816,8 +448,7 @@ repos:
     path: ..
 ```
 
-### Multi-repo Config
-
+**Multi-repo:**
 ```yaml
 output: ../reponova-out
 repos:
@@ -825,14 +456,9 @@ repos:
     path: ../services/api
   - name: core
     path: ../services/core
-  - name: shared
-    path: ../libs/shared
 ```
 
-### Provider-based Config
-
-For richer AI-enhanced enrichment or embeddings, define providers and reference them:
-
+**With LLM provider (automated enrichment via `reponova build`):**
 ```yaml
 output: ../reponova-out
 repos:
@@ -840,298 +466,111 @@ repos:
     path: ..
 providers:
   local-llm:
-    type: llama-cpp
-    model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"   # ~350MB download
-    context_size: 512
-models:
-  gpu: auto                 # auto-detect GPU, falls back to CPU
-  download_on_first_use: true
-enrich:
-  enabled: true
-  threshold: 0.5            # describe top 50% nodes by degree
-  provider: local-llm       # use local LLM for intelligent enrichment
-```
-
-> When multiple features reference the same `llama-cpp` provider, RepoNova shares a single engine instance — no double memory usage.
-
-#### Using OpenAI-compatible APIs (including Ollama)
-
-```yaml
-providers:
-  openai-embed:
-    type: openai
-    base_url: https://api.openai.com/v1
-    model: text-embedding-3-small
-    api_key: ${OPENAI_API_KEY}
-  ollama-llm:
     type: openai
     base_url: http://localhost:11434/v1
     model: llama3.2
-embeddings:
-  enabled: true
-  provider: openai-embed
 enrich:
-  enabled: true
-  provider: ollama-llm
+  provider: local-llm
 ```
-
-### File Filtering Config
-
-Control which source files are included in the graph:
-
-```yaml
-output: ../reponova-out
-repos:
-  - name: my-project
-    path: ..
-patterns:                      # only include files matching these globs
-  - "src/**/*.py"
-  - "lib/**/*.ts"
-exclude:                       # exclude files matching these globs
-  - "**/test/**"
-  - "**/tests/**"
-  - "**/migrations/**"
-  - "**/*.generated.ts"
-```
-
-> When `patterns` is empty (default) for any subsystem (`docs`, `images`), RepoNova auto-detects files by extension using the corresponding registry. Source code and outlines share the top-level `patterns` / `exclude` / `exclude_common`. No configuration needed for standard project layouts.
-> The configured output directory is **automatically excluded** from all file detection — no need to add it to `exclude` patterns manually.
-> `exclude_common` (default: `true`) skips the following directories at any depth: `node_modules`, `__pycache__`, `.git`, `.svn`, `.hg`, `venv`, `.venv`, `env`, `.env`, `.tox`, `site-packages`, `dist`, `build`, `.eggs`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `target`, `bin`, `obj`.
-> Set `exclude_common: false` to disable this behavior and use explicit `exclude` patterns instead.
 
 ---
 
 ## Models & Providers
 
-RepoNova supports three provider types for AI-enhanced features. By default (no providers configured), everything is algorithmic — no downloads, no API keys.
+By default, everything is algorithmic — no downloads, no API keys. Providers enable richer AI features.
 
-### Provider Types
+| Type | Purpose | Size | Requires |
+|------|---------|------|----------|
+| `onnx` | Local embeddings (sentence-transformers) | ~86 MB | Nothing (bundled runtime) |
+| `llama-cpp` | Local LLM (GGUF) for enrichment | ~350 MB | `node-llama-cpp` (optional peer dep) |
+| `openai` | Remote OpenAI-compatible API | None | API key or local server (Ollama, LM Studio, etc.) |
 
-| Type | Purpose | Downloads | Requires |
-|------|---------|-----------|----------|
-| `onnx` | Local ONNX embeddings (sentence-transformers) | ~86 MB model | Nothing (bundled runtime) |
-| `llama-cpp` | Local LLM (GGUF format) for summaries/descriptions | ~350 MB model | `node-llama-cpp` (optional peer dep) |
-| `openai` | Remote OpenAI-compatible API (embeddings or LLM) | None | API key or local server (e.g. Ollama) |
-
-### ONNX Embeddings (local)
-
-Sentence-transformer models for semantic similarity search (`graph_similar`, `graph_context`).
-
-| Property | Value |
-|----------|-------|
-| **Provider type** | `onnx` |
-| **Config** | `providers.<name>.model` (plain model name, e.g., `all-MiniLM-L6-v2`) |
-| **Source** | `huggingface.co/sentence-transformers/{model}` |
-| **Cache path** | `{models.cache_dir}/{model-name}/` |
-| **Files downloaded** | `model.onnx`, `vocab.txt`, `tokenizer_config.json` |
-| **Used when** | `embeddings.provider` references an `onnx` provider |
-
-Compatible models (384-dim output):
-
-| Model | Size | Notes |
-|-------|------|-------|
-| `all-MiniLM-L6-v2` | ~86 MB | Default. Good speed/quality balance |
-| `all-MiniLM-L12-v2` | ~130 MB | More accurate, slower |
-| `paraphrase-MiniLM-L6-v2` | ~86 MB | Optimized for paraphrase detection |
-| `multi-qa-MiniLM-L6-cos-v1` | ~86 MB | Optimized for Q&A |
-
-Any model under the `sentence-transformers/` org on HuggingFace that provides an ONNX export with BERT-compatible tokenizer (WordPiece) should work.
-
-### LLM / GGUF (local)
-
-Local language models for enrichment (community summaries and node descriptions), powered by [node-llama-cpp](https://github.com/withcatai/node-llama-cpp).
-
-| Property | Value |
-|----------|-------|
-| **Provider type** | `llama-cpp` |
-| **Config** | `providers.<name>.model` — `hf:` URI (e.g., `hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M`) |
-| **Format** | `hf:{user}/{repo}:{quantization}` |
-| **Cache path** | `{models.cache_dir}/llm/` |
-| **Used when** | `enrich.provider` references a `llama-cpp` provider |
-| **Dependency** | `node-llama-cpp` (optional peer dependency) |
-
-When multiple features reference the same `llama-cpp` provider, RepoNova shares a single engine instance — no double memory usage.
-
-> **Why different notations?** ONNX embeddings use direct HTTP fetch from a fixed HuggingFace org (`sentence-transformers/`), downloading specific files (model.onnx, vocab.txt). LLM models delegate entirely to node-llama-cpp's `resolveModelFile()`, which handles the `hf:` URI protocol, download, and caching. The two systems are technically incompatible — the notation reflects this.
-
-### OpenAI-compatible (remote)
-
-Any OpenAI-compatible API — including OpenAI itself, Azure OpenAI, Ollama, LM Studio, vLLM, etc.
-
-| Property | Value |
-|----------|-------|
-| **Provider type** | `openai` |
-| **Config** | `providers.<name>.base_url`, `.model`, `.api_key`, `.timeout` |
-| **Used for** | Embeddings (`embeddings.provider`) or LLM enrichment (`enrich.provider`) |
-| **Retry policy** | 3 retries with exponential backoff (1s/2s/4s) on HTTP 429 (embeddings only) |
-| **Timeout** | Configurable per provider (default: 30s) |
-
-Environment variable references (e.g., `${OPENAI_API_KEY}`) are resolved at runtime.
-
-### Model Management CLI
-
-```bash
-reponova models status              # Show configured and cached models
-reponova models download            # Pre-download all models needed by config
-reponova models remove <name>       # Remove a specific cached model
-reponova models clear               # Remove all cached models
-```
-
-Models are also downloaded automatically during `reponova build` when `models.download_on_first_use: true` (default). The CLI commands let you manage the cache independently of the build.
+**Retry policy:** Embeddings — 3 retries with exponential backoff on HTTP 429. Enrichment — configurable via `enrich.max_retry_depth` (default 3).
 
 ---
 
 ## Build Output
 
-After `reponova build`, the output directory contains:
+After building the graph, the output directory contains:
 
 ```
 reponova-out/
-├── graph.json                                # Full graph: nodes, edges, community assignments, metadata
-│                                             #   metadata.build_config: config fingerprint for change detection
-│                                             #   nodes include: docstring, signature, bases (when available)
-├── graph-enriched.json                       # Enriched graph: summaries + descriptions merged into nodes/communities
-├── graph-nodes.json                          # Intermediate graph (pre-community detection, no Louvain assignments)
-├── detected-files.json                       # Detected file list (intermediate, consumed by graph + outlines)
-├── graph.html                                # Interactive visualization (vis.js) — click, search, filter
-├── graph_communities.html                    # Community-focused visualization with summary labels
-├── graph_search.db                           # SQLite search index (sql.js WASM) — structural queries
-├── report.md                                 # Build report: stats, hotspots, community breakdown
-├── community_summaries.json                  # Community summaries (algorithmic or provider-enhanced)
-├── node_descriptions.json                    # Descriptions for high-degree nodes
-├── tfidf_idf.json                            # TF-IDF vocabulary weights (for query-time embedding)
-├── vectors/                                  # LanceDB vector store — semantic similarity search
-│   ├── _meta.json                            #   self-describing metadata (provider, dimensions, model)
-│   └── (LanceDB internal files)              #   fallback: vectors.json when @lancedb/lancedb unavailable
-├── outlines/                                 # Pre-computed code outlines per file
-│   └── <repo>/<path>.outline.json
-└── .cache/                                   # Incremental build cache
-    ├── hashes.json                           # file path → SHA256 hex map (source code hashing)
-    ├── outline-hashes.json                   # file path → SHA256 map for outline generation
-    ├── node-texts.json                       # node id → text hash map for incremental embeddings
-    ├── graph-nodes-hash.txt                  # SHA256 of graph-nodes.json (skip community detection)
-    ├── embeddings-config-hash.txt            # config fingerprint for embeddings phase
-    ├── embeddings-input-hash.txt             # input hash for embeddings (detect upstream changes)
-    ├── enrich-input-hash.txt                 # graph.json hash for enrich invalidation
-    └── extractions/                          # cached FileExtraction per file
-        └── <hash>.json
+├── graph.json                    # Full graph: nodes, edges, community assignments
+├── graph-enriched.json           # Enriched graph (after intelligent enrichment)
+├── graph-nodes.json              # Intermediate (pre-community detection)
+├── detected-files.json           # Detected file list
+├── graph.html                    # Interactive visualization (vis.js)
+├── graph_communities.html        # Community-focused visualization
+├── graph_search.db               # SQLite search index
+├── report.md                     # Build report: stats, hotspots, communities
+├── community_summaries.json      # Community summaries
+├── node_descriptions.json        # Node descriptions
+├── tfidf_idf.json                # TF-IDF vocabulary weights
+├── vectors/                      # LanceDB vector store
+├── outlines/                     # Code outlines per file
+├── .enrich/                      # Enrichment intermediates (intelligent mode)
+│   ├── candidates.json           #   boundary node classification
+│   ├── edge-density.json         #   inter-community density
+│   ├── descriptions.json         #   merged descriptions
+│   ├── profiles.json             #   merged community profiles
+│   ├── routing.json              #   merged routing decisions
+│   ├── restructure.json          #   merge/split proposals
+│   ├── graph-applied.json        #   graph after mutations
+│   └── updated-profiles.json     #   re-profiled communities
+└── .cache/                       # Incremental build cache
 ```
-
-Two storage engines serve different purposes:
-- **SQLite** (`graph_search.db`) — structural index for exact lookups, graph traversal, FTS. Used by `graph_search`, `graph_impact`, `graph_path`, `graph_explain`, and more.
-- **LanceDB** (`vectors/`) — vector index for semantic similarity. Used by `graph_similar` and `graph_context`. Falls back to brute-force cosine similarity (JSON) when `@lancedb/lancedb` is not installed.
 
 ---
 
 ## Programmatic API
 
-Use RepoNova as a library in your own Node.js tools.
-
-### Build API
-
-Run the full build pipeline programmatically — useful for CI integrations, custom tooling, or workflows that register custom extractors/languages before building.
+### Build
 
 ```typescript
 import { build } from "reponova";
 
 const result = await build("./reponova.yml");
-console.log(`Output: ${result.outputDir}`);
-console.log(`Total processed: ${result.totalProcessed}`);
-for (const [phase, r] of result.phases) {
-  console.log(`  ${phase}: ${r.skipped ? `skipped (${r.skipReason})` : `${r.processed} items`}`);
-}
+// result.outputDir, result.phases, result.totalProcessed
 ```
-
-```typescript
-// Force rebuild — ignores all caches, reruns every phase
-const result = await build("./reponova.yml", { force: true });
-```
-
-`build()` returns a `BuildResult`:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `outputDir` | `string` | Absolute path to the output directory |
-| `phases` | `Map<string, PhaseResult>` | Per-phase results (processed count, skip status, skip reason) |
-| `totalProcessed` | `number` | Total items processed across all phases |
-
-If `configPath` is omitted, config is auto-detected from standard locations (see [Config Resolution](#config-resolution)).
 
 ### Runtime Registration + Build
 
-Register custom extractors or outline languages **before** calling `build()`:
-
 ```typescript
-import {
-  build,
-  registerExtractor,
-  registerOutlineLanguage,
-} from "reponova";
+import { build, registerExtractor, registerOutlineLanguage } from "reponova";
 import type { LanguageExtractor, LanguageSupport } from "reponova";
 
-// 1. Register a custom extractor (graph building)
-const myExtractor: LanguageExtractor = { /* ... */ };
 registerExtractor(myExtractor);
-
-// 2. Register outline support (graph_outline)
-const myOutline: LanguageSupport = { /* ... */ };
 registerOutlineLanguage("rust", ["rs"], myOutline);
-
-// 3. Build — all registrations are picked up automatically
 const result = await build("./reponova.yml");
 ```
 
-### Query API
-
-After building, load and query the graph:
+### Query
 
 ```typescript
 import {
-  openDatabase,
-  initializeSchema,
-  populateDatabase,
-  loadGraphData,
-  searchNodes,
-  analyzeImpact,
-  findShortestPath,
-  getNodeDetail,
+  openDatabase, initializeSchema, populateDatabase,
+  loadGraphData, searchNodes, analyzeImpact, findShortestPath,
 } from "reponova";
 
-// Load and index the graph
 const graphData = loadGraphData("./reponova-out/graph.json");
 const db = await openDatabase(":memory:");
 initializeSchema(db);
 populateDatabase(db, graphData);
 
-// Search
 const results = searchNodes(db, "authentication", { top_k: 5, type: "function" });
-
-// Impact analysis
 const impact = analyzeImpact(db, "Function:authenticate_user", { max_depth: 3 });
-
-// Shortest path
 const path = findShortestPath(db, graphData, "ModuleA", "ModuleB");
-
-// Node detail
-const detail = getNodeDetail(db, graphData, "Function:process_payment");
 ```
 
-### Advanced API
+### Smart Context
 
 ```typescript
-import {
-  ContextBuilder,
-  loadConfig,
-} from "reponova";
+import { ContextBuilder, loadConfig } from "reponova";
 
-// Smart context assembly (search + vectors + graph expansion)
 const { config } = loadConfig("./reponova.yml");
 const builder = new ContextBuilder(db, graphData, "./reponova-out");
 await builder.initialize(config.embeddings);
-const context = await builder.buildContext({
-  query: "authentication flow",
-  maxTokens: 4000,
-});
+const context = await builder.buildContext({ query: "authentication flow", maxTokens: 4000 });
 ```
 
 ---
@@ -1140,79 +579,39 @@ const context = await builder.buildContext({
 
 ### Do I need an API key?
 
-No. By default, RepoNova is fully algorithmic — no models, no downloads, no API keys. If you configure an `openai` provider pointing to a remote service, you'll need an API key for that service. Local providers (`onnx`, `llama-cpp`) run entirely on your machine.
-
-### How big are the models?
-
-| Model | Size | When downloaded |
-|-------|------|----------------|
-| TF-IDF embeddings | None (computed in-process) | Never (default) |
-| ONNX embeddings | ~86 MB (MiniLM-L6-v2) | When `embeddings.provider` references an `onnx` provider |
-| LLM (Qwen 0.5B Q4_K_M) | ~350 MB | When a `llama-cpp` provider is configured and referenced |
+No. By default, RepoNova is fully algorithmic. For agent-driven enrichment (`/reponova-enrich`), the agent's own reasoning is the "model" — no external services needed. API keys are only needed if you configure a remote `openai` provider.
 
 ### How long does a build take?
 
-Depends on codebase size. Rough benchmarks:
-- Small project (500 files): ~5-10 seconds
-- Medium project (5,000 files): ~30-60 seconds
-- Large monorepo (20,000+ files): 2-5 minutes
-- LLM-provider summaries add ~2-3 seconds per community
+Algorithmic mode (no LLM):
+- Small (500 files): ~5-10s
+- Medium (5,000 files): ~30-60s
+- Large monorepo (20,000+ files): 2-5 min
+
+Intelligent enrichment adds 1-10 minutes depending on graph size, LLM speed, and concurrency.
 
 ### Can I use it without an editor?
 
-Yes. Use the CLI (`reponova build`, `reponova check`) and the programmatic API. The MCP server is just one way to query the graph.
-
-### What about TypeScript / JavaScript extraction?
-
-Tree-sitter grammars are ready. The extractor implementation is on the roadmap — contributions welcome.
+Yes. `reponova build` and the programmatic API work standalone. The MCP server is just one way to query the graph.
 
 ---
 
 ## Contributing
 
-Contributions are welcome.
-
 ### Adding Language Support (Extraction)
 
-Add new programming language extractors via tree-sitter. An extractor teaches RepoNova how to parse a language's AST and extract symbols, imports, and references for graph building.
-
-#### Steps
-
-1. **Create** `src/extract/languages/<lang>.ts` implementing the `LanguageExtractor` interface
-2. **Register** it in `src/extract/languages/registry.ts` (or at runtime via `registerExtractor()`)
-3. **Add** the tree-sitter WASM grammar to `grammars/` (e.g., `tree-sitter-javascript.wasm`)
+1. **Create** `src/extract/languages/<lang>.ts` implementing `LanguageExtractor`
+2. **Register** in `src/extract/languages/registry.ts`
+3. **Add** tree-sitter WASM grammar to `grammars/`
 
 #### `LanguageExtractor` Interface
 
 ```typescript
 interface LanguageExtractor {
-  /** Language identifier — must match tree-sitter grammar name (e.g., "javascript") */
   readonly languageId: string;
-
-  /** File extensions this extractor handles (e.g., [".js", ".mjs", ".cjs"]) */
   readonly extensions: string[];
-
-  /**
-   * WASM grammar filename (e.g., "tree-sitter-javascript.wasm").
-   * If provided: pipeline parses with tree-sitter and passes the SyntaxTree.
-   * If omitted: extract() receives a null tree and must work from sourceCode directly.
-   * (Markdown and diagram extractors use this — no WASM needed.)
-   */
   readonly wasmFile?: string;
-
-  /**
-   * Extract symbols, imports, and references from a single source file.
-   * @param tree - Parsed tree-sitter AST (null if wasmFile not set)
-   * @param sourceCode - Raw file content
-   * @param filePath - Relative path (normalized, forward slashes)
-   */
   extract(tree: SyntaxTree | null, sourceCode: string, filePath: string): FileExtraction;
-
-  /**
-   * Resolve an import module path to candidate file paths.
-   * Example: "config.loader" → ["config/loader.py", "config/loader/__init__.py"]
-   * Return empty array for external/third-party modules.
-   */
   resolveImportPath(importModule: string, currentFilePath: string): string[];
 }
 ```
@@ -1221,90 +620,39 @@ interface LanguageExtractor {
 
 ```typescript
 interface FileExtraction {
-  filePath: string;           // Relative path (forward slashes)
-  language: string;           // Must match languageId
-  symbols: SymbolNode[];      // Functions, classes, methods, variables
-  imports: ImportDeclaration[];  // Import/export statements
-  references: SymbolReference[];  // Calls, type annotations, inheritance refs
+  filePath: string;
+  language: string;
+  symbols: SymbolNode[];
+  imports: ImportDeclaration[];
+  references: SymbolReference[];
 }
 ```
 
-**Key types your extractor produces:**
-
-| Type | Fields | Purpose |
-|------|--------|---------|
-| `SymbolNode` | `name`, `qualifiedName`, `kind`, `signature?`, `decorators`, `docstring?`, `startLine`, `endLine`, `parent?`, `bases?`, `calls` | A symbol defined in the file |
+| Type | Key Fields | Purpose |
+|------|-----------|---------|
+| `SymbolNode` | `name`, `qualifiedName`, `kind`, `signature?`, `decorators`, `docstring?`, `startLine`, `endLine`, `parent?`, `bases?`, `calls` | A symbol in the file |
 | `ImportDeclaration` | `module`, `names`, `isWildcard`, `isExport?`, `line` | An import/export statement |
-| `SymbolReference` | `name`, `fromSymbol`, `kind` (`"call"` \| `"type_annotation"` \| `"attribute_access"` \| `"inheritance"`), `line` | A reference to another symbol |
+| `SymbolReference` | `name`, `fromSymbol`, `kind`, `line` | A reference to another symbol |
 | `SymbolKind` | `"function"` \| `"class"` \| `"method"` \| `"variable"` \| `"constant"` \| `"interface"` \| `"enum"` \| `"module"` \| `"document"` \| `"section"` | Symbol classification |
 
-See `src/extract/types.ts` for full type definitions and JSDoc.
-
-#### How tree-sitter Parsing Works
-
-1. If `wasmFile` is set, the pipeline loads `grammars/<wasmFile>`, parses the source, and passes a `SyntaxTree` to `extract()`
-2. If `wasmFile` is omitted, `extract()` receives `null` as the tree and must work from `sourceCode` directly
-3. WASM grammars are loaded from the `grammars/` directory relative to the package root
-4. `SyntaxTree` / `SyntaxNode` types match the [web-tree-sitter](https://github.com/nicolo-ribaudo/tree-sitter-wasm-prebuilt) WASM interface
-
-#### Runtime Registration
-
-You can also register extractors at runtime via the public API (must be called before `build`):
-
-```typescript
-import { registerExtractor } from "reponova";
-import type { LanguageExtractor } from "reponova";
-
-const myExtractor: LanguageExtractor = { /* ... */ };
-registerExtractor(myExtractor);
-```
-
-Note: duplicate `languageId` or `extensions` silently overwrite the previous extractor.
-
-#### Reference Implementation
-
-See `src/extract/languages/python.ts` for a full tree-sitter-based extractor, or `src/extract/languages/markdown.ts` for a non-tree-sitter (regex) extractor.
+See `src/extract/types.ts` for full definitions. Reference implementations: `src/extract/languages/python.ts` (tree-sitter), `src/extract/languages/markdown.ts` (regex).
 
 ### Adding Outline Support
 
-Outlines (`graph_outline`) use a **separate system** from extraction. They have their own registry, interface, and implementations.
+Outlines (`graph_outline`) use a **separate system** from extraction.
 
-#### Steps
-
-1. **Create** `src/outline/languages/<lang>.ts` implementing the `LanguageSupport` interface
-2. **Register** it in `src/outline/languages/registry.ts` via `registerOutlineLanguage()`
-3. The same WASM grammar from `grammars/` is shared with the extraction system
-
-#### `LanguageSupport` Interface
+1. **Create** `src/outline/languages/<lang>.ts` implementing `LanguageSupport`
+2. **Register** in `src/outline/languages/registry.ts`
 
 ```typescript
 interface LanguageSupport {
-  /** WASM grammar filename (e.g., "tree-sitter-python.wasm") */
   readonly wasmFile: string;
-
-  /** Extract outline from tree-sitter AST (primary method) */
   treeSitterExtract(rootNode: SyntaxNode, filePath: string, lineCount: number): FileOutline;
-
-  /** Extract outline from raw source via regex (fallback when WASM unavailable) */
   regexExtract(filePath: string, source: string, lineCount: number): FileOutline;
 }
 ```
 
-#### Runtime Registration
-
-You can also register outline languages at runtime via the public API (must be called before `build`):
-
-```typescript
-import { registerOutlineLanguage } from "reponova";
-import type { LanguageSupport } from "reponova";
-
-const myOutline: LanguageSupport = { /* ... */ };
-registerOutlineLanguage("rust", ["rs"], myOutline);
-```
-
-Note: duplicate language `names` or `extensions` silently overwrite the previous registration.
-
-See `src/outline/languages/python.ts` for the reference implementation.
+Reference: `src/outline/languages/python.ts`
 
 ---
 
