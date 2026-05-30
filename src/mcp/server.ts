@@ -24,6 +24,7 @@ import { handleContext, initContextBuilder, disposeContextBuilder } from "./tool
 import { handleDocs } from "./tools/docs.js";
 import { errorMessage, log } from "../shared/utils.js";
 import type { EmbeddingsConfig } from "../shared/types.js";
+import type { Database } from "../query/db.js";
 
 export interface McpServerOptions {
   graphPath?: string;
@@ -38,7 +39,19 @@ export function resolveEmbeddingsConfig(graphJsonPath: string | null): Embedding
   return embeddingsConfigFromFingerprint(buildConfig);
 }
 
+/**
+ * Resources initialized in background after server.connect().
+ * All tool handlers await this promise before accessing any resource.
+ */
+interface ServerResources {
+  db: Database;
+  graphDir: string;
+  graphJsonPath: string | null;
+  resolvePaths: PathResolver | null;
+}
+
 export async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
+  // --- Phase 1: Minimal validation (fast, sync-ish) ---
   const graphDir = resolveGraphPath(options.graphPath);
   if (!graphDir) {
     log.error("Could not find reponova-out directory. Use --graph flag, set REPONOVA_GRAPH_PATH, or run from a directory containing reponova-out/.");
@@ -52,42 +65,67 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   }
 
   const graphJsonPath = resolveGraphJson(graphDir);
-  const db = await openDatabase(dbPath, { readonly: true });
 
-  // Reconstruct repo mappings from graph.json metadata (for query-time path resolution)
-  let resolvePaths: PathResolver | null = null;
-  if (graphJsonPath) {
-    try {
-      const graphData = loadGraphData(graphJsonPath);
-      if (graphData.metadata) {
-        const repos = reconstructRepos(graphDir, graphData.metadata.config_dir, graphData.metadata.repos);
-        const mode = graphData.metadata.mode ?? "single";
-        if (repos) {
-          resolvePaths = (sourceFile: string) => resolveFilePaths(graphDir, repos, mode, sourceFile);
-        }
-      }
-    } catch {
-      log.warn("Could not load graph metadata for path resolution — on-the-fly outlines may fail");
-    }
-  }
-
-  const defaultEmbeddingsConfig = resolveEmbeddingsConfig(graphJsonPath);
-  const defaultCacheDir = "~/.cache/reponova/models";
-
-  // Initialize similarity search (non-blocking — tools await readiness via promise)
-  initSimilaritySearch(graphDir, defaultEmbeddingsConfig, defaultCacheDir).catch(() => {
-    // Silently degrade — graph_similar will return appropriate error
-  });
-
-  // Initialize context builder (non-blocking — has lazy init fallback)
-  initContextBuilder(db, graphDir, defaultEmbeddingsConfig, defaultCacheDir).catch(() => {
-    // Silently degrade — graph_context will lazy-init without embeddings
-  });
-
+  // --- Phase 2: Connect transport IMMEDIATELY ---
   const server = new Server(
     { name: "reponova", version: "0.1.0" },
     { capabilities: { tools: {}, resources: {} } },
   );
+
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  log.info("reponova MCP server running on stdio");
+
+  // --- Phase 3: Initialize resources in background ---
+  let resourcesResolve!: (r: ServerResources) => void;
+  let resourcesReject!: (e: Error) => void;
+  const resourcesReady: Promise<ServerResources> = new Promise((resolve, reject) => {
+    resourcesResolve = resolve;
+    resourcesReject = reject;
+  });
+
+  // Fire initialization immediately (non-blocking relative to transport)
+  (async () => {
+    try {
+      const db = await openDatabase(dbPath, { readonly: true });
+
+      // Reconstruct repo mappings from graph.json metadata
+      let resolvePaths: PathResolver | null = null;
+      if (graphJsonPath) {
+        try {
+          const graphData = loadGraphData(graphJsonPath);
+          if (graphData.metadata) {
+            const repos = reconstructRepos(graphDir, graphData.metadata.config_dir, graphData.metadata.repos);
+            const mode = graphData.metadata.mode ?? "single";
+            if (repos) {
+              resolvePaths = (sourceFile: string) => resolveFilePaths(graphDir, repos, mode, sourceFile);
+            }
+          }
+        } catch {
+          log.warn("Could not load graph metadata for path resolution — on-the-fly outlines may fail");
+        }
+      }
+
+      const defaultEmbeddingsConfig = resolveEmbeddingsConfig(graphJsonPath);
+      const defaultCacheDir = "~/.cache/reponova/models";
+
+      // Initialize similarity search (non-blocking — tools await readiness via their own promise)
+      initSimilaritySearch(graphDir, defaultEmbeddingsConfig, defaultCacheDir).catch(() => {
+        // Silently degrade — graph_similar will return appropriate error
+      });
+
+      // Initialize context builder (non-blocking — has lazy init fallback)
+      initContextBuilder(db, graphDir, defaultEmbeddingsConfig, defaultCacheDir).catch(() => {
+        // Silently degrade — graph_context will lazy-init without embeddings
+      });
+
+      resourcesResolve({ db, graphDir, graphJsonPath, resolvePaths });
+    } catch (err) {
+      resourcesReject(err instanceof Error ? err : new Error(String(err)));
+    }
+  })();
+
+  // --- Phase 4: Register handlers (all await resourcesReady) ---
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
@@ -108,18 +146,21 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     try {
+      // Semaphore: wait for all resources to be ready before handling any tool call
+      const { db, graphDir: gDir, graphJsonPath: gjPath, resolvePaths: rp } = await resourcesReady;
+
       switch (name) {
-        case "graph_search": return handleSearch(db, args as Record<string, unknown>, resolvePaths);
-        case "graph_impact": return handleImpact(db, args as Record<string, unknown>, resolvePaths);
-        case "graph_outline": return handleOutline(db, graphDir, args as Record<string, unknown>, resolvePaths);
-        case "graph_path": return handlePath(db, args as Record<string, unknown>, resolvePaths);
-        case "graph_explain": return handleExplain(db, graphDir, args as Record<string, unknown>, resolvePaths);
-        case "graph_community": return handleCommunity(db, graphDir, args as Record<string, unknown>, resolvePaths);
-        case "graph_hotspots": return handleHotspots(db, args as Record<string, unknown>, resolvePaths);
-        case "graph_similar": return await handleSimilar(db, args as Record<string, unknown>, resolvePaths);
-        case "graph_context": return await handleContext(db, graphDir, args as Record<string, unknown>, resolvePaths);
-        case "graph_docs": return handleDocs(db, args as Record<string, unknown>, resolvePaths);
-        case "graph_status": return handleStatus(db, graphDir, graphJsonPath);
+        case "graph_search": return await handleSearch(db, args as Record<string, unknown>, rp);
+        case "graph_impact": return await handleImpact(db, args as Record<string, unknown>, rp);
+        case "graph_outline": return await handleOutline(db, gDir, args as Record<string, unknown>, rp);
+        case "graph_path": return await handlePath(db, args as Record<string, unknown>, rp);
+        case "graph_explain": return await handleExplain(db, gDir, args as Record<string, unknown>, rp);
+        case "graph_community": return await handleCommunity(db, gDir, args as Record<string, unknown>, rp);
+        case "graph_hotspots": return await handleHotspots(db, args as Record<string, unknown>, rp);
+        case "graph_similar": return await handleSimilar(db, args as Record<string, unknown>, rp);
+        case "graph_context": return await handleContext(db, gDir, args as Record<string, unknown>, rp);
+        case "graph_docs": return await handleDocs(db, args as Record<string, unknown>, rp);
+        case "graph_status": return await handleStatus(db, gDir, gjPath);
         default: return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
       }
     } catch (error) {
@@ -133,16 +174,21 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     if (request.params.uri === "graph://status") {
-      const result = handleStatus(db, graphDir, graphJsonPath);
+      const { db, graphDir: gDir, graphJsonPath: gjPath } = await resourcesReady;
+      const result = handleStatus(db, gDir, gjPath);
       return { contents: [{ uri: request.params.uri, text: result.content[0]?.text ?? "", mimeType: "text/plain" }] };
     }
     return { contents: [{ uri: request.params.uri, text: "Not found", mimeType: "text/plain" }] };
   });
 
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  log.info("reponova MCP server running on stdio");
-
-  process.on("SIGINT", async () => { await disposeSimilaritySearch(); await disposeContextBuilder(); db.close(); await server.close(); process.exit(0); });
-  process.on("SIGTERM", async () => { await disposeSimilaritySearch(); await disposeContextBuilder(); db.close(); await server.close(); process.exit(0); });
+  process.on("SIGINT", async () => {
+    try { const r = await resourcesReady; await disposeSimilaritySearch(); await disposeContextBuilder(); r.db.close(); } catch { /* resources never initialized */ }
+    await server.close();
+    process.exit(0);
+  });
+  process.on("SIGTERM", async () => {
+    try { const r = await resourcesReady; await disposeSimilaritySearch(); await disposeContextBuilder(); r.db.close(); } catch { /* resources never initialized */ }
+    await server.close();
+    process.exit(0);
+  });
 }
