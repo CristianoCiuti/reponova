@@ -89,8 +89,6 @@ describe("BuildConfigFingerprint", () => {
     const bc = raw.metadata.build_config as BuildConfigFingerprint;
     expect(bc.embeddings.enabled).toBe(true);
     expect(bc.embeddings.provider).toBeUndefined();
-    expect(bc.outlines.enabled).toBe(true);
-    expect(bc.enrich.enabled).toBe(true);
   });
 
   it("should write build_config with custom embeddings config", () => {
@@ -149,8 +147,8 @@ describe("BuildConfigFingerprint", () => {
 
     const raw = JSON.parse(readFileSync(tmpPath, "utf-8"));
     const bc = raw.metadata.build_config;
-    // Fingerprint only stores enabled flag — not model/threshold/max_communities
-    expect(bc.enrich.enabled).toBe(true);
+    // enrich is no longer stored in fingerprint — only embeddings matters for runtime
+    expect(bc.embeddings).toBeDefined();
   });
 
   it("should write undefined build_config when no config provided", () => {
@@ -209,7 +207,5 @@ describe("BuildConfigFingerprint", () => {
     const bc = graphData.metadata!.build_config!;
     expect(bc.embeddings.enabled).toBe(true);
     expect(bc.embeddings.provider).toBeUndefined();
-    expect(bc.outlines.enabled).toBe(true);
-    expect(bc.enrich.enabled).toBe(true);
   });
 });

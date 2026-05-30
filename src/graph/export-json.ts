@@ -115,8 +115,6 @@ export function exportJson(options: ExportJsonOptions): void {
             enabled: config.embeddings.enabled,
             provider: config.embeddings.provider,
           },
-          outlines: { enabled: config.outlines.enabled },
-          enrich: { enabled: config.enrich.enabled },
         },
       } : {}),
     },

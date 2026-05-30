@@ -64,16 +64,14 @@ export interface GraphMetadata {
 
 /**
  * Minimal build config fingerprint stored in graph.json metadata.
- * Contains only what the MCP runtime needs (embeddings config,
- * feature enabled flags).
+ * Contains only what the MCP runtime needs to initialize the correct
+ * embeddings provider at startup.
  */
 export interface BuildConfigFingerprint {
   embeddings: {
     enabled: boolean;
     provider?: string;
   };
-  outlines: { enabled: boolean };
-  enrich: { enabled: boolean };
 }
 
 /** Adjacency map for BFS/Dijkstra */

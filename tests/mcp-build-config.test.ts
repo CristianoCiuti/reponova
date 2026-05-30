@@ -53,30 +53,22 @@ describe("FIX-010v2: MCP build_config metadata", () => {
   it("formats build_config status lines from graph.json metadata (TF-IDF default)", () => {
     const graphJsonPath = writeGraphJson(makeTempDir(), {
       embeddings: { enabled: true },
-      outlines: { enabled: false },
-      enrich: { enabled: true },
     });
 
     expect(readBuildConfigStatusLines(graphJsonPath)).toEqual([
       "Build config:",
       "  Embeddings: TF-IDF (default)",
-      "  Outlines: disabled",
-      "  Enrich: enabled",
     ]);
   });
 
   it("formats build_config status lines with provider", () => {
     const graphJsonPath = writeGraphJson(makeTempDir(), {
       embeddings: { enabled: true, provider: "my-openai" },
-      outlines: { enabled: true },
-      enrich: { enabled: true },
     });
 
     expect(readBuildConfigStatusLines(graphJsonPath)).toEqual([
       "Build config:",
       "  Embeddings: provider: my-openai",
-      "  Outlines: enabled",
-      "  Enrich: enabled",
     ]);
   });
 
