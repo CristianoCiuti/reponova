@@ -61,12 +61,8 @@ export function countInputBatches(outputDir: string, step: PrepareStep): number 
 // ─── Step 1: Descriptions ────────────────────────────────────────────────────
 
 function prepareDescriptions(enrichDir: string, outputDir: string, config: Config, configDir: string): PrepareResult {
-  const candidatesPath = join(enrichDir, "candidates.json");
   const graphJsonPath = join(outputDir, "graph.json");
 
-  if (!existsSync(candidatesPath)) {
-    throw new Error(`Missing prerequisite: ${candidatesPath}. Run \`reponova enrich:metrics\` first.`);
-  }
   if (!existsSync(graphJsonPath)) {
     throw new Error(`Missing prerequisite: ${graphJsonPath}. Run \`reponova build --target communities\` first.`);
   }
@@ -76,17 +72,22 @@ function prepareDescriptions(enrichDir: string, outputDir: string, config: Confi
       mkdirSync(inputDir, { recursive: true });
 
   const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
-  const candidatesFile = JSON.parse(readFileSync(candidatesPath, "utf-8")) as CandidatesFile;
 
-  // Get candidate node IDs
-  const candidateIds = new Set(
-    candidatesFile.candidates
-      .filter((c) => c.status === "candidate")
-      .map((c) => c.nodeId),
-  );
+  // Compute total degree per node
+  const degreeMap = new Map<string, number>();
+  for (const node of graphData.nodes) degreeMap.set(node.id, 0);
+  for (const edge of graphData.edges) {
+    degreeMap.set(edge.source, (degreeMap.get(edge.source) ?? 0) + 1);
+    degreeMap.set(edge.target, (degreeMap.get(edge.target) ?? 0) + 1);
+  }
 
-  // Filter graph nodes to candidates only
-  const candidateNodes = graphData.nodes.filter((n) => candidateIds.has(n.id));
+  // Select top (1 - threshold) fraction by degree
+  const sorted = [...degreeMap.entries()].sort((a, b) => b[1] - a[1]);
+  const cutoff = Math.ceil(sorted.length * (1 - config.enrich.threshold));
+  const highDegreeIds = new Set(sorted.slice(0, cutoff).map(([id]) => id));
+
+  // Filter graph nodes to high-degree only
+  const candidateNodes = graphData.nodes.filter((n) => highDegreeIds.has(n.id));
 
   // Resolve repo roots for source code extraction
   const repoRoots = new Map<string, string>();
