@@ -1,0 +1,13 @@
+reponova-enrich non fa outline
+
+
+il flow SKILL ha un problema con il calcolo dei nodi di cui fare le description:
+Tutti i nodi hanno externalDegree: 0 — il che significa che non ci sono edge inter-community nel graph. Probabilmente è una singola community, o le community non sono state calcolate correttamente.
+Ma ATTENZIONE — il vero problema non è questo. Il problema è che enrich:prepare descriptions dovrebbe preparare batch per i nodi ad alto grado (top N% per degree), NON per i candidati di routing. Il codice usa candidates.filter(c => c.status === "candidate") ma il README dice:
+Step 1: Generate architectural descriptions for high-degree nodes
+Il codice mischia due concetti:
+1. Candidates (boundary nodes for routing) — usati nel step di routing
+2. High-degree nodes (per le descriptions) — dovrebbero usare il threshold di enrich (top 80% per degree)
+Guarda il config: enrich.threshold: 0.8 (top 20% dei nodi per degree devono avere descrizioni) vs enrich.candidate_threshold: 0.3 (boundary ratio per routing).
+Il bug: prepareDescriptions usa i candidati di routing (boundary ratio) invece dei nodi ad alto grado. È un bug logico nel codice, NON causato dalle nostre modifiche di performance.
+Vuoi che lo fixxi? Il fix sarebbe: prepareDescriptions deve selezionare i nodi con degree nel top (1 - config.enrich.threshold) percentile, non quelli con status "candidate".
