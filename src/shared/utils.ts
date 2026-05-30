@@ -1,11 +1,23 @@
 import { resolve, dirname } from "node:path";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // ─── Package version ────────────────────────────────────────────────────────
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const pkgPath = resolve(__dirname, "..", "..", "package.json");
+/**
+ * Find the package root by walking up from current module.
+ * Resilient to code-splitting where chunks land in dist/ directly.
+ */
+function findPkgRoot(): string {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 5; i++) {
+    if (existsSync(resolve(dir, "package.json"))) return dir;
+    dir = resolve(dir, "..");
+  }
+  return resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+}
+
+const pkgPath = resolve(findPkgRoot(), "package.json");
 
 let _version: string | undefined;
 

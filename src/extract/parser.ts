@@ -54,11 +54,23 @@ let LanguageClass: any = null;
 
 // ─── Grammars Directory ──────────────────────────────────────────────────────
 
+/**
+ * Resolve the package root by walking up from the current module until
+ * package.json is found. This is resilient to code-splitting (chunks in dist/)
+ * vs monolithic bundles (dist/cli/index.js) where import.meta.url differs.
+ */
+function findPackageRoot(): string {
+  let dir = fileURLToPath(new URL(".", import.meta.url));
+  for (let i = 0; i < 5; i++) {
+    if (existsSync(resolve(dir, "package.json"))) return dir;
+    dir = resolve(dir, "..");
+  }
+  // Fallback: assume 2 levels up (works for both dist/ and src/extract/)
+  return resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
+}
+
 /** Resolved path to the grammars/ directory */
-const grammarsDir = resolve(
-  fileURLToPath(new URL(".", import.meta.url)),
-  "../../grammars",
-);
+const grammarsDir = resolve(findPackageRoot(), "grammars");
 
 /** Get the resolved grammars directory path */
 export function getGrammarsDir(): string {
