@@ -17,7 +17,7 @@ Intelligent enrichment workflow — you are the LLM that reads structured input 
 
 | Step | Type | Command / Action |
 |------|------|-----------------|
-| Pre | CLI | \`reponova build --target communities\` |
+| Pre | CLI | \`reponova build --target communities,outlines\` |
 | Check | CLI | \`reponova build --check enrich\` (exit 0 = done) |
 | 0 | CLI | \`reponova enrich:metrics\` |
 | 1 | CLI | \`reponova enrich:prepare descriptions\` |

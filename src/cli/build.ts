@@ -42,7 +42,7 @@ export async function buildHandler(argv: Record<string, unknown>): Promise<void>
 
     await runBuild(config, configDir, {
       force: (argv.force as boolean) || false,
-      target: argv.target as string | undefined,
+      target: argv.target ? (argv.target as string).split(",") : undefined,
       startAfter: argv["start-after"] as string | undefined,
     });
   } catch (err) {

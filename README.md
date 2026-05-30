@@ -199,14 +199,14 @@ reponova install --target <editor> [--graph <path>]
 Run the full build pipeline (incremental by default).
 
 ```bash
-reponova build [--config <path>] [--force] [--target <phase>] [--start-after <phase>] [--check <phase>]
+reponova build [--config <path>] [--force] [--target <phase,...>] [--start-after <phase>] [--check <phase>]
 ```
 
 | Option | Required | Description |
 |--------|----------|-------------|
 | `--config` | No | Path to `reponova.yml` (default: auto-detected) |
 | `--force` | No | Ignore all caches and rerun every phase |
-| `--target` | No | Run only this phase and its dependencies |
+| `--target` | No | Run only these phases and their dependencies (comma-separated, e.g. `communities,outlines`) |
 | `--start-after` | No | Run only phases downstream of this phase |
 | `--check` | No | Check if a phase needs to run (exit 0 = up to date, exit 1 = needs run) |
 

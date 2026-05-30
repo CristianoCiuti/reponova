@@ -24,8 +24,8 @@ import {
 import { errorMessage, log } from "../../shared/utils.js";
 
 export interface OrchestratorOptions {
-  /** Run only this phase + its transitive deps (null = full DAG) */
-  target?: string;
+  /** Run only these phases + their transitive deps (null = full DAG) */
+  target?: string | string[];
   /** Run only strict descendants of this phase (null = full DAG) */
   startAfter?: string;
   /** Force all phases to ignore cache */
@@ -57,11 +57,17 @@ export async function orchestrate(
   // Validate full DAG first (catches missing deps even for pruned runs)
   validate(dag);
 
-  // Prune to target + transitive deps if --target specified
+  // Prune to target(s) + transitive deps if --target specified
   if (options.target) {
-    const keep = resolveTransitiveDeps(dag, options.target);
+    const targets = Array.isArray(options.target) ? options.target : [options.target];
+    const keep = new Set<string>();
+    for (const t of targets) {
+      for (const id of resolveTransitiveDeps(dag, t)) {
+        keep.add(id);
+      }
+    }
     dag = pruneDAG(dag, keep);
-    log.info(`Target: ${options.target} (${keep.size} phases in dependency chain)`);
+    log.info(`Target: ${targets.join(", ")} (${keep.size} phases in dependency chain)`);
   }
 
   // Prune to strict descendants if --start-after specified

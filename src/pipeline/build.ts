@@ -19,7 +19,7 @@ import { ProviderRegistry } from "../intelligence/provider-registry.js";
 
 export interface BuildOptions {
   force?: boolean;
-  target?: string;
+  target?: string | string[];
   startAfter?: string;
 }
 
