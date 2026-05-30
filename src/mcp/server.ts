@@ -6,25 +6,13 @@ import {
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { openDatabase } from "../query/db.js";
 import { resolveGraphPath, resolveSearchDb, resolveGraphJson } from "../shared/graph-resolver.js";
-import { embeddingsConfigFromFingerprint, requireBuildConfigFingerprint } from "../pipeline/build-config-metadata.js";
-import { loadGraphData } from "../graph/loader.js";
-import { reconstructRepos, resolveFilePaths, type PathResolver } from "../shared/path-resolver.js";
-import { handleSearch } from "./tools/search.js";
-import { handleImpact } from "./tools/impact.js";
-import { handleOutline } from "./tools/outline.js";
-import { handlePath } from "./tools/path.js";
-import { handleExplain } from "./tools/explain.js";
-import { handleStatus } from "./tools/status.js";
-import { handleCommunity } from "./tools/community.js";
-import { handleHotspots } from "./tools/hotspots.js";
-import { handleSimilar, initSimilaritySearch, disposeSimilaritySearch } from "./tools/similar.js";
-import { handleContext, initContextBuilder, disposeContextBuilder } from "./tools/context.js";
-import { handleDocs } from "./tools/docs.js";
 import { errorMessage, log } from "../shared/utils.js";
-import type { EmbeddingsConfig } from "../shared/types.js";
+import type { PathResolver } from "../shared/path-resolver.js";
 import type { Database } from "../query/db.js";
+
+import { embeddingsConfigFromFingerprint, requireBuildConfigFingerprint } from "../pipeline/build-config-metadata.js";
+import type { EmbeddingsConfig } from "../shared/types.js";
 
 export interface McpServerOptions {
   graphPath?: string;
@@ -34,7 +22,6 @@ export function resolveEmbeddingsConfig(graphJsonPath: string | null): Embedding
   if (!graphJsonPath) {
     throw new Error("graph.json not found");
   }
-
   const buildConfig = requireBuildConfigFingerprint(graphJsonPath);
   return embeddingsConfigFromFingerprint(buildConfig);
 }
@@ -76,7 +63,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   await server.connect(transport);
   log.info("reponova MCP server running on stdio");
 
-  // --- Phase 3: Initialize resources in background ---
+  // --- Phase 3: Initialize resources in background (ALL imports are lazy) ---
   let resourcesResolve!: (r: ServerResources) => void;
   let resourcesReject!: (e: Error) => void;
   const resourcesReady: Promise<ServerResources> = new Promise((resolve, reject) => {
@@ -87,12 +74,15 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   // Fire initialization immediately (non-blocking relative to transport)
   (async () => {
     try {
+      const { openDatabase } = await import("../query/db.js");
       const db = await openDatabase(dbPath, { readonly: true });
 
       // Reconstruct repo mappings from graph.json metadata
       let resolvePaths: PathResolver | null = null;
       if (graphJsonPath) {
         try {
+          const { loadGraphData } = await import("../graph/loader.js");
+          const { reconstructRepos, resolveFilePaths } = await import("../shared/path-resolver.js");
           const graphData = loadGraphData(graphJsonPath);
           if (graphData.metadata) {
             const repos = reconstructRepos(graphDir, graphData.metadata.config_dir, graphData.metadata.repos);
@@ -106,18 +96,27 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
         }
       }
 
-      const defaultEmbeddingsConfig = resolveEmbeddingsConfig(graphJsonPath);
+      // Embeddings config
+      let defaultEmbeddingsConfig;
+      try {
+        defaultEmbeddingsConfig = resolveEmbeddingsConfig(graphJsonPath);
+      } catch {
+        defaultEmbeddingsConfig = null;
+      }
+
       const defaultCacheDir = "~/.cache/reponova/models";
 
-      // Initialize similarity search (non-blocking — tools await readiness via their own promise)
-      initSimilaritySearch(graphDir, defaultEmbeddingsConfig, defaultCacheDir).catch(() => {
-        // Silently degrade — graph_similar will return appropriate error
-      });
+      // Initialize similarity search (non-blocking)
+      if (defaultEmbeddingsConfig) {
+        import("./tools/similar.js").then(({ initSimilaritySearch }) =>
+          initSimilaritySearch(graphDir, defaultEmbeddingsConfig!, defaultCacheDir)
+        ).catch(() => {});
 
-      // Initialize context builder (non-blocking — has lazy init fallback)
-      initContextBuilder(db, graphDir, defaultEmbeddingsConfig, defaultCacheDir).catch(() => {
-        // Silently degrade — graph_context will lazy-init without embeddings
-      });
+        // Initialize context builder (non-blocking)
+        import("./tools/context.js").then(({ initContextBuilder }) =>
+          initContextBuilder(db, graphDir, defaultEmbeddingsConfig!, defaultCacheDir)
+        ).catch(() => {});
+      }
 
       resourcesResolve({ db, graphDir, graphJsonPath, resolvePaths });
     } catch (err) {
@@ -150,17 +149,50 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
       const { db, graphDir: gDir, graphJsonPath: gjPath, resolvePaths: rp } = await resourcesReady;
 
       switch (name) {
-        case "graph_search": return await handleSearch(db, args as Record<string, unknown>, rp);
-        case "graph_impact": return await handleImpact(db, args as Record<string, unknown>, rp);
-        case "graph_outline": return await handleOutline(db, gDir, args as Record<string, unknown>, rp);
-        case "graph_path": return await handlePath(db, args as Record<string, unknown>, rp);
-        case "graph_explain": return await handleExplain(db, gDir, args as Record<string, unknown>, rp);
-        case "graph_community": return await handleCommunity(db, gDir, args as Record<string, unknown>, rp);
-        case "graph_hotspots": return await handleHotspots(db, args as Record<string, unknown>, rp);
-        case "graph_similar": return await handleSimilar(db, args as Record<string, unknown>, rp);
-        case "graph_context": return await handleContext(db, gDir, args as Record<string, unknown>, rp);
-        case "graph_docs": return await handleDocs(db, args as Record<string, unknown>, rp);
-        case "graph_status": return await handleStatus(db, gDir, gjPath);
+        case "graph_search": {
+          const { handleSearch } = await import("./tools/search.js");
+          return await handleSearch(db, args as Record<string, unknown>, rp);
+        }
+        case "graph_impact": {
+          const { handleImpact } = await import("./tools/impact.js");
+          return await handleImpact(db, args as Record<string, unknown>, rp);
+        }
+        case "graph_outline": {
+          const { handleOutline } = await import("./tools/outline.js");
+          return await handleOutline(db, gDir, args as Record<string, unknown>, rp);
+        }
+        case "graph_path": {
+          const { handlePath } = await import("./tools/path.js");
+          return await handlePath(db, args as Record<string, unknown>, rp);
+        }
+        case "graph_explain": {
+          const { handleExplain } = await import("./tools/explain.js");
+          return await handleExplain(db, gDir, args as Record<string, unknown>, rp);
+        }
+        case "graph_community": {
+          const { handleCommunity } = await import("./tools/community.js");
+          return await handleCommunity(db, gDir, args as Record<string, unknown>, rp);
+        }
+        case "graph_hotspots": {
+          const { handleHotspots } = await import("./tools/hotspots.js");
+          return await handleHotspots(db, args as Record<string, unknown>, rp);
+        }
+        case "graph_similar": {
+          const { handleSimilar } = await import("./tools/similar.js");
+          return await handleSimilar(db, args as Record<string, unknown>, rp);
+        }
+        case "graph_context": {
+          const { handleContext } = await import("./tools/context.js");
+          return await handleContext(db, gDir, args as Record<string, unknown>, rp);
+        }
+        case "graph_docs": {
+          const { handleDocs } = await import("./tools/docs.js");
+          return await handleDocs(db, args as Record<string, unknown>, rp);
+        }
+        case "graph_status": {
+          const { handleStatus } = await import("./tools/status.js");
+          return await handleStatus(db, gDir, gjPath);
+        }
         default: return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
       }
     } catch (error) {
@@ -175,6 +207,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     if (request.params.uri === "graph://status") {
       const { db, graphDir: gDir, graphJsonPath: gjPath } = await resourcesReady;
+      const { handleStatus } = await import("./tools/status.js");
       const result = handleStatus(db, gDir, gjPath);
       return { contents: [{ uri: request.params.uri, text: result.content[0]?.text ?? "", mimeType: "text/plain" }] };
     }
@@ -182,12 +215,26 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   });
 
   process.on("SIGINT", async () => {
-    try { const r = await resourcesReady; await disposeSimilaritySearch(); await disposeContextBuilder(); r.db.close(); } catch { /* resources never initialized */ }
+    try {
+      const r = await resourcesReady;
+      const { disposeSimilaritySearch } = await import("./tools/similar.js");
+      const { disposeContextBuilder } = await import("./tools/context.js");
+      await disposeSimilaritySearch();
+      await disposeContextBuilder();
+      r.db.close();
+    } catch { /* resources never initialized */ }
     await server.close();
     process.exit(0);
   });
   process.on("SIGTERM", async () => {
-    try { const r = await resourcesReady; await disposeSimilaritySearch(); await disposeContextBuilder(); r.db.close(); } catch { /* resources never initialized */ }
+    try {
+      const r = await resourcesReady;
+      const { disposeSimilaritySearch } = await import("./tools/similar.js");
+      const { disposeContextBuilder } = await import("./tools/context.js");
+      await disposeSimilaritySearch();
+      await disposeContextBuilder();
+      r.db.close();
+    } catch { /* resources never initialized */ }
     await server.close();
     process.exit(0);
   });
