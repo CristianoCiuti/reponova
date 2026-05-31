@@ -293,18 +293,30 @@ function prepareRestructure(enrichDir: string, outputDir: string, config: Config
     }
   }
 
-  // Compute size outliers
+  // Compute size outliers — include node IDs + descriptions so the agent can propose splits
   const graphData = JSON.parse(readFileSync(graphJsonPath, "utf-8")) as GraphData;
-  const commSizes = new Map<string, number>();
+  const descriptionsPath = join(enrichDir, "descriptions.json");
+  const descMap = new Map<string, string>();
+  if (existsSync(descriptionsPath)) {
+    const descriptions: Array<{ id: string; description: string }> = JSON.parse(readFileSync(descriptionsPath, "utf-8"));
+    for (const d of descriptions) descMap.set(d.id, d.description);
+  }
+
+  const commNodes = new Map<string, Array<{ id: string; label: string; filePath: string }>>();
   for (const node of graphData.nodes) {
     const c = node.community ?? "unclustered";
-    commSizes.set(c, (commSizes.get(c) ?? 0) + 1);
+    if (!commNodes.has(c)) commNodes.set(c, []);
+    commNodes.get(c)!.push({ id: node.id, label: node.label, filePath: node.source_file ?? "" });
   }
-  const sizeValues = [...commSizes.values()].sort((a, b) => a - b);
+  const sizeValues = [...commNodes.values()].map((n) => n.length).sort((a, b) => a - b);
   const median = sizeValues[Math.floor(sizeValues.length / 2)] ?? 10;
-  const sizeOutliers = [...commSizes.entries()]
-    .filter(([_, size]) => size > median * 2)
-    .map(([id, size]) => ({ communityId: id, nodeCount: size }));
+  const sizeOutliers = [...commNodes.entries()]
+    .filter(([_, nodes]) => nodes.length > median * 2)
+    .map(([id, nodes]) => ({
+      communityId: id,
+      nodeCount: nodes.length,
+      nodes: nodes.map((n) => ({ id: n.id, label: n.label, filePath: n.filePath, description: descMap.get(n.id) ?? null })),
+    }));
 
   // Single input file with full context
   atomicWriteJson(join(inputDir, "restructure-input.json"), {
