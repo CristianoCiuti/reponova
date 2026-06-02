@@ -87,8 +87,8 @@ export async function checkHandler(argv: Record<string, unknown>): Promise<void>
 
     // Check language plugins
     try {
-      const { discoverLanguagePlugins, getDiscoveredPlugins } = await import("../plugin/discovery.js");
-      await discoverLanguagePlugins();
+      const { loadDeclaredPlugins, getDiscoveredPlugins } = await import("../plugin/discovery.js");
+      await loadDeclaredPlugins(config);
       const plugins = getDiscoveredPlugins();
       if (plugins.length > 0) {
         const lines = plugins.map((p) => {

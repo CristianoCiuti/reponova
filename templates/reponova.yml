@@ -58,17 +58,18 @@ docs:
   max_file_size_kb: 500
 
 # ── Language Plugins ─────────────────────────────────────────────────────────
-# Per-plugin config (keyed by plugin id). Installed via `reponova lang add <name>`.
+# Declare plugins here. Installed via `reponova lang add <package>`.
+# If `package` is omitted, resolved as @reponova/lang-<key>.
 # Each plugin inherits global patterns/exclude unless overridden here.
-# If a plugin is not listed, it defaults to enabled with no custom config.
 # plugins:
-#   python:
+#   python:                          # shorthand → @reponova/lang-python
 #     enabled: true
-#     # patterns: []              # override global patterns for this plugin
-#     # exclude: []               # override global exclude for this plugin
+#   rust:                            # community plugin → explicit package
+#     package: "@exampleorg/lang-rust"
+#     enabled: true
 #   plantuml:
 #     enabled: true
-#     parse: true                 # parse PlantUML component relationships
+#     parse: true                    # plugin-specific option
 
 # ── Embeddings ───────────────────────────────────────────────────────────────
 # Default (no provider): TF-IDF (384-dim, fast, no download required)

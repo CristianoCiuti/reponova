@@ -40,14 +40,14 @@ docs:
   # max_file_size_kb: 500
 
 # ── Language Plugins ──
-# Per-plugin config (keyed by plugin id). Installed via \`reponova lang add <name>\`.
-# Each plugin inherits global patterns/exclude unless overridden here.
+# Declare plugins here. Installed via \`reponova lang add <package>\`.
+# If \`package\` is omitted, resolved as @reponova/lang-<key>.
 # plugins:
 #   python:
 #     enabled: true
-#   plantuml:
+#   rust:
+#     package: "@exampleorg/lang-rust"
 #     enabled: true
-#     parse: true
 
 # ── Embeddings ──
 # Default: TF-IDF (fast, no download). Set provider for ONNX or remote embeddings.

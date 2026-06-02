@@ -26,6 +26,7 @@ const DocsConfigSchema = z.object({
 });
 
 const PluginConfigSchema = z.object({
+  package: z.string().optional(),
   enabled: z.boolean().default(true),
   patterns: z.array(z.string()).default([]),
   exclude: z.array(z.string()).default([]),

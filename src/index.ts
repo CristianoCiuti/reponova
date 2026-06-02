@@ -36,7 +36,7 @@ export type { LanguageSupport } from "./outline/languages/types.js";
 
 // Plugin layer exports
 export type { LanguagePlugin } from "./plugin/types.js";
-export { discoverLanguagePlugins, getDiscoveredPlugins } from "./plugin/discovery.js";
+export { discoverLanguagePlugins, loadDeclaredPlugins, getDiscoveredPlugins, resolvePluginPackage } from "./plugin/discovery.js";
 export { registerGrammarPath, resolveGrammarPath } from "./plugin/grammar-registry.js";
 
 // Build API

@@ -140,6 +140,8 @@ export interface DocsConfig {
 
 /** Per-plugin config: common fields + arbitrary custom properties */
 export interface PluginConfig {
+  /** Full npm package name. If omitted, resolved as @reponova/lang-<key>. */
+  package?: string;
   enabled: boolean;
   patterns: string[];
   exclude: string[];

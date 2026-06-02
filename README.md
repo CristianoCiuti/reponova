@@ -338,7 +338,7 @@ RepoNova uses a plugin system for language support. Only Markdown is built-in; e
 
 ### Available Plugins
 
-Install via `reponova lang add <name>`:
+Install via `reponova lang add <package>`:
 
 | Plugin | Package | Extensions | What it extracts |
 |--------|---------|-----------|------------------|
@@ -347,10 +347,10 @@ Install via `reponova lang add <name>`:
 | SVG | `@reponova/lang-svg` | `.svg` | Text elements from SVG XML |
 
 ```bash
-reponova lang add python
-reponova lang add plantuml
-reponova lang list          # show installed plugins
-reponova lang remove svg    # uninstall a plugin
+reponova lang add @reponova/lang-python
+reponova lang add @exampleorg/lang-rust       # community plugins work too
+reponova lang list                        # show declared plugins
+reponova lang remove svg                  # uninstall by plugin id
 ```
 
 ### Edge Types
@@ -440,15 +440,17 @@ docs:
   max_file_size_kb: 500
 
 # ── Language Plugins ──────────────────────────────────────────────────────────
-# Per-plugin config (keyed by plugin id). Installed via `reponova lang add <name>`.
-# Each plugin inherits global patterns/exclude unless overridden here.
-# If a plugin is not listed, it defaults to enabled with no custom config.
+# Declare plugins here. Installed via `reponova lang add <package>`.
+# If `package` is omitted, resolved as @reponova/lang-<key>.
 # plugins:
-#   python:
+#   python:                          # shorthand → @reponova/lang-python
+#     enabled: true
+#   rust:                            # community plugin → explicit package
+#     package: "@exampleorg/lang-rust"
 #     enabled: true
 #   plantuml:
 #     enabled: true
-#     parse: true                 # parse PlantUML component relationships
+#     parse: true                    # plugin-specific option
 
 # ── Embeddings ────────────────────────────────────────────────────────────────
 # Default: TF-IDF (fast, no download). Set provider for ONNX or remote embeddings.
