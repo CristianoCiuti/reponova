@@ -10,7 +10,7 @@
  */
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { registerExtractor } from "../extract/languages/registry.js";
 import { registerOutlineLanguage } from "../outline/languages/registry.js";
 import { registerGrammarPath } from "./grammar-registry.js";
@@ -69,7 +69,7 @@ export async function discoverLanguagePlugins(): Promise<void> {
       const entryFile = exports?.["."] ?? "./dist/index.js";
       const entryPath = join(pkgDir, entryFile);
 
-      const mod = await import(entryPath);
+      const mod = await import(pathToFileURL(entryPath).href);
       const plugin: LanguagePlugin = mod.plugin ?? mod.default;
 
       if (!plugin || !plugin.id || !plugin.extractor) {
