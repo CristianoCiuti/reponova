@@ -1,0 +1,179 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { execSync } from "node:child_process";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
+const CLI = join(__dirname, "../dist/cli/index.js");
+
+function run(args: string, cwd: string): { stdout: string; stderr: string; exitCode: number } {
+  try {
+    const stdout = execSync(`node "${CLI}" ${args}`, {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+    });
+    return { stdout, stderr: "", exitCode: 0 };
+  } catch (err: any) {
+    return {
+      stdout: err.stdout ?? "",
+      stderr: err.stderr ?? "",
+      exitCode: err.status ?? 1,
+    };
+  }
+}
+
+describe("reponova lang CLI", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "rn-lang-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  describe("lang add", () => {
+    it("should detect linked plugin and write to new reponova.yml", () => {
+      const result = run("lang add @reponova/lang-python", tmpDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("plugins.python");
+      expect(result.stdout).toContain(".py");
+
+      // Verify reponova.yml was created
+      const configPath = join(tmpDir, "reponova.yml");
+      expect(existsSync(configPath)).toBe(true);
+
+      const content = readFileSync(configPath, "utf-8");
+      expect(content).toContain("plugins:");
+      expect(content).toContain("python:");
+      expect(content).toContain("enabled: true");
+      // Official package → no "package:" field
+      expect(content).not.toContain("package:");
+    });
+
+    it("should add to existing reponova.yml with plugins: {}", () => {
+      const configPath = join(tmpDir, "reponova.yml");
+      writeFileSync(configPath, "output: out\nrepos:\n  - name: x\n    path: .\n\nplugins: {}\n");
+
+      const result = run("lang add @reponova/lang-plantuml", tmpDir);
+      expect(result.exitCode).toBe(0);
+
+      const content = readFileSync(configPath, "utf-8");
+      expect(content).toContain("plantuml:");
+      expect(content).toContain("enabled: true");
+      expect(content).toContain("parse: true"); // configDefaults
+    });
+
+    it("should add to existing plugins section", () => {
+      const configPath = join(tmpDir, "reponova.yml");
+      writeFileSync(configPath, "output: out\nrepos:\n  - name: x\n    path: .\n\nplugins:\n  svg:\n    enabled: true\n");
+
+      const result = run("lang add @reponova/lang-python", tmpDir);
+      expect(result.exitCode).toBe(0);
+
+      const content = readFileSync(configPath, "utf-8");
+      expect(content).toContain("python:");
+      expect(content).toContain("svg:");
+    });
+
+    it("should be idempotent (add same plugin twice)", () => {
+      run("lang add @reponova/lang-python", tmpDir);
+      const result = run("lang add @reponova/lang-python", tmpDir);
+      expect(result.exitCode).toBe(0);
+
+      const content = readFileSync(join(tmpDir, "reponova.yml"), "utf-8");
+      // Should only have one python entry
+      const matches = content.match(/python:/g);
+      expect(matches?.length).toBe(1);
+    });
+
+    it("should not write package field for official plugins", () => {
+      const result = run("lang add @reponova/lang-svg", tmpDir);
+      expect(result.exitCode).toBe(0);
+
+      const content = readFileSync(join(tmpDir, "reponova.yml"), "utf-8");
+      expect(content).not.toContain("package:");
+    });
+
+    it("should error on invalid package (not a reponova plugin)", () => {
+      // yargs is in node_modules but is not a reponova language plugin
+      const result = run("lang add yargs", tmpDir);
+      expect(result.exitCode).toBe(1);
+      const output = result.stdout + result.stderr;
+      expect(output).toContain("does not export a valid LanguagePlugin");
+    });
+  });
+
+  describe("lang remove", () => {
+    it("should remove plugin entry from config", () => {
+      const configPath = join(tmpDir, "reponova.yml");
+      // Use a fake plugin id that won't trigger real npm uninstall side effects
+      writeFileSync(configPath, "output: out\nrepos:\n  - name: x\n    path: .\n\nplugins:\n  fake-lang:\n    package: \"@fake/lang-test\"\n    enabled: true\n  svg:\n    enabled: true\n");
+
+      const result = run("lang remove fake-lang", tmpDir);
+      // npm uninstall will fail (package doesn't exist) but config is still updated
+      expect(result.exitCode).toBe(0);
+
+      const content = readFileSync(configPath, "utf-8");
+      expect(content).not.toContain("fake-lang:");
+      expect(content).toContain("svg:");
+    });
+
+    it("should error when plugin not in config", () => {
+      const configPath = join(tmpDir, "reponova.yml");
+      writeFileSync(configPath, "output: out\nrepos:\n  - name: x\n    path: .\n\nplugins: {}\n");
+
+      const result = run("lang remove nonexistent", tmpDir);
+      expect(result.exitCode).toBe(1);
+      const output = result.stdout + result.stderr;
+      expect(output).toContain("not found");
+    });
+
+    it("should error when no config exists", () => {
+      const result = run("lang remove python", tmpDir);
+      expect(result.exitCode).toBe(1);
+      const output = result.stdout + result.stderr;
+      expect(output).toContain("No reponova.yml found");
+    });
+  });
+
+  describe("lang list", () => {
+    it("should show built-in markdown", () => {
+      const result = run("lang list", tmpDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("markdown");
+      expect(result.stdout).toContain(".md");
+    });
+
+    it("should show declared plugins with extensions when importable", () => {
+      const configPath = join(tmpDir, "reponova.yml");
+      writeFileSync(configPath, "output: out\nrepos:\n  - name: x\n    path: .\n\nplugins:\n  python:\n    enabled: true\n");
+
+      const result = run("lang list", tmpDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("python");
+      // Plugin is linked in reponova's node_modules so it should be importable
+      expect(result.stdout).toContain(".py");
+    });
+
+    it("should show no plugins when config has empty plugins section", () => {
+      const configPath = join(tmpDir, "reponova.yml");
+      writeFileSync(configPath, "output: out\nrepos:\n  - name: x\n    path: .\n\nplugins: {}\n");
+
+      const result = run("lang list", tmpDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("No plugins declared");
+    });
+
+    it("should handle missing config gracefully", () => {
+      const result = run("lang list", tmpDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("No reponova.yml found");
+    });
+  });
+});

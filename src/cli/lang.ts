@@ -10,8 +10,8 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import yaml from "js-yaml";
 import { resolveNodeModulesDir } from "../plugin/discovery.js";
+import { loadConfig } from "../shared/config.js";
 import type { LanguagePlugin } from "../plugin/types.js";
 
 /** Standard shorthand prefix — if package matches this, no `package:` field needed in config. */
@@ -58,22 +58,28 @@ async function langAdd(packageName: string): Promise<void> {
   }
 
   // Check if already present in node_modules (e.g. npm link)
+  const pkgDir = join(nodeModulesDir, ...packageName.split("/"));
+  const wasAlreadyInstalled = existsSync(pkgDir);
   let plugin = await importPlugin(nodeModulesDir, packageName);
 
   if (!plugin) {
-    // Not present — try npm install
-    console.log(`Installing ${packageName}...`);
-    try {
-      execSync(`npm install ${packageName}`, { cwd: nodeModulesDir, stdio: "inherit" });
-    } catch {
-      console.error(`Failed to install ${packageName}`);
-      process.exit(1);
+    if (!wasAlreadyInstalled) {
+      // Not present — try npm install
+      console.log(`Installing ${packageName}...`);
+      try {
+        execSync(`npm install ${packageName}`, { cwd: nodeModulesDir, stdio: "inherit" });
+      } catch {
+        console.error(`Failed to install ${packageName}`);
+        process.exit(1);
+      }
     }
 
     plugin = await importPlugin(nodeModulesDir, packageName);
     if (!plugin) {
-      // Rollback
-      try { execSync(`npm uninstall ${packageName}`, { cwd: nodeModulesDir, stdio: "ignore" }); } catch { /* */ }
+      // Rollback only if we installed it ourselves
+      if (!wasAlreadyInstalled) {
+        try { execSync(`npm uninstall ${packageName}`, { cwd: nodeModulesDir, stdio: "ignore" }); } catch { /* */ }
+      }
       console.error(`Package ${packageName} does not export a valid LanguagePlugin (missing plugin.id or plugin.extractor)`);
       process.exit(1);
     }
@@ -93,8 +99,7 @@ async function langRemove(id: string): Promise<void> {
     process.exit(1);
   }
 
-  const content = readFileSync(configPath, "utf-8");
-  const pluginEntry = findPluginInYaml(content, id);
+  const pluginEntry = findPluginInYaml(configPath, id);
 
   if (!pluginEntry) {
     console.error(`Plugin "${id}" not found in ${configPath}`);
@@ -103,15 +108,17 @@ async function langRemove(id: string): Promise<void> {
 
   const packageName = pluginEntry.package ?? `${OFFICIAL_PREFIX}${id}`;
 
-  // Uninstall from node_modules
+  // Uninstall from node_modules (only if package is actually installed, not linked)
   const nodeModulesDir = resolveNodeModulesDir();
   if (nodeModulesDir) {
-    console.log(`Removing ${packageName}...`);
-    try {
-      execSync(`npm uninstall ${packageName}`, { cwd: nodeModulesDir, stdio: "inherit" });
-    } catch {
-      console.error(`Failed to uninstall ${packageName}`);
-      process.exit(1);
+    const pkgDir = join(nodeModulesDir, ...packageName.split("/"));
+    if (existsSync(pkgDir)) {
+      console.log(`Removing ${packageName}...`);
+      try {
+        execSync(`npm uninstall ${packageName}`, { cwd: nodeModulesDir, stdio: "inherit" });
+      } catch {
+        // npm uninstall may fail for linked packages — continue with config removal
+      }
     }
   }
 
@@ -309,23 +316,17 @@ function removePluginSection(content: string, id: string): string {
 }
 
 /**
- * Parse plugins section from yaml content.
+ * Parse plugins section from config file.
  */
 function readPluginsFromConfig(configPath: string): Record<string, { package?: string; enabled?: boolean }> {
   try {
-    const content = readFileSync(configPath, "utf-8");
-    const parsed = yaml.load(content) as Record<string, unknown> | null;
-    const plugins = parsed?.plugins as Record<string, Record<string, unknown>> | undefined;
-    if (!plugins || typeof plugins !== "object") return {};
-
+    const { config } = loadConfig(configPath);
     const result: Record<string, { package?: string; enabled?: boolean }> = {};
-    for (const [key, val] of Object.entries(plugins)) {
-      if (val && typeof val === "object") {
-        result[key] = {
-          package: val.package as string | undefined,
-          enabled: val.enabled as boolean | undefined,
-        };
-      }
+    for (const [key, val] of Object.entries(config.plugins)) {
+      result[key] = {
+        package: val.package as string | undefined,
+        enabled: val.enabled,
+      };
     }
     return result;
   } catch {
@@ -334,14 +335,14 @@ function readPluginsFromConfig(configPath: string): Record<string, { package?: s
 }
 
 /**
- * Find a plugin entry in raw yaml content.
+ * Find a plugin entry in config file.
  */
-function findPluginInYaml(content: string, id: string): { package?: string } | null {
+function findPluginInYaml(configPath: string, id: string): { package?: string } | null {
   try {
-    const parsed = yaml.load(content) as Record<string, unknown> | null;
-    const plugins = parsed?.plugins as Record<string, Record<string, unknown>> | undefined;
-    if (!plugins?.[id]) return null;
-    return { package: plugins[id].package as string | undefined };
+    const { config } = loadConfig(configPath);
+    const pluginConfig = config.plugins[id];
+    if (!pluginConfig) return null;
+    return { package: pluginConfig.package as string | undefined };
   } catch {
     return null;
   }

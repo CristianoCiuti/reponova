@@ -35,7 +35,7 @@
     "sql.js": "^1.11.0",
     "undici": "^8.3.0",
     "web-tree-sitter": "^0.25.10",
-    "yargs": "^17.7.0",
+    "yargs": "^17.7.2",
     "zod": "^3.22.0"
   },
   "devDependencies": {
