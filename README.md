@@ -64,7 +64,7 @@ AI agents read files one at a time. They don't understand how your codebase fits
                                      6. HTML visualizations                       ... (11 tools)
 ```
 
-Language support is provided via plugins (`@reponova/lang-*`). Only Markdown is built-in.
+Language support is provided via plugins, only Markdown is built-in. See [Contributing](#contributing) for how to create a language plugin.
 
 ---
 
@@ -328,7 +328,7 @@ reponova models <subcommand>
 
 ## Supported Languages
 
-RepoNova uses a plugin system for language support. Only Markdown is built-in; everything else is provided by `@reponova/lang-*` packages.
+RepoNova uses a plugin system for language support. Only Markdown is built-in; everything else is provided by external plugin packages (see [Contributing](#contributing) for how to create one).
 
 ### Built-in
 
@@ -656,14 +656,44 @@ Yes. `reponova build` and the programmatic API work standalone. The MCP server i
 
 ### Adding Language Support (Plugin)
 
-Language support is provided via external plugin packages (`@reponova/lang-*`). Each plugin is a standalone npm package that exports a `LanguagePlugin` object.
+**Any npm package can be a RepoNova language plugin**. Community plugins like `@exampleorg/lang-rust` or `reponova-lang-kotlin` work exactly like official ones.
+
+#### Requirements for a valid language plugin
+
+A package is a valid RepoNova language plugin when it meets **all** of these criteria:
+
+1. **`package.json`** contains `"reponova": { "type": "language" }`
+2. **Entry point** exports a `plugin` (or `default`) object conforming to `LanguagePlugin`
+3. **`plugin.id`** is a unique string identifier (e.g. `"rust"`, `"kotlin"`)
+4. **`plugin.extensions`** is a non-empty array of file extensions (e.g. `[".rs"]`)
+5. **`plugin.extractor`** is a valid `LanguageExtractor` implementation
+
+Optional but recommended:
+- `plugin.grammarPath` — tree-sitter WASM grammar for AST-based parsing
+- `plugin.outline` — `LanguageSupport` implementation for `graph_outline` tool
+- `plugin.fileType` — category label in output (defaults to `id`)
+- `plugin.configDefaults` — default values for plugin-specific config options
 
 #### Creating a new language plugin
 
-1. **Create a new package** named `@reponova/lang-<name>`
+1. **Create a new npm package** (any name, any scope)
 2. **Add** `"reponova": { "type": "language" }` to `package.json`
 3. **Export** a `plugin` object conforming to `LanguagePlugin`
 4. **Optionally** include a tree-sitter WASM grammar in `grammars/`
+5. **Publish** to npm (or use locally via `npm link`)
+
+Users install it with:
+```bash
+reponova lang add @exampleorg/lang-rust
+```
+
+This installs the package and declares it in `reponova.yml`:
+```yaml
+plugins:
+  rust:
+    package: "@exampleorg/lang-rust"
+    enabled: true
+```
 
 #### `LanguagePlugin` Interface
 
@@ -712,7 +742,7 @@ interface FileExtraction {
 
 See `src/extract/types.ts` for full definitions.
 
-#### Example: Python plugin (`@reponova/lang-python`)
+#### Example: Official plugin (`@reponova/lang-python`)
 
 ```typescript
 import type { LanguagePlugin } from "reponova";
@@ -733,45 +763,54 @@ export const plugin: LanguagePlugin = {
 };
 ```
 
-#### Example: PlantUML plugin (`@reponova/lang-plantuml`)
+#### Example: Minimal community plugin
 
 ```typescript
 import type { LanguagePlugin } from "reponova";
-import { PlantUmlExtractor } from "./extractor.js";
+import { RustExtractor } from "./extractor.js";
 
 export const plugin: LanguagePlugin = {
-  id: "plantuml",
-  extensions: [".puml", ".plantuml"],
-  fileType: "plantuml",
-  configDefaults: { parse: true },
-  extractor: new PlantUmlExtractor(),
+  id: "rust",
+  extensions: [".rs"],
+  fileType: "rust",
+  extractor: new RustExtractor(),
 };
 ```
 
-#### Plugin `package.json` requirements
+#### Plugin `package.json`
 
 ```json
 {
-  "name": "@reponova/lang-myname",
-  "reponova": { "type": "language" },
+  "name": "@exampleorg/lang-rust",
+  "version": "1.0.0",
+  "type": "module",
   "exports": { ".": "./dist/index.js" },
-  "peerDependencies": { "reponova": ">=0.4.0" }
+  "peerDependencies": { "reponova": ">=0.4.0" },
+  "reponova": { "type": "language" }
 }
 ```
 
 #### Plugin config
 
-Users can configure plugins in `reponova.yml` under the `plugins:` key:
+Users configure plugins in `reponova.yml` under the `plugins:` key:
 
 ```yaml
 plugins:
-  plantuml:
+  rust:
+    package: "@exampleorg/lang-rust"
     enabled: true
-    parse: true
-    exclude: ["**/vendor/**"]
+    exclude: ["**/target/**"]
 ```
 
-Common properties (all optional): `enabled` (default: true), `patterns`, `exclude`.
+If the package follows the `@reponova/lang-<id>` convention, the `package` field can be omitted:
+
+```yaml
+plugins:
+  python:
+    enabled: true       # resolves to @reponova/lang-python
+```
+
+Common properties (all optional): `package`, `enabled` (default: true), `patterns`, `exclude`.
 Custom properties are defined by the plugin via `configDefaults`.
 
 ### Adding Outline Support
