@@ -56,15 +56,15 @@ AI agents read files one at a time. They don't understand how your codebase fits
   Your Codebase                      /reponova-enrich                             AI Agent
   ─────────────                      ────────────────                             ────────
 
-  Python ¹                           1. tree-sitter AST parsing                   graph_search
-  Markdown / Docs    ──────────►     2. Symbol + edge extraction        ──────►   graph_impact
-  Diagrams / SVG                     3. Louvain communities                       graph_path
+  Source Code          ──────────►   1. tree-sitter AST parsing                   graph_search
+  Markdown / Docs                    2. Symbol + edge extraction        ──────►   graph_impact
+  Diagrams (plugins)                 3. Louvain communities                       graph_path
   Multi-repo                         4. Enrichment (summaries + descriptions)     graph_similar
                                      5. TF-IDF / ONNX / API embeddings
                                      6. HTML visualizations                       ... (11 tools)
 ```
 
-¹ More languages coming soon — [contributing](#contributing).
+Language support is provided via plugins (`@reponova/lang-*`). Only Markdown is built-in.
 
 ---
 
@@ -222,7 +222,7 @@ Level 4: search-index, embeddings, html, report  (parallel)
 
 | Phase | What it does |
 |-------|-------------|
-| **file-detection** | Discover source files, docs, diagrams — respects patterns/exclude/incremental |
+| **file-detection** | Discover files by registered type (built-in docs + plugin extensions) |
 | **graph** | Parse with tree-sitter, extract symbols/calls/imports/inheritance, build graph |
 | **outlines** | Generate tree-sitter code outlines per file (SHA256 hashing — skip unchanged) |
 | **communities** | Louvain community detection, write `graph.json` |
@@ -328,13 +328,30 @@ reponova models <subcommand>
 
 ## Supported Languages
 
-### Extraction (AST parsing + graph building)
+RepoNova uses a plugin system for language support. Only Markdown is built-in; everything else is provided by `@reponova/lang-*` packages.
+
+### Built-in
 
 | Language | Extensions | Parser | Symbols Extracted |
 |----------|-----------|--------|-------------------|
-| Python | `.py`, `.pyw` | tree-sitter | Functions, classes, methods, decorators, docstrings, variables, imports, calls, inheritance |
-| Markdown | `.md` | Regex | Documents, sections (as containment hierarchy) |
-| Diagrams | `.puml`, `.plantuml`, `.svg` | Regex | Components, relationships (PlantUML); text content (SVG) |
+| Markdown | `.md`, `.txt`, `.rst` | Regex | Documents, sections (as containment hierarchy) |
+
+### Available Plugins
+
+Install via `reponova lang add <name>`:
+
+| Plugin | Package | Extensions | What it extracts |
+|--------|---------|-----------|------------------|
+| Python | `@reponova/lang-python` | `.py`, `.pyw` | Functions, classes, methods, decorators, docstrings, variables, imports, calls, inheritance. Tree-sitter AST outlines. |
+| PlantUML | `@reponova/lang-plantuml` | `.puml`, `.plantuml` | Classes, interfaces, relationships from PlantUML diagrams |
+| SVG | `@reponova/lang-svg` | `.svg` | Text elements from SVG XML |
+
+```bash
+reponova lang add python
+reponova lang add plantuml
+reponova lang list          # show installed plugins
+reponova lang remove svg    # uninstall a plugin
+```
 
 ### Edge Types
 
@@ -422,13 +439,16 @@ docs:
   exclude: []
   max_file_size_kb: 500
 
-# ── Diagrams / Images ─────────────────────────────────────────────────────────
-images:
-  enabled: true
-  patterns: []                  # empty = auto-detect (.puml, .plantuml, .svg, ...)
-  exclude: []
-  parse_puml: true
-  parse_svg_text: true
+# ── Language Plugins ──────────────────────────────────────────────────────────
+# Per-plugin config (keyed by plugin id). Installed via `reponova lang add <name>`.
+# Each plugin inherits global patterns/exclude unless overridden here.
+# If a plugin is not listed, it defaults to enabled with no custom config.
+# plugins:
+#   python:
+#     enabled: true
+#   plantuml:
+#     enabled: true
+#     parse: true                 # parse PlantUML component relationships
 
 # ── Embeddings ────────────────────────────────────────────────────────────────
 # Default: TF-IDF (fast, no download). Set provider for ONNX or remote embeddings.
@@ -632,11 +652,30 @@ Yes. `reponova build` and the programmatic API work standalone. The MCP server i
 
 ## Contributing
 
-### Adding Language Support (Extraction)
+### Adding Language Support (Plugin)
 
-1. **Create** `src/extract/languages/<lang>.ts` implementing `LanguageExtractor`
-2. **Register** in `src/extract/languages/registry.ts`
-3. **Add** tree-sitter WASM grammar to `grammars/`
+Language support is provided via external plugin packages (`@reponova/lang-*`). Each plugin is a standalone npm package that exports a `LanguagePlugin` object.
+
+#### Creating a new language plugin
+
+1. **Create a new package** named `@reponova/lang-<name>`
+2. **Add** `"reponova": { "type": "language" }` to `package.json`
+3. **Export** a `plugin` object conforming to `LanguagePlugin`
+4. **Optionally** include a tree-sitter WASM grammar in `grammars/`
+
+#### `LanguagePlugin` Interface
+
+```typescript
+interface LanguagePlugin {
+  readonly id: string;              // e.g. "python", "plantuml"
+  readonly extensions: string[];    // e.g. [".py", ".pyw"]
+  readonly fileType?: string;       // category label in detected-files.json (default: id)
+  readonly grammarPath?: string;    // absolute path to tree-sitter WASM grammar
+  readonly extractor: LanguageExtractor;
+  readonly outline?: LanguageSupport;
+  readonly configDefaults?: Record<string, unknown>;  // default plugin config values
+}
+```
 
 #### `LanguageExtractor` Interface
 
@@ -669,14 +708,73 @@ interface FileExtraction {
 | `SymbolReference` | `name`, `fromSymbol`, `kind`, `line` | A reference to another symbol |
 | `SymbolKind` | `"function"` \| `"class"` \| `"method"` \| `"variable"` \| `"constant"` \| `"interface"` \| `"enum"` \| `"module"` \| `"document"` \| `"section"` | Symbol classification |
 
-See `src/extract/types.ts` for full definitions. Reference implementations: `src/extract/languages/python.ts` (tree-sitter), `src/extract/languages/markdown.ts` (regex).
+See `src/extract/types.ts` for full definitions.
+
+#### Example: Python plugin (`@reponova/lang-python`)
+
+```typescript
+import type { LanguagePlugin } from "reponova";
+import { PythonExtractor } from "./extractor.js";
+import { python as pythonOutline } from "./outline.js";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const grammarPath = resolve(fileURLToPath(new URL(".", import.meta.url)), "../grammars/tree-sitter-python.wasm");
+
+export const plugin: LanguagePlugin = {
+  id: "python",
+  extensions: [".py", ".pyw"],
+  fileType: "python",
+  grammarPath,
+  extractor: new PythonExtractor(),
+  outline: pythonOutline,
+};
+```
+
+#### Example: PlantUML plugin (`@reponova/lang-plantuml`)
+
+```typescript
+import type { LanguagePlugin } from "reponova";
+import { PlantUmlExtractor } from "./extractor.js";
+
+export const plugin: LanguagePlugin = {
+  id: "plantuml",
+  extensions: [".puml", ".plantuml"],
+  fileType: "plantuml",
+  configDefaults: { parse: true },
+  extractor: new PlantUmlExtractor(),
+};
+```
+
+#### Plugin `package.json` requirements
+
+```json
+{
+  "name": "@reponova/lang-myname",
+  "reponova": { "type": "language" },
+  "exports": { ".": "./dist/index.js" },
+  "peerDependencies": { "reponova": ">=0.4.0" }
+}
+```
+
+#### Plugin config
+
+Users can configure plugins in `reponova.yml` under the `plugins:` key:
+
+```yaml
+plugins:
+  plantuml:
+    enabled: true
+    parse: true
+    exclude: ["**/vendor/**"]
+```
+
+Common properties (all optional): `enabled` (default: true), `patterns`, `exclude`.
+Custom properties are defined by the plugin via `configDefaults`.
 
 ### Adding Outline Support
 
-Outlines (`graph_outline`) use a **separate system** from extraction.
-
-1. **Create** `src/outline/languages/<lang>.ts` implementing `LanguageSupport`
-2. **Register** in `src/outline/languages/registry.ts`
+Outlines (`graph_outline`) are provided by plugins alongside extraction. A plugin exports an optional `outline` field implementing `LanguageSupport`:
 
 ```typescript
 interface LanguageSupport {
@@ -686,7 +784,7 @@ interface LanguageSupport {
 }
 ```
 
-Reference: `src/outline/languages/python.ts`
+Reference: `@reponova/lang-python` (includes both extraction and outline support).
 
 ---
 

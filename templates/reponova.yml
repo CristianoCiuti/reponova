@@ -40,8 +40,8 @@ models:
   threads: 0                      # 0 = auto-detect
   download_on_first_use: true
 
-# ── Source Code File Filters (shared by graph + outlines) ─────────────────────
-patterns: []                      # glob patterns for source files (empty = auto-detect by extension)
+# ── Global File Filters (apply to all file types unless overridden per-plugin) ─
+patterns: []                      # glob patterns for file inclusion (empty = auto-detect by extension)
 exclude: []                       # glob patterns to exclude (e.g. ["**/generated/**", "**/*.test.ts"])
 exclude_common: true              # skip node_modules, __pycache__, .git, venv, dist, build, ...
 incremental: true                 # incremental builds using file hash cache
@@ -57,13 +57,18 @@ docs:
   exclude: []                     # e.g. ["**/CHANGELOG.md"]
   max_file_size_kb: 500
 
-# ── Diagrams / Images ───────────────────────────────────────────────────────
-images:
-  enabled: true                   # extract diagram files (.puml, .svg)
-  patterns: []                    # empty = auto-detect (.puml, .plantuml, .svg, ...)
-  exclude: []
-  parse_puml: true
-  parse_svg_text: true
+# ── Language Plugins ─────────────────────────────────────────────────────────
+# Per-plugin config (keyed by plugin id). Installed via `reponova lang add <name>`.
+# Each plugin inherits global patterns/exclude unless overridden here.
+# If a plugin is not listed, it defaults to enabled with no custom config.
+# plugins:
+#   python:
+#     enabled: true
+#     # patterns: []              # override global patterns for this plugin
+#     # exclude: []               # override global exclude for this plugin
+#   plantuml:
+#     enabled: true
+#     parse: true                 # parse PlantUML component relationships
 
 # ── Embeddings ───────────────────────────────────────────────────────────────
 # Default (no provider): TF-IDF (384-dim, fast, no download required)

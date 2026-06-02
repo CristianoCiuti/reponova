@@ -11,8 +11,8 @@ import picomatch from "picomatch";
 
 /**
  * Directory names always skipped during filesystem walking.
- * Used by all file detection functions (source, docs, images, outlines, copy).
- * Controllable via config `build.exclude_common`.
+ * Used by all file detection functions (source, docs, plugins).
+ * Controllable via config `exclude_common`.
  */
 export const COMMON_SKIP_DIRS = [
   "node_modules", "__pycache__", ".git", ".svn", ".hg",

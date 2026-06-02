@@ -39,18 +39,15 @@ docs:
   # exclude: []                   # e.g. ["**/CHANGELOG.md"]
   # max_file_size_kb: 500
 
-# ── Diagrams / Images ──
-# Plugin-specific config (keyed by plugin id).
-# Each plugin inherits: enabled, patterns, exclude.
+# ── Language Plugins ──
+# Per-plugin config (keyed by plugin id). Installed via \`reponova lang add <name>\`.
+# Each plugin inherits global patterns/exclude unless overridden here.
 # plugins:
+#   python:
+#     enabled: true
 #   plantuml:
 #     enabled: true
 #     parse: true
-#   svg:
-#     enabled: true
-#     parse: true
-#   python:
-#     enabled: true
 
 # ── Embeddings ──
 # Default: TF-IDF (fast, no download). Set provider for ONNX or remote embeddings.
