@@ -13,10 +13,14 @@ export interface LanguagePlugin {
   readonly id: string;
   /** File extensions handled (with leading dot, e.g. [".py", ".pyw"]) */
   readonly extensions: string[];
+  /** Label for file categorization in detected-files.json (default: plugin id) */
+  readonly fileType?: string;
   /** Absolute path to a tree-sitter WASM grammar, if needed */
   readonly grammarPath?: string;
   /** Extraction implementation */
   readonly extractor: LanguageExtractor;
   /** Outline support (optional — not all languages have outlines) */
   readonly outline?: LanguageSupport;
+  /** Default values for plugin-specific config properties */
+  readonly configDefaults?: Record<string, unknown>;
 }

@@ -2,13 +2,44 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { detectFiles, detectDocFiles, detectDiagramFiles } from "../src/extract/index.js";
+import { detectAllFiles, type RegisteredFileType } from "../src/extract/index.js";
 import { buildSkipDirs, COMMON_SKIP_DIRS } from "../src/shared/glob.js";
 import { diffFiles, type BuildCache } from "../src/pipeline/cache.js";
+import { DEFAULT_CONFIG } from "../src/shared/types.js";
+import type { Config } from "../src/shared/types.js";
 
 function normalizePaths(paths: string[]): string[] {
   return paths.map((path) => path.replace(/\\/g, "/")).sort();
 }
+
+function makeConfig(overrides: Partial<Config> = {}): Config {
+  return { ...DEFAULT_CONFIG, ...overrides };
+}
+
+const PYTHON_TYPE: RegisteredFileType = {
+  id: "python",
+  extensions: new Set([".py", ".pyw"]),
+  enabled: true,
+  patterns: [],
+  exclude: [],
+};
+
+const DOC_TYPE: RegisteredFileType = {
+  id: "document",
+  extensions: new Set([".md", ".txt", ".rst"]),
+  enabled: true,
+  patterns: [],
+  exclude: [],
+  maxFileSizeKb: 500,
+};
+
+const PLANTUML_TYPE: RegisteredFileType = {
+  id: "plantuml",
+  extensions: new Set([".puml", ".plantuml"]),
+  enabled: true,
+  patterns: [],
+  exclude: [],
+};
 
 describe("Glob integration", () => {
   let testRoot: string;
@@ -40,7 +71,9 @@ describe("Glob integration", () => {
   });
 
   it("exclude_common=true skips common directories for source detection", () => {
-    const files = normalizePaths(detectFiles(testRoot, [], [], buildSkipDirs(true)));
+    const config = makeConfig();
+    const result = detectAllFiles(testRoot, config, [PYTHON_TYPE], buildSkipDirs(true));
+    const files = normalizePaths(result["python"] ?? []);
 
     expect(files).toEqual(["src/main.py", "src/utils.py"]);
     expect(files.some((file) => file.startsWith("venv/"))).toBe(false);
@@ -50,7 +83,9 @@ describe("Glob integration", () => {
   });
 
   it("exclude_common=false does not skip common directories", () => {
-    const files = normalizePaths(detectFiles(testRoot, [], [], buildSkipDirs(false)));
+    const config = makeConfig();
+    const result = detectAllFiles(testRoot, config, [PYTHON_TYPE], buildSkipDirs(false));
+    const files = normalizePaths(result["python"] ?? []);
 
     expect(files).toContain("src/main.py");
     expect(files).toContain("src/utils.py");
@@ -58,7 +93,9 @@ describe("Glob integration", () => {
   });
 
   it("explicit exclude patterns still work when exclude_common=false", () => {
-    const files = normalizePaths(detectFiles(testRoot, [], ["**/venv/**"], buildSkipDirs(false)));
+    const config = makeConfig({ exclude: ["**/venv/**"] });
+    const result = detectAllFiles(testRoot, config, [PYTHON_TYPE], buildSkipDirs(false));
+    const files = normalizePaths(result["python"] ?? []);
 
     expect(files).toContain("src/main.py");
     expect(files).toContain("src/utils.py");
@@ -66,7 +103,10 @@ describe("Glob integration", () => {
   });
 
   it("pattern-based detection uses centralized picomatch semantics", () => {
-    const files = normalizePaths(detectFiles(testRoot, ["src/**/*.py"], [], buildSkipDirs(true)));
+    const config = makeConfig();
+    const types: RegisteredFileType[] = [{ ...PYTHON_TYPE, patterns: ["src/**/*.py"] }];
+    const result = detectAllFiles(testRoot, config, types, buildSkipDirs(true));
+    const files = normalizePaths(result["python"] ?? []);
 
     expect(files).toEqual(["src/main.py", "src/utils.py"]);
   });
@@ -74,12 +114,10 @@ describe("Glob integration", () => {
   it("doc detection respects skipDirs", () => {
     writeFileSync(join(testRoot, "venv", "lib", "readme.md"), "# Hidden docs\n");
 
-    const docs = normalizePaths(detectDocFiles(testRoot, {
-      enabled: true,
-      patterns: ["**/*.md"],
-      exclude: [],
-      max_file_size_kb: 500,
-    }, buildSkipDirs(true)));
+    const config = makeConfig();
+    const types: RegisteredFileType[] = [{ ...DOC_TYPE, patterns: ["**/*.md"] }];
+    const result = detectAllFiles(testRoot, config, types, buildSkipDirs(true));
+    const docs = normalizePaths(result["document"] ?? []);
 
     expect(docs).toContain("docs/README.md");
     expect(docs).toContain("docs/CHANGELOG.md");
@@ -87,12 +125,10 @@ describe("Glob integration", () => {
   });
 
   it("doc exclude patterns match CHANGELOG.md at root and nested levels", () => {
-    const docs = normalizePaths(detectDocFiles(testRoot, {
-      enabled: true,
-      patterns: ["**/*.md"],
-      exclude: ["**/CHANGELOG.md"],
-      max_file_size_kb: 500,
-    }, buildSkipDirs(true)));
+    const config = makeConfig();
+    const types: RegisteredFileType[] = [{ ...DOC_TYPE, patterns: ["**/*.md"], exclude: ["**/CHANGELOG.md"] }];
+    const result = detectAllFiles(testRoot, config, types, buildSkipDirs(true));
+    const docs = normalizePaths(result["document"] ?? []);
 
     expect(docs).toContain("docs/README.md");
     expect(docs).not.toContain("docs/CHANGELOG.md");
@@ -101,13 +137,10 @@ describe("Glob integration", () => {
   it("diagram detection respects common skip directories", () => {
     writeFileSync(join(testRoot, "venv", "lib", "hidden.puml"), "@startuml\n@enduml\n");
 
-    const diagrams = normalizePaths(detectDiagramFiles(testRoot, {
-      enabled: true,
-      patterns: ["**/*.puml"],
-      exclude: [],
-      parse_puml: true,
-      parse_svg_text: true,
-    }, buildSkipDirs(true)));
+    const config = makeConfig();
+    const types: RegisteredFileType[] = [{ ...PLANTUML_TYPE, patterns: ["**/*.puml"] }];
+    const result = detectAllFiles(testRoot, config, types, buildSkipDirs(true));
+    const diagrams = normalizePaths(result["plantuml"] ?? []);
 
     expect(diagrams).toEqual(["diagrams/system.puml"]);
   });

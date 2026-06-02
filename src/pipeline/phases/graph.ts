@@ -41,7 +41,7 @@ class GraphPhase extends BasePhase {
     const graphNodesPath = join(outputDir, "graph-nodes.json");
 
     const detected = readDetectedFiles(outputDir);
-    const allFiles = [...detected.code, ...detected.docs, ...detected.diagrams];
+    const allFiles = Object.values(detected.files).flat();
 
     if (allFiles.length === 0) {
       const emptyGraph = buildGraph({ extractions: [] });

@@ -40,12 +40,17 @@ docs:
   # max_file_size_kb: 500
 
 # ── Diagrams / Images ──
-images:
-  enabled: true
-  # patterns: []                  # empty = auto-detect (.puml, .plantuml, .svg, ...)
-  # exclude: []
-  # parse_puml: true
-  # parse_svg_text: true
+# Plugin-specific config (keyed by plugin id).
+# Each plugin inherits: enabled, patterns, exclude.
+# plugins:
+#   plantuml:
+#     enabled: true
+#     parse: true
+#   svg:
+#     enabled: true
+#     parse: true
+#   python:
+#     enabled: true
 
 # ── Embeddings ──
 # Default: TF-IDF (fast, no download). Set provider for ONNX or remote embeddings.

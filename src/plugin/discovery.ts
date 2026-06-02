@@ -15,11 +15,14 @@ import { registerExtractor } from "../extract/languages/registry.js";
 import { registerOutlineLanguage } from "../outline/languages/registry.js";
 import { registerGrammarPath } from "./grammar-registry.js";
 import type { LanguagePlugin } from "./types.js";
+import type { RegisteredFileType } from "../extract/index.js";
+import type { Config } from "../shared/types.js";
 import { log } from "../shared/utils.js";
 
 /** Discovered plugin metadata (for `reponova lang list` / `reponova check`). */
 export interface DiscoveredPlugin {
   id: string;
+  fileType: string;
   extensions: string[];
   packageName: string;
   version: string;
@@ -94,6 +97,7 @@ export async function discoverLanguagePlugins(): Promise<void> {
 
       discoveredPlugins.push({
         id: plugin.id,
+        fileType: plugin.fileType ?? plugin.id,
         extensions: plugin.extensions,
         packageName: `@reponova/${entry}`,
         version: (pkgJson.version as string) ?? "unknown",
@@ -149,4 +153,37 @@ export function resolveNodeModulesDir(): string | null {
   }
 
   return null;
+}
+
+/**
+ * Build the list of registered file types for detection.
+ * Includes built-in "document" type + all discovered plugin types.
+ */
+export function getRegisteredFileTypes(config: Config): RegisteredFileType[] {
+  const types: RegisteredFileType[] = [];
+
+  // Built-in: document (markdown, txt, rst)
+  const docsConfig = config.docs;
+  types.push({
+    id: "document",
+    extensions: new Set([".md", ".txt", ".rst"]),
+    enabled: docsConfig.enabled,
+    patterns: docsConfig.patterns,
+    exclude: docsConfig.exclude,
+    maxFileSizeKb: docsConfig.max_file_size_kb,
+  });
+
+  // Plugin-provided types
+  for (const plugin of discoveredPlugins) {
+    const pluginConfig = config.plugins[plugin.id];
+    types.push({
+      id: plugin.fileType,
+      extensions: new Set(plugin.extensions),
+      enabled: pluginConfig?.enabled ?? true,
+      patterns: pluginConfig?.patterns as string[] ?? [],
+      exclude: pluginConfig?.exclude as string[] ?? [],
+    });
+  }
+
+  return types;
 }
