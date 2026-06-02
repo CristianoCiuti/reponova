@@ -85,21 +85,30 @@ export async function checkHandler(argv: Record<string, unknown>): Promise<void>
       checks.push({ label: "Graph", status: "reponova-out/ not found ✗", ok: false });
     }
 
-    // Check tree-sitter grammars
+    // Check language plugins
     try {
-      await import("web-tree-sitter");
-      const { getGrammarsDir } = await import("../extract/parser.js");
-      const { readdirSync } = await import("node:fs");
-      const dir = getGrammarsDir();
-      const wasmFiles = readdirSync(dir).filter((f: string) => f.endsWith(".wasm"));
-      if (wasmFiles.length > 0) {
-        const langs = wasmFiles.map((f: string) => f.replace("tree-sitter-", "").replace(".wasm", ""));
-        checks.push({ label: "tree-sitter", status: `${wasmFiles.length} grammar(s): ${langs.join(", ")} ✓`, ok: true });
+      const { discoverLanguagePlugins, getDiscoveredPlugins } = await import("../plugin/discovery.js");
+      await discoverLanguagePlugins();
+      const plugins = getDiscoveredPlugins();
+      if (plugins.length > 0) {
+        const lines = plugins.map((p) => {
+          const mode = p.hasGrammar ? "tree-sitter ✓" : "regex";
+          return `${p.id} (${p.extensions.join(", ")}) — ${p.packageName}@${p.version} [${mode}]`;
+        });
+        checks.push({ label: "Language plugins", status: `${plugins.length} plugin(s): ${lines.join("; ")} ✓`, ok: true });
       } else {
-        checks.push({ label: "tree-sitter", status: "no .wasm grammars found in grammars/ ✗", ok: false });
+        checks.push({ label: "Language plugins", status: "none installed (run: reponova lang add <name>)", ok: true });
       }
     } catch {
-      checks.push({ label: "tree-sitter", status: "not available ✗", ok: false });
+      checks.push({ label: "Language plugins", status: "discovery failed", ok: true });
+    }
+
+    // Check tree-sitter runtime
+    try {
+      await import("web-tree-sitter");
+      checks.push({ label: "tree-sitter runtime", status: "available ✓", ok: true });
+    } catch {
+      checks.push({ label: "tree-sitter runtime", status: "not available ✗", ok: false });
     }
 
     // Print results

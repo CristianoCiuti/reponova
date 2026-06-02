@@ -21,8 +21,9 @@ import {
 // Markdown extractor
 import { MarkdownExtractor } from "../src/extract/languages/markdown.js";
 
-// Diagram extractor
-import { DiagramExtractor } from "../src/extract/languages/diagrams.js";
+// Diagram extractors (from plugins)
+import { PlantUmlExtractor } from "@reponova/lang-plantuml";
+import { SvgExtractor } from "@reponova/lang-svg";
 
 // Pipeline
 import { detectFiles, detectDocFiles, detectDiagramFiles } from "../src/extract/index.js";
@@ -182,8 +183,8 @@ describe("Markdown Extractor", () => {
 
 // ─── Diagram Extractor Tests ─────────────────────────────────────────────────
 
-describe("Diagram Extractor", () => {
-  const extractor = new DiagramExtractor();
+describe("PlantUML Extractor", () => {
+  const extractor = new PlantUmlExtractor();
 
   describe("PlantUML", () => {
     let extraction: FileExtraction;
@@ -199,14 +200,12 @@ describe("Diagram Extractor", () => {
     });
 
     it("should create a document node for the file", () => {
-      // In new architecture, diagram info is in fileNode
       expect(extraction.fileNode).toBeDefined();
       expect(extraction.fileNode.kind).toBe("diagram");
       expect(extraction.fileNode.tags).toContain("plantuml");
     });
 
     it("should extract class definitions", () => {
-      // In new architecture, PlantUML components use kind: "component"
       const components = extraction.symbols.filter((s) => s.kind === "component");
       const names = components.map((s) => s.name);
       expect(names).toContain("ConfigLoader");
@@ -223,45 +222,40 @@ describe("Diagram Extractor", () => {
     it("should extract relationships as references", () => {
       expect(extraction.references.length).toBeGreaterThan(0);
       const rels = extraction.references.map((r) => `${r.fromSymbol}->${r.name}`);
-      // fromSymbol now uses qualifiedName (moduleName.symbolName)
       expect(rels).toContain("docs.architecture.ConfigLoader->DataProcessor");
       expect(rels).toContain("docs.architecture.DataProcessor->OutputInterface");
     });
 
     it("should extract title as docstring", () => {
-      // In new architecture, file docstring is in fileNode
       expect(extraction.fileNode.docstring).toBe("System Architecture");
-    });
-  });
-
-  describe("Binary Images", () => {
-    it("should create metadata node for PNG", () => {
-      const extraction = extractor.extract(null, "", "images/diagram.png");
-      // In new architecture, document info is in fileNode, symbols[] is empty
-      expect(extraction.symbols.length).toBe(0);
-      expect(extraction.fileNode.kind).toBe("diagram");
-      expect(extraction.fileNode.tags).toContain("png");
-    });
-  });
-
-  describe("SVG", () => {
-    it("should extract text elements from SVG", () => {
-      const svgSource = `<svg><title>My Diagram</title><text>ConfigLoader</text><text>DataProcessor</text><text>x</text></svg>`;
-      const extraction = extractor.extract(null, svgSource, "docs/flow.svg");
-      // In new architecture, file docstring is in fileNode
-      expect(extraction.fileNode.docstring).toBe("My Diagram");
-      // "x" should be filtered (too short)
-      const sections = extraction.symbols.filter((s) => s.kind === "section");
-      const names = sections.map((s) => s.name);
-      expect(names).toContain("ConfigLoader");
-      expect(names).toContain("DataProcessor");
     });
   });
 
   it("should handle extensions correctly", () => {
     expect(extractor.extensions).toContain(".puml");
+    expect(extractor.extensions).toContain(".plantuml");
+  });
+
+  it("should not require wasmFile", () => {
+    expect(extractor.wasmFile).toBeUndefined();
+  });
+});
+
+describe("SVG Extractor", () => {
+  const extractor = new SvgExtractor();
+
+  it("should extract text elements from SVG", () => {
+    const svgSource = `<svg><title>My Diagram</title><text>ConfigLoader</text><text>DataProcessor</text><text>x</text></svg>`;
+    const extraction = extractor.extract(null, svgSource, "docs/flow.svg");
+    expect(extraction.fileNode.docstring).toBe("My Diagram");
+    const sections = extraction.symbols.filter((s) => s.kind === "section");
+    const names = sections.map((s) => s.name);
+    expect(names).toContain("ConfigLoader");
+    expect(names).toContain("DataProcessor");
+  });
+
+  it("should handle extensions correctly", () => {
     expect(extractor.extensions).toContain(".svg");
-    expect(extractor.extensions).toContain(".png");
   });
 
   it("should not require wasmFile", () => {

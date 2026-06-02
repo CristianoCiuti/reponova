@@ -1,10 +1,12 @@
 /**
  * Language registry — maps file extensions to LanguageSupport modules.
  *
+ * Built-in: none (markdown doesn't have outline support).
+ * All outline languages are provided by plugins discovered at runtime.
+ *
  * Extensible: call `registerOutlineLanguage()` to add new languages at runtime.
  */
 import type { LanguageSupport } from "./types.js";
-import { python } from "./python.js";
 
 // ─── Registry State ──────────────────────────────────────────────────────────
 
@@ -22,8 +24,6 @@ const extToLanguage = new Map<string, string>();
  * @param language - Language name (e.g., "python", "javascript")
  * @param extensions - File extensions without dot (e.g., ["py", "pyw"])
  * @param support - The LanguageSupport implementation
- *
- * Note: duplicate language names or extensions silently overwrite the previous registration.
  */
 export function registerOutlineLanguage(
   language: string,
@@ -38,12 +38,8 @@ export function registerOutlineLanguage(
 
 // ─── Built-in Languages ─────────────────────────────────────────────────────
 
-registerOutlineLanguage("python", ["py", "pyw"], python);
-
-// Future:
-// registerOutlineLanguage("java", ["java"], java);
-// registerOutlineLanguage("typescript", ["ts", "tsx"], typescript);
-// registerOutlineLanguage("javascript", ["js", "mjs", "cjs"], javascript);
+// All outline languages are now provided by plugins (@reponova/lang-*).
+// They are registered via discoverLanguagePlugins() at boot time.
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 

@@ -28,11 +28,16 @@ export type { LlmProvider, LlmCompletionOptions, EmbeddingProvider } from "./int
 
 // Extraction layer exports
 export { registerExtractor } from "./extract/languages/registry.js";
-export type { LanguageExtractor } from "./extract/types.js";
+export type { LanguageExtractor, FileExtraction, SyntaxTree, SyntaxNode, FileNodeDeclaration, SymbolNode, ImportDeclaration, SymbolReference } from "./extract/types.js";
 
 // Outline layer exports
 export { registerOutlineLanguage } from "./outline/languages/registry.js";
 export type { LanguageSupport } from "./outline/languages/types.js";
+
+// Plugin layer exports
+export type { LanguagePlugin } from "./plugin/types.js";
+export { discoverLanguagePlugins, getDiscoveredPlugins } from "./plugin/discovery.js";
+export { registerGrammarPath, resolveGrammarPath } from "./plugin/grammar-registry.js";
 
 // Build API
 export { build } from "./pipeline/build.js";

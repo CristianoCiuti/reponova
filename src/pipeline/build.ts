@@ -16,6 +16,7 @@ import { orchestrate, type BuildResult, type OrchestratorOptions } from "./engin
 import type { PhaseContext } from "./engine/phase.js";
 import { BuildManifest } from "./engine/manifest.js";
 import { ProviderRegistry } from "../intelligence/provider-registry.js";
+import { discoverLanguagePlugins } from "../plugin/discovery.js";
 
 export interface BuildOptions {
   force?: boolean;
@@ -38,6 +39,9 @@ export async function build(configPath?: string, options?: BuildOptions): Promis
  */
 export async function runBuild(config: Config, configDir: string, options: BuildOptions): Promise<BuildResult> {
   log.info("reponova build (pipeline engine)");
+
+  // Discover and register language plugins before anything else
+  await discoverLanguagePlugins();
 
   if (config.repos.length === 0) {
     throw new Error("No repos configured. Add repos to reponova.yml");

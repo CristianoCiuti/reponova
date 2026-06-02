@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { PythonExtractor } from "../src/extract/languages/python.js";
+import { PythonExtractor } from "@reponova/lang-python";
 import { parse, hasGrammar, getGrammarsDir } from "../src/extract/parser.js";
 import { buildGraph } from "../src/graph/builder.js";
 import { detectCommunities } from "../src/graph/community.js";
@@ -59,12 +59,14 @@ describe("Language Registry", () => {
 // ─── Shared Parser ──────────────────────────────────────────────────────────
 
 describe("Shared Parser", () => {
-  it("should find grammars directory", () => {
+  it("should resolve grammars directory path", () => {
     const dir = getGrammarsDir();
-    expect(existsSync(dir)).toBe(true);
+    // The grammars dir path is resolved even if it doesn't exist on disk
+    // (grammars are now provided by plugins via grammar-registry)
+    expect(typeof dir).toBe("string");
   });
 
-  it("should detect Python grammar exists", () => {
+  it("should detect Python grammar exists (from plugin)", () => {
     expect(hasGrammar("tree-sitter-python.wasm")).toBe(true);
   });
 

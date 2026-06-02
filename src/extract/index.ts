@@ -222,9 +222,7 @@ export async function extractAll(workspace: string, filePaths: string[]): Promis
     }
 
     try {
-      // Binary image files: read as empty string (extractor only needs filePath)
-      const isBinaryImage = /\.(png|jpg|jpeg|gif)$/i.test(relPath);
-      const source = isBinaryImage ? "" : readFileSync(absPath, "utf-8");
+      const source = readFileSync(absPath, "utf-8");
 
       let tree = null;
       if (extractor.wasmFile) {

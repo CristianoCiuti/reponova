@@ -8,7 +8,7 @@
  * - exports field on returned FileExtraction
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { PythonExtractor } from "../src/extract/languages/python.js";
+import { PythonExtractor } from "@reponova/lang-python";
 import { parse } from "../src/extract/parser.js";
 import type { FileExtraction } from "../src/extract/types.js";
 

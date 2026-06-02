@@ -10,7 +10,6 @@
   },
   "files": [
     "dist",
-    "grammars",
     "templates",
     "README.md",
     "LICENSE"
@@ -40,6 +39,9 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@reponova/lang-plantuml": "file:../reponova-lang-plantuml",
+    "@reponova/lang-python": "file:../reponova-lang-python",
+    "@reponova/lang-svg": "file:../reponova-lang-svg",
     "@types/js-yaml": "^4.0.0",
     "@types/node": "^20.0.0",
     "@types/picomatch": "^4.0.3",

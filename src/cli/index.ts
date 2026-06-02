@@ -204,6 +204,16 @@ const enrichFinalizeCommand: CommandModule = {
   },
 };
 
+const langCommand: CommandModule = {
+  command: "lang",
+  describe: "Manage language plugins (add, remove, list)",
+  builder: (y) => y,
+  handler: async (argv) => {
+    const { langHandler } = await import("./lang.js");
+    await langHandler(argv);
+  },
+};
+
 yargs(hideBin(process.argv))
   .scriptName("reponova")
   .usage("$0 <command> [options]")
@@ -219,6 +229,7 @@ yargs(hideBin(process.argv))
   .command(enrichMergeCommand)
   .command(enrichApplyCommand)
   .command(enrichFinalizeCommand)
+  .command(langCommand)
   .demandCommand(1, "Please specify a command")
   .strict()
   .strictCommands()
