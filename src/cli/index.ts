@@ -207,7 +207,7 @@ const enrichFinalizeCommand: CommandModule = {
 const langCommand: CommandModule = {
   command: "lang",
   describe: "Manage language plugins (add, remove, list)",
-  builder: (y) => y,
+  builder: (y) => y.strictCommands(false).strict(false),
   handler: async (argv) => {
     const { langHandler } = await import("./lang.js");
     await langHandler(argv);

@@ -19,9 +19,10 @@ const OFFICIAL_PREFIX = "@reponova/lang-";
 
 export async function langHandler(argv: Record<string, unknown>): Promise<void> {
   const positionals = argv._ as string[];
-  // positionals[0] is "lang", [1] is action, [2] is name
+  // positionals[0] is "lang", [1] is action, [2..] is name (may be split by yargs)
   const action = positionals[1] as string | undefined;
-  const name = positionals[2] as string | undefined;
+  // Join remaining positionals in case yargs splits scoped package names
+  const name = positionals.slice(2).join("/") || undefined;
 
   switch (action) {
     case "add":
@@ -56,22 +57,26 @@ async function langAdd(packageName: string): Promise<void> {
     process.exit(1);
   }
 
-  console.log(`Installing ${packageName}...`);
+  // Check if already present in node_modules (e.g. npm link)
+  let plugin = await importPlugin(nodeModulesDir, packageName);
 
-  try {
-    execSync(`npm install ${packageName}`, { cwd: nodeModulesDir, stdio: "inherit" });
-  } catch {
-    console.error(`Failed to install ${packageName}`);
-    process.exit(1);
-  }
-
-  // Import and validate the plugin
-  const plugin = await importPlugin(nodeModulesDir, packageName);
   if (!plugin) {
-    // Rollback
-    try { execSync(`npm uninstall ${packageName}`, { cwd: nodeModulesDir, stdio: "ignore" }); } catch { /* */ }
-    console.error(`Package ${packageName} does not export a valid LanguagePlugin (missing plugin.id or plugin.extractor)`);
-    process.exit(1);
+    // Not present — try npm install
+    console.log(`Installing ${packageName}...`);
+    try {
+      execSync(`npm install ${packageName}`, { cwd: nodeModulesDir, stdio: "inherit" });
+    } catch {
+      console.error(`Failed to install ${packageName}`);
+      process.exit(1);
+    }
+
+    plugin = await importPlugin(nodeModulesDir, packageName);
+    if (!plugin) {
+      // Rollback
+      try { execSync(`npm uninstall ${packageName}`, { cwd: nodeModulesDir, stdio: "ignore" }); } catch { /* */ }
+      console.error(`Package ${packageName} does not export a valid LanguagePlugin (missing plugin.id or plugin.extractor)`);
+      process.exit(1);
+    }
   }
 
   // Update reponova.yml

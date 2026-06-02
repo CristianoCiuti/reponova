@@ -87,7 +87,9 @@ export async function checkHandler(argv: Record<string, unknown>): Promise<void>
 
     // Check language plugins
     try {
+      const { loadConfig } = await import("../shared/config.js");
       const { loadDeclaredPlugins, getDiscoveredPlugins } = await import("../plugin/discovery.js");
+      const { config } = loadConfig(argv.config as string | undefined);
       await loadDeclaredPlugins(config);
       const plugins = getDiscoveredPlugins();
       if (plugins.length > 0) {
