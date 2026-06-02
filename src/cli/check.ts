@@ -85,10 +85,19 @@ export async function checkHandler(argv: Record<string, unknown>): Promise<void>
       checks.push({ label: "Graph", status: "reponova-out/ not found ✗", ok: false });
     }
 
-    // Check tree-sitter
+    // Check tree-sitter grammars
     try {
       await import("web-tree-sitter");
-      checks.push({ label: "tree-sitter", status: "WASM available ✓", ok: true });
+      const { getGrammarsDir } = await import("../extract/parser.js");
+      const { readdirSync } = await import("node:fs");
+      const dir = getGrammarsDir();
+      const wasmFiles = readdirSync(dir).filter((f: string) => f.endsWith(".wasm"));
+      if (wasmFiles.length > 0) {
+        const langs = wasmFiles.map((f: string) => f.replace("tree-sitter-", "").replace(".wasm", ""));
+        checks.push({ label: "tree-sitter", status: `${wasmFiles.length} grammar(s): ${langs.join(", ")} ✓`, ok: true });
+      } else {
+        checks.push({ label: "tree-sitter", status: "no .wasm grammars found in grammars/ ✗", ok: false });
+      }
     } catch {
       checks.push({ label: "tree-sitter", status: "not available ✗", ok: false });
     }
