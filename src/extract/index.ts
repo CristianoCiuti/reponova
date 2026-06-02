@@ -70,12 +70,17 @@ export function detectAllFiles(
   // Build per-type matchers
   const typeMatchers = new Map<string, { isIncluded: (p: string) => boolean; isExcluded: (p: string) => boolean }>();
   for (const type of enabledTypes) {
+    // patterns: type-specific overrides global; if neither, fall back to extension-based
     const patterns = type.patterns.length > 0
       ? type.patterns
-      : extensionsToGlobs(type.extensions);
+      : config.patterns.length > 0
+        ? config.patterns
+        : extensionsToGlobs(type.extensions);
+    // exclude: type-specific overrides global
+    const exclude = type.exclude.length > 0 ? type.exclude : config.exclude;
     typeMatchers.set(type.id, {
       isIncluded: createPatternMatcher(patterns, repoNames),
-      isExcluded: createPatternMatcher([...config.exclude, ...type.exclude], repoNames),
+      isExcluded: createPatternMatcher(exclude, repoNames),
     });
   }
 
