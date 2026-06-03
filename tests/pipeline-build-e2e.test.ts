@@ -14,6 +14,7 @@ function makeConfig(): Config {
   config.embeddings.enabled = false;
   config.enrich.enabled = false;
   config.outlines.enabled = false;
+  config.plugins = { python: { enabled: true } };
   return config;
 }
 

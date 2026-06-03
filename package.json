@@ -39,9 +39,9 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
-    "@reponova/lang-plantuml": "file:../reponova-lang-plantuml",
-    "@reponova/lang-python": "file:../reponova-lang-python",
-    "@reponova/lang-svg": "file:../reponova-lang-svg",
+    "@reponova/lang-plantuml": "^0.1.0",
+    "@reponova/lang-python": "^0.1.0",
+    "@reponova/lang-svg": "^0.1.0",
     "@types/js-yaml": "^4.0.0",
     "@types/node": "^20.0.0",
     "@types/picomatch": "^4.0.3",
