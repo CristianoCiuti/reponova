@@ -106,7 +106,8 @@ export interface Config {
   /** Enable incremental builds */
   incremental: boolean;
   docs: DocsConfig;
-  images: ImagesConfig;
+  /** Per-plugin configuration (keyed by plugin id) */
+  plugins: Record<string, PluginConfig>;
   embeddings: EmbeddingsConfig;
   enrich: EnrichConfig;
   /** Generate interactive HTML visualizations */
@@ -137,12 +138,14 @@ export interface DocsConfig {
   max_file_size_kb: number;
 }
 
-export interface ImagesConfig {
+/** Per-plugin config: common fields + arbitrary custom properties */
+export interface PluginConfig {
+  /** Full npm package name. If omitted, resolved as @reponova/lang-<key>. */
+  package?: string;
   enabled: boolean;
   patterns: string[];
   exclude: string[];
-  parse_puml: boolean;
-  parse_svg_text: boolean;
+  [key: string]: unknown;
 }
 
 export type ProviderType = "openai" | "llama-cpp" | "onnx";
@@ -414,13 +417,7 @@ export const DEFAULT_CONFIG: Config = {
     exclude: [],
     max_file_size_kb: 500,
   },
-  images: {
-    enabled: true,
-    patterns: [],
-    exclude: [],
-    parse_puml: true,
-    parse_svg_text: true,
-  },
+  plugins: {},
   embeddings: {
     enabled: true,
     batch_size: 128,

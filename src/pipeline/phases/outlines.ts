@@ -50,7 +50,8 @@ class OutlinesPhase extends BasePhase {
 
     const detected = readDetectedFiles(outputDir);
     const supportedExts = getOutlineSupportedExtensions();
-    const codeFiles = detected.code.filter((file) => supportedExts.has(extname(file).toLowerCase()));
+    const allFiles = Object.values(detected.files).flat();
+    const codeFiles = allFiles.filter((file) => supportedExts.has(extname(file).toLowerCase()));
 
     if (codeFiles.length === 0) {
       return { processed: 0, skipped: true, skipReason: "no outline-supported files" };

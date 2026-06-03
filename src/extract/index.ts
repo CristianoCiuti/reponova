@@ -5,14 +5,14 @@
  * It replaces the Python subprocess build pipeline.
  *
  * Flow:
- *   detectFiles → extractAll → buildGraph → detectCommunities → export
+ *   detectAllFiles → extractAll → buildGraph → detectCommunities → export
  */
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import type { FileExtraction } from "./types.js";
-import type { DocsConfig, ImagesConfig } from "../shared/types.js";
+import type { Config } from "../shared/types.js";
 import { parse } from "./parser.js";
-import { getExtractorForFile, getSupportedExtensions } from "./languages/registry.js";
+import { getExtractorForFile } from "./languages/registry.js";
 import { buildSkipDirs, createPatternMatcher, extensionsToGlobs } from "../shared/path-resolver.js";
 import { relativePosix } from "../shared/paths.js";
 import { log } from "../shared/utils.js";
@@ -25,87 +25,64 @@ export type { FileExtraction } from "./types.js";
 
 // ─── File Detection ──────────────────────────────────────────────────────────
 
-/** Doc/text extensions handled by the markdown extractor */
-const DOC_EXTENSIONS = new Set([".md", ".txt", ".rst"]);
-
-/** Diagram/image extensions handled by the diagram extractor */
-const DIAGRAM_EXTENSIONS = new Set([".puml", ".plantuml", ".svg", ".png", ".jpg", ".jpeg", ".gif"]);
-
-/** Code extensions (all non-doc, non-diagram supported extensions) */
-function getCodeExtensions(): Set<string> {
-  const all = new Set(getSupportedExtensions());
-  for (const ext of DOC_EXTENSIONS) {
-    all.delete(ext);
-  }
-  for (const ext of DIAGRAM_EXTENSIONS) {
-    all.delete(ext);
-  }
-  return all;
+/**
+ * A registered file type for detection purposes.
+ * Built-in "document" + all plugin-provided types.
+ */
+export interface RegisteredFileType {
+  /** Key in detected-files result */
+  id: string;
+  /** Extensions with leading dot */
+  extensions: Set<string>;
+  /** Whether this type is enabled */
+  enabled: boolean;
+  /** Glob patterns specific to this type (override global) */
+  patterns: string[];
+  /** Exclude patterns specific to this type (additive to global) */
+  exclude: string[];
+  /** Max file size in KB (only relevant for docs) */
+  maxFileSizeKb?: number;
 }
 
 /**
- * Detect all source code files under a workspace directory.
- * Returns relative paths (forward slashes). Excludes doc files.
- *
- * @param workspace - Root directory to walk
- * @param patterns - Glob patterns for files to include (empty = auto-detect by extension)
- * @param excludeGlobs - Glob patterns to exclude from results
+ * Detect all files under a workspace, categorized by registered file type.
+ * Single filesystem walk. Returns Record<fileType, relativePaths[]>.
  */
-export function detectFiles(
+export function detectAllFiles(
   workspace: string,
-  patterns: string[] = [],
-  excludeGlobs: string[] = [],
+  config: Config,
+  registeredTypes: RegisteredFileType[],
   skipDirs: Set<string> = buildSkipDirs(true),
   repoNames?: Set<string>,
-): string[] {
-  const effectivePatterns = patterns.length > 0 ? patterns : extensionsToGlobs(getCodeExtensions());
-  const isIncluded = createPatternMatcher(effectivePatterns, repoNames);
-  const isExcluded = createPatternMatcher(excludeGlobs, repoNames);
-  const files: string[] = [];
+): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  const enabledTypes = registeredTypes.filter((t) => t.enabled);
 
-  function walk(dir: string): void {
-    let entries;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      const fullPath = join(dir, entry.name);
-      const isDir = entry.isDirectory() || (entry.isSymbolicLink() && isDirectoryPath(fullPath));
-
-      if (isDir) {
-        if (skipDirs.has(entry.name)) continue;
-        walk(fullPath);
-      } else if (entry.isFile()) {
-        const relPath = relativePosix(workspace, fullPath);
-
-        if (isExcluded(relPath)) continue;
-        if (isIncluded(relPath)) {
-          files.push(relPath);
-        }
-      }
+  // Build extension → type lookup
+  const extToType = new Map<string, RegisteredFileType>();
+  for (const type of enabledTypes) {
+    result[type.id] = [];
+    for (const ext of type.extensions) {
+      extToType.set(ext, type);
     }
   }
 
-  walk(workspace);
-  return files;
-}
-
-/**
- * Detect documentation files under a workspace directory.
- * Respects docs config (patterns, excludes, max file size).
- */
-export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipDirs: Set<string> = buildSkipDirs(true), repoNames?: Set<string>): string[] {
-  if (!docsConfig?.enabled) return [];
-
-  const maxSizeBytes = (docsConfig.max_file_size_kb ?? 500) * 1024;
-  const effectivePatterns = docsConfig.patterns.length > 0 ? docsConfig.patterns : extensionsToGlobs(DOC_EXTENSIONS);
-  const isIncluded = createPatternMatcher(effectivePatterns, repoNames);
-  const isExcluded = createPatternMatcher(docsConfig.exclude, repoNames);
-
-  const files: string[] = [];
+  // Build per-type matchers
+  const typeMatchers = new Map<string, { isIncluded: (p: string) => boolean; isExcluded: (p: string) => boolean }>();
+  for (const type of enabledTypes) {
+    // patterns: type-specific overrides global; if neither, fall back to extension-based
+    const patterns = type.patterns.length > 0
+      ? type.patterns
+      : config.patterns.length > 0
+        ? config.patterns
+        : extensionsToGlobs(type.extensions);
+    // exclude: type-specific overrides global
+    const exclude = type.exclude.length > 0 ? type.exclude : config.exclude;
+    typeMatchers.set(type.id, {
+      isIncluded: createPatternMatcher(patterns, repoNames),
+      isExcluded: createPatternMatcher(exclude, repoNames),
+    });
+  }
 
   function walk(dir: string): void {
     let entries;
@@ -124,68 +101,40 @@ export function detectDocFiles(workspace: string, docsConfig?: DocsConfig, skipD
         walk(fullPath);
       } else if (entry.isFile()) {
         const relPath = relativePosix(workspace, fullPath);
+        const lastDot = entry.name.lastIndexOf(".");
+        if (lastDot === -1) continue;
+        const ext = entry.name.slice(lastDot).toLowerCase();
 
-        if (isExcluded(relPath)) continue;
-        if (!isIncluded(relPath)) continue;
+        const type = extToType.get(ext);
+        if (!type) continue;
 
-        // Check file size
-        try {
-          const stat = statSync(fullPath);
-          if (stat.size > maxSizeBytes) continue;
-        } catch {
-          continue;
+        const matcher = typeMatchers.get(type.id)!;
+        if (matcher.isExcluded(relPath)) continue;
+        if (!matcher.isIncluded(relPath)) continue;
+
+        // Check max file size if specified
+        if (type.maxFileSizeKb) {
+          try {
+            const stat = statSync(fullPath);
+            if (stat.size > type.maxFileSizeKb * 1024) continue;
+          } catch {
+            continue;
+          }
         }
 
-        files.push(relPath);
+        result[type.id]!.push(relPath);
       }
     }
   }
 
   walk(workspace);
-  return files;
-}
 
-/**
- * Detect diagram/image files under a workspace directory.
- * Respects images config (patterns, excludes).
- */
-export function detectDiagramFiles(workspace: string, imagesConfig?: ImagesConfig, skipDirs: Set<string> = buildSkipDirs(true), repoNames?: Set<string>): string[] {
-  if (!imagesConfig?.enabled) return [];
-
-  const effectivePatterns = imagesConfig.patterns.length > 0 ? imagesConfig.patterns : extensionsToGlobs(DIAGRAM_EXTENSIONS);
-  const isIncluded = createPatternMatcher(effectivePatterns, repoNames);
-  const isExcluded = createPatternMatcher(imagesConfig.exclude, repoNames);
-
-  const files: string[] = [];
-
-  function walk(dir: string): void {
-    let entries;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      const fullPath = join(dir, entry.name);
-      const isDir = entry.isDirectory() || (entry.isSymbolicLink() && isDirectoryPath(fullPath));
-
-      if (isDir) {
-        if (skipDirs.has(entry.name)) continue;
-        walk(fullPath);
-      } else if (entry.isFile()) {
-        const relPath = relativePosix(workspace, fullPath);
-
-        if (isExcluded(relPath)) continue;
-        if (!isIncluded(relPath)) continue;
-
-        files.push(relPath);
-      }
-    }
+  // Sort all
+  for (const key of Object.keys(result)) {
+    result[key]!.sort();
   }
 
-  walk(workspace);
-  return files;
+  return result;
 }
 
 /**
@@ -222,9 +171,7 @@ export async function extractAll(workspace: string, filePaths: string[]): Promis
     }
 
     try {
-      // Binary image files: read as empty string (extractor only needs filePath)
-      const isBinaryImage = /\.(png|jpg|jpeg|gif)$/i.test(relPath);
-      const source = isBinaryImage ? "" : readFileSync(absPath, "utf-8");
+      const source = readFileSync(absPath, "utf-8");
 
       let tree = null;
       if (extractor.wasmFile) {
@@ -248,4 +195,5 @@ export async function extractAll(workspace: string, filePaths: string[]): Promis
   log.info(`  Extracted: ${succeeded} files (${failed} skipped/failed)`);
   return extractions;
 }
+
 

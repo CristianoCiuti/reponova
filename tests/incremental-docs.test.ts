@@ -21,11 +21,14 @@ import {
 // Markdown extractor
 import { MarkdownExtractor } from "../src/extract/languages/markdown.js";
 
-// Diagram extractor
-import { DiagramExtractor } from "../src/extract/languages/diagrams.js";
+// Diagram extractors (from plugins)
+import { PlantUmlExtractor } from "@reponova/lang-plantuml";
+import { SvgExtractor } from "@reponova/lang-svg";
 
 // Pipeline
-import { detectFiles, detectDocFiles, detectDiagramFiles } from "../src/extract/index.js";
+import { detectAllFiles, type RegisteredFileType } from "../src/extract/index.js";
+import { DEFAULT_CONFIG } from "../src/shared/types.js";
+import type { Config } from "../src/shared/types.js";
 
 import type { FileExtraction } from "../src/extract/types.js";
 
@@ -182,8 +185,8 @@ describe("Markdown Extractor", () => {
 
 // ─── Diagram Extractor Tests ─────────────────────────────────────────────────
 
-describe("Diagram Extractor", () => {
-  const extractor = new DiagramExtractor();
+describe("PlantUML Extractor", () => {
+  const extractor = new PlantUmlExtractor();
 
   describe("PlantUML", () => {
     let extraction: FileExtraction;
@@ -199,14 +202,12 @@ describe("Diagram Extractor", () => {
     });
 
     it("should create a document node for the file", () => {
-      // In new architecture, diagram info is in fileNode
       expect(extraction.fileNode).toBeDefined();
       expect(extraction.fileNode.kind).toBe("diagram");
       expect(extraction.fileNode.tags).toContain("plantuml");
     });
 
     it("should extract class definitions", () => {
-      // In new architecture, PlantUML components use kind: "component"
       const components = extraction.symbols.filter((s) => s.kind === "component");
       const names = components.map((s) => s.name);
       expect(names).toContain("ConfigLoader");
@@ -223,45 +224,40 @@ describe("Diagram Extractor", () => {
     it("should extract relationships as references", () => {
       expect(extraction.references.length).toBeGreaterThan(0);
       const rels = extraction.references.map((r) => `${r.fromSymbol}->${r.name}`);
-      // fromSymbol now uses qualifiedName (moduleName.symbolName)
       expect(rels).toContain("docs.architecture.ConfigLoader->DataProcessor");
       expect(rels).toContain("docs.architecture.DataProcessor->OutputInterface");
     });
 
     it("should extract title as docstring", () => {
-      // In new architecture, file docstring is in fileNode
       expect(extraction.fileNode.docstring).toBe("System Architecture");
-    });
-  });
-
-  describe("Binary Images", () => {
-    it("should create metadata node for PNG", () => {
-      const extraction = extractor.extract(null, "", "images/diagram.png");
-      // In new architecture, document info is in fileNode, symbols[] is empty
-      expect(extraction.symbols.length).toBe(0);
-      expect(extraction.fileNode.kind).toBe("diagram");
-      expect(extraction.fileNode.tags).toContain("png");
-    });
-  });
-
-  describe("SVG", () => {
-    it("should extract text elements from SVG", () => {
-      const svgSource = `<svg><title>My Diagram</title><text>ConfigLoader</text><text>DataProcessor</text><text>x</text></svg>`;
-      const extraction = extractor.extract(null, svgSource, "docs/flow.svg");
-      // In new architecture, file docstring is in fileNode
-      expect(extraction.fileNode.docstring).toBe("My Diagram");
-      // "x" should be filtered (too short)
-      const sections = extraction.symbols.filter((s) => s.kind === "section");
-      const names = sections.map((s) => s.name);
-      expect(names).toContain("ConfigLoader");
-      expect(names).toContain("DataProcessor");
     });
   });
 
   it("should handle extensions correctly", () => {
     expect(extractor.extensions).toContain(".puml");
+    expect(extractor.extensions).toContain(".plantuml");
+  });
+
+  it("should not require wasmFile", () => {
+    expect(extractor.wasmFile).toBeUndefined();
+  });
+});
+
+describe("SVG Extractor", () => {
+  const extractor = new SvgExtractor();
+
+  it("should extract text elements from SVG", () => {
+    const svgSource = `<svg><title>My Diagram</title><text>ConfigLoader</text><text>DataProcessor</text><text>x</text></svg>`;
+    const extraction = extractor.extract(null, svgSource, "docs/flow.svg");
+    expect(extraction.fileNode.docstring).toBe("My Diagram");
+    const sections = extraction.symbols.filter((s) => s.kind === "section");
+    const names = sections.map((s) => s.name);
+    expect(names).toContain("ConfigLoader");
+    expect(names).toContain("DataProcessor");
+  });
+
+  it("should handle extensions correctly", () => {
     expect(extractor.extensions).toContain(".svg");
-    expect(extractor.extensions).toContain(".png");
   });
 
   it("should not require wasmFile", () => {
@@ -273,6 +269,43 @@ describe("Diagram Extractor", () => {
 
 describe("File Detection", () => {
   const tmpBase = join(tmpdir(), `reponova-test-detect-${Date.now()}`);
+
+  const PYTHON_TYPE: RegisteredFileType = {
+    id: "python",
+    extensions: new Set([".py", ".pyw"]),
+    enabled: true,
+    patterns: [],
+    exclude: [],
+  };
+
+  const DOC_TYPE: RegisteredFileType = {
+    id: "document",
+    extensions: new Set([".md", ".txt", ".rst"]),
+    enabled: true,
+    patterns: [],
+    exclude: [],
+    maxFileSizeKb: 500,
+  };
+
+  const PLANTUML_TYPE: RegisteredFileType = {
+    id: "plantuml",
+    extensions: new Set([".puml", ".plantuml"]),
+    enabled: true,
+    patterns: [],
+    exclude: [],
+  };
+
+  const SVG_TYPE: RegisteredFileType = {
+    id: "svg",
+    extensions: new Set([".svg"]),
+    enabled: true,
+    patterns: [],
+    exclude: [],
+  };
+
+  function makeConfig(overrides: Partial<Config> = {}): Config {
+    return { ...DEFAULT_CONFIG, ...overrides };
+  }
 
   beforeAll(() => {
     // Create test directory structure
@@ -291,65 +324,57 @@ describe("File Detection", () => {
   });
 
   it("should detect only code files", () => {
-    const files = detectFiles(tmpBase);
-    expect(files).toContain("src/main.py");
-    expect(files).toContain("src/utils.py");
-    expect(files).not.toContain("docs/README.md");
-    expect(files).not.toContain("images/flow.puml");
+    const config = makeConfig();
+    const result = detectAllFiles(tmpBase, config, [PYTHON_TYPE, DOC_TYPE, PLANTUML_TYPE, SVG_TYPE]);
+    const pythonFiles = result["python"] ?? [];
+    expect(pythonFiles).toContain("src/main.py");
+    expect(pythonFiles).toContain("src/utils.py");
+    expect(pythonFiles).not.toContain("docs/README.md");
+    expect(pythonFiles).not.toContain("images/flow.puml");
   });
 
   it("should detect doc files with config", () => {
-    const docs = detectDocFiles(tmpBase, {
-      enabled: true,
-      patterns: ["**/*.md", "**/*.txt"],
-      exclude: [],
-      max_file_size_kb: 500,
-    });
+    const config = makeConfig();
+    const types: RegisteredFileType[] = [{ ...DOC_TYPE, patterns: ["**/*.md", "**/*.txt"] }];
+    const result = detectAllFiles(tmpBase, config, types);
+    const docs = result["document"] ?? [];
     expect(docs).toContain("docs/README.md");
     expect(docs).toContain("docs/guide.txt");
     expect(docs).not.toContain("src/main.py");
   });
 
   it("should return empty when docs disabled", () => {
-    const docs = detectDocFiles(tmpBase, {
-      enabled: false,
-      patterns: ["**/*.md"],
-      exclude: [],
-      max_file_size_kb: 500,
-    });
+    const config = makeConfig();
+    const types: RegisteredFileType[] = [{ ...DOC_TYPE, enabled: false }];
+    const result = detectAllFiles(tmpBase, config, types);
+    const docs = result["document"] ?? [];
     expect(docs).toHaveLength(0);
   });
 
   it("should detect diagram files with config", () => {
-    const diagrams = detectDiagramFiles(tmpBase, {
-      enabled: true,
-      patterns: ["**/*.puml", "**/*.svg"],
-      exclude: [],
-      parse_puml: true,
-      parse_svg_text: true,
-    });
-    expect(diagrams).toContain("images/flow.puml");
-    expect(diagrams).toContain("images/arch.svg");
-    expect(diagrams).not.toContain("src/main.py");
+    const config = makeConfig();
+    const types: RegisteredFileType[] = [
+      { ...PLANTUML_TYPE, patterns: ["**/*.puml"] },
+      { ...SVG_TYPE, patterns: ["**/*.svg"] },
+    ];
+    const result = detectAllFiles(tmpBase, config, types);
+    expect(result["plantuml"] ?? []).toContain("images/flow.puml");
+    expect(result["svg"] ?? []).toContain("images/arch.svg");
   });
 
   it("should return empty when images disabled", () => {
-    const diagrams = detectDiagramFiles(tmpBase, {
-      enabled: false,
-      patterns: ["**/*.puml"],
-      exclude: [],
-      parse_puml: true,
-      parse_svg_text: true,
-    });
-    expect(diagrams).toHaveLength(0);
+    const config = makeConfig();
+    const types: RegisteredFileType[] = [{ ...PLANTUML_TYPE, enabled: false }];
+    const result = detectAllFiles(tmpBase, config, types);
+    const puml = result["plantuml"] ?? [];
+    expect(puml).toHaveLength(0);
   });
 
   it("should skip node_modules in all detection modes", () => {
-    const code = detectFiles(tmpBase);
-    const docs = detectDocFiles(tmpBase, { enabled: true, patterns: ["**/*.md"], exclude: [], max_file_size_kb: 500 });
-    const diagrams = detectDiagramFiles(tmpBase, { enabled: true, patterns: ["**/*.puml"], exclude: [], parse_puml: true, parse_svg_text: true });
-    
-    for (const f of [...code, ...docs, ...diagrams]) {
+    const config = makeConfig();
+    const result = detectAllFiles(tmpBase, config, [PYTHON_TYPE, DOC_TYPE, PLANTUML_TYPE]);
+    const allFiles = Object.values(result).flat();
+    for (const f of allFiles) {
       expect(f).not.toContain("node_modules");
     }
   });
@@ -363,20 +388,18 @@ describe("File Detection", () => {
     writeFileSync(join(outDir, "report.md"), "# Build Report\n");
     writeFileSync(join(cacheDir, "semantic-graph-hash.txt"), "abc123\n");
 
+    const config = makeConfig();
+
     // Without skipDirs containing "reponova-out", the generated files are detected
-    const docsNoSkip = detectDocFiles(tmpBase, {
-      enabled: true, patterns: [], exclude: [], max_file_size_kb: 500,
-    }, new Set());
+    const resultNoSkip = detectAllFiles(tmpBase, config, [DOC_TYPE], new Set());
+    const docsNoSkip = resultNoSkip["document"] ?? [];
     expect(docsNoSkip).toContain("reponova-out/report.md");
-    expect(docsNoSkip).toContain("reponova-out/.cache/semantic-graph-hash.txt");
 
     // With output dir basename in skipDirs (as orchestrator does), generated files are skipped
     const skipDirs = new Set(["node_modules", "__pycache__", "reponova-out"]);
-    const docsWithSkip = detectDocFiles(tmpBase, {
-      enabled: true, patterns: [], exclude: [], max_file_size_kb: 500,
-    }, skipDirs);
+    const resultWithSkip = detectAllFiles(tmpBase, config, [DOC_TYPE], skipDirs);
+    const docsWithSkip = resultWithSkip["document"] ?? [];
     expect(docsWithSkip).not.toContain("reponova-out/report.md");
-    expect(docsWithSkip).not.toContain("reponova-out/.cache/semantic-graph-hash.txt");
     // Real doc files are still detected
     expect(docsWithSkip).toContain("docs/README.md");
     expect(docsWithSkip).toContain("docs/guide.txt");

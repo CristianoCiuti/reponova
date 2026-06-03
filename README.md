@@ -56,15 +56,15 @@ AI agents read files one at a time. They don't understand how your codebase fits
   Your Codebase                      /reponova-enrich                             AI Agent
   ─────────────                      ────────────────                             ────────
 
-  Python ¹                           1. tree-sitter AST parsing                   graph_search
-  Markdown / Docs    ──────────►     2. Symbol + edge extraction        ──────►   graph_impact
-  Diagrams / SVG                     3. Louvain communities                       graph_path
+  Source Code          ──────────►   1. tree-sitter AST parsing                   graph_search
+  Markdown / Docs                    2. Symbol + edge extraction        ──────►   graph_impact
+  Diagrams (plugins)                 3. Louvain communities                       graph_path
   Multi-repo                         4. Enrichment (summaries + descriptions)     graph_similar
                                      5. TF-IDF / ONNX / API embeddings
                                      6. HTML visualizations                       ... (11 tools)
 ```
 
-¹ More languages coming soon — [contributing](#contributing).
+Language support is provided via plugins, only Markdown is built-in. See [Contributing](#contributing) for how to create a language plugin.
 
 ---
 
@@ -222,7 +222,7 @@ Level 4: search-index, embeddings, html, report  (parallel)
 
 | Phase | What it does |
 |-------|-------------|
-| **file-detection** | Discover source files, docs, diagrams — respects patterns/exclude/incremental |
+| **file-detection** | Discover files by registered type (built-in docs + plugin extensions) |
 | **graph** | Parse with tree-sitter, extract symbols/calls/imports/inheritance, build graph |
 | **outlines** | Generate tree-sitter code outlines per file (SHA256 hashing — skip unchanged) |
 | **communities** | Louvain community detection, write `graph.json` |
@@ -328,13 +328,30 @@ reponova models <subcommand>
 
 ## Supported Languages
 
-### Extraction (AST parsing + graph building)
+RepoNova uses a plugin system for language support. Only Markdown is built-in; everything else is provided by external plugin packages (see [Contributing](#contributing) for how to create one).
+
+### Built-in
 
 | Language | Extensions | Parser | Symbols Extracted |
 |----------|-----------|--------|-------------------|
-| Python | `.py`, `.pyw` | tree-sitter | Functions, classes, methods, decorators, docstrings, variables, imports, calls, inheritance |
-| Markdown | `.md` | Regex | Documents, sections (as containment hierarchy) |
-| Diagrams | `.puml`, `.plantuml`, `.svg` | Regex | Components, relationships (PlantUML); text content (SVG) |
+| Markdown | `.md`, `.txt`, `.rst` | Regex | Documents, sections (as containment hierarchy) |
+
+### Available Plugins
+
+Install via `reponova lang add <package>`:
+
+| Plugin | Package | Extensions | What it extracts |
+|--------|---------|-----------|------------------|
+| Python | `@reponova/lang-python` | `.py`, `.pyw` | Functions, classes, methods, decorators, docstrings, variables, imports, calls, inheritance. Tree-sitter AST outlines. |
+| PlantUML | `@reponova/lang-plantuml` | `.puml`, `.plantuml` | Classes, interfaces, relationships from PlantUML diagrams |
+| SVG | `@reponova/lang-svg` | `.svg` | Text elements from SVG XML |
+
+```bash
+reponova lang add @reponova/lang-python
+reponova lang add @exampleorg/lang-rust       # community plugins work too
+reponova lang list                        # show declared plugins
+reponova lang remove svg                  # uninstall by plugin id
+```
 
 ### Edge Types
 
@@ -422,13 +439,18 @@ docs:
   exclude: []
   max_file_size_kb: 500
 
-# ── Diagrams / Images ─────────────────────────────────────────────────────────
-images:
-  enabled: true
-  patterns: []                  # empty = auto-detect (.puml, .plantuml, .svg, ...)
-  exclude: []
-  parse_puml: true
-  parse_svg_text: true
+# ── Language Plugins ──────────────────────────────────────────────────────────
+# Declare plugins here. Installed via `reponova lang add <package>`.
+# If `package` is omitted, resolved as @reponova/lang-<key>.
+# plugins:
+#   python:                          # shorthand → @reponova/lang-python
+#     enabled: true
+#   rust:                            # community plugin → explicit package
+#     package: "@exampleorg/lang-rust"
+#     enabled: true
+#   plantuml:
+#     enabled: true
+#     parse: true                    # plugin-specific option
 
 # ── Embeddings ────────────────────────────────────────────────────────────────
 # Default: TF-IDF (fast, no download). Set provider for ONNX or remote embeddings.
@@ -632,11 +654,60 @@ Yes. `reponova build` and the programmatic API work standalone. The MCP server i
 
 ## Contributing
 
-### Adding Language Support (Extraction)
+### Adding Language Support (Plugin)
 
-1. **Create** `src/extract/languages/<lang>.ts` implementing `LanguageExtractor`
-2. **Register** in `src/extract/languages/registry.ts`
-3. **Add** tree-sitter WASM grammar to `grammars/`
+**Any npm package can be a RepoNova language plugin**. Community plugins like `@exampleorg/lang-rust` or `reponova-lang-kotlin` work exactly like official ones.
+
+#### Requirements for a valid language plugin
+
+A package is a valid RepoNova language plugin when it meets **all** of these criteria:
+
+1. **`package.json`** contains `"reponova": { "type": "language" }`
+2. **Entry point** exports a `plugin` (or `default`) object conforming to `LanguagePlugin`
+3. **`plugin.id`** is a unique string identifier (e.g. `"rust"`, `"kotlin"`)
+4. **`plugin.extensions`** is a non-empty array of file extensions (e.g. `[".rs"]`)
+5. **`plugin.extractor`** is a valid `LanguageExtractor` implementation
+
+Optional but recommended:
+- `plugin.grammarPath` — tree-sitter WASM grammar for AST-based parsing
+- `plugin.outline` — `LanguageSupport` implementation for `graph_outline` tool
+- `plugin.fileType` — category label in output (defaults to `id`)
+- `plugin.configDefaults` — default values for plugin-specific config options
+
+#### Creating a new language plugin
+
+1. **Create a new npm package** (any name, any scope)
+2. **Add** `"reponova": { "type": "language" }` to `package.json`
+3. **Export** a `plugin` object conforming to `LanguagePlugin`
+4. **Optionally** include a tree-sitter WASM grammar in `grammars/`
+5. **Publish** to npm (or use locally via `npm link`)
+
+Users install it with:
+```bash
+reponova lang add @exampleorg/lang-rust
+```
+
+This installs the package and declares it in `reponova.yml`:
+```yaml
+plugins:
+  rust:
+    package: "@exampleorg/lang-rust"
+    enabled: true
+```
+
+#### `LanguagePlugin` Interface
+
+```typescript
+interface LanguagePlugin {
+  readonly id: string;              // e.g. "python", "plantuml"
+  readonly extensions: string[];    // e.g. [".py", ".pyw"]
+  readonly fileType?: string;       // category label in detected-files.json (default: id)
+  readonly grammarPath?: string;    // absolute path to tree-sitter WASM grammar
+  readonly extractor: LanguageExtractor;
+  readonly outline?: LanguageSupport;
+  readonly configDefaults?: Record<string, unknown>;  // default plugin config values
+}
+```
 
 #### `LanguageExtractor` Interface
 
@@ -669,14 +740,82 @@ interface FileExtraction {
 | `SymbolReference` | `name`, `fromSymbol`, `kind`, `line` | A reference to another symbol |
 | `SymbolKind` | `"function"` \| `"class"` \| `"method"` \| `"variable"` \| `"constant"` \| `"interface"` \| `"enum"` \| `"module"` \| `"document"` \| `"section"` | Symbol classification |
 
-See `src/extract/types.ts` for full definitions. Reference implementations: `src/extract/languages/python.ts` (tree-sitter), `src/extract/languages/markdown.ts` (regex).
+See `src/extract/types.ts` for full definitions.
+
+#### Example: Official plugin (`@reponova/lang-python`)
+
+```typescript
+import type { LanguagePlugin } from "reponova";
+import { PythonExtractor } from "./extractor.js";
+import { python as pythonOutline } from "./outline.js";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const grammarPath = resolve(fileURLToPath(new URL(".", import.meta.url)), "../grammars/tree-sitter-python.wasm");
+
+export const plugin: LanguagePlugin = {
+  id: "python",
+  extensions: [".py", ".pyw"],
+  fileType: "python",
+  grammarPath,
+  extractor: new PythonExtractor(),
+  outline: pythonOutline,
+};
+```
+
+#### Example: Minimal community plugin
+
+```typescript
+import type { LanguagePlugin } from "reponova";
+import { RustExtractor } from "./extractor.js";
+
+export const plugin: LanguagePlugin = {
+  id: "rust",
+  extensions: [".rs"],
+  fileType: "rust",
+  extractor: new RustExtractor(),
+};
+```
+
+#### Plugin `package.json`
+
+```json
+{
+  "name": "@exampleorg/lang-rust",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": { ".": "./dist/index.js" },
+  "peerDependencies": { "reponova": ">=0.4.0" },
+  "reponova": { "type": "language" }
+}
+```
+
+#### Plugin config
+
+Users configure plugins in `reponova.yml` under the `plugins:` key:
+
+```yaml
+plugins:
+  rust:
+    package: "@exampleorg/lang-rust"
+    enabled: true
+    exclude: ["**/target/**"]
+```
+
+If the package follows the `@reponova/lang-<id>` convention, the `package` field can be omitted:
+
+```yaml
+plugins:
+  python:
+    enabled: true       # resolves to @reponova/lang-python
+```
+
+Common properties (all optional): `package`, `enabled` (default: true), `patterns`, `exclude`.
+Custom properties are defined by the plugin via `configDefaults`.
 
 ### Adding Outline Support
 
-Outlines (`graph_outline`) use a **separate system** from extraction.
-
-1. **Create** `src/outline/languages/<lang>.ts` implementing `LanguageSupport`
-2. **Register** in `src/outline/languages/registry.ts`
+Outlines (`graph_outline`) are provided by plugins alongside extraction. A plugin exports an optional `outline` field implementing `LanguageSupport`:
 
 ```typescript
 interface LanguageSupport {
@@ -686,7 +825,7 @@ interface LanguageSupport {
 }
 ```
 
-Reference: `src/outline/languages/python.ts`
+Reference: `@reponova/lang-python` (includes both extraction and outline support).
 
 ---
 

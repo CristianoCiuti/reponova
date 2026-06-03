@@ -21,6 +21,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { SyntaxTree, SyntaxNode } from "./types.js";
 import { log } from "../shared/utils.js";
+import { resolveGrammarPath } from "../plugin/grammar-registry.js";
 
 // ─── Internal State ──────────────────────────────────────────────────────────
 
@@ -77,9 +78,9 @@ export function getGrammarsDir(): string {
   return grammarsDir;
 }
 
-/** Check if a grammar WASM file exists in grammars/ */
+/** Check if a grammar WASM file exists (from plugin or built-in grammars/) */
 export function hasGrammar(wasmFile: string): boolean {
-  return existsSync(resolve(grammarsDir, wasmFile));
+  return existsSync(resolveGrammarPath(wasmFile, grammarsDir));
 }
 
 // ─── Runtime Init ────────────────────────────────────────────────────────────
@@ -163,7 +164,7 @@ async function getParser(wasmFile: string): Promise<ParserInstance | null> {
   if (inFlightParsers.has(wasmFile)) return inFlightParsers.get(wasmFile)!;
 
   // Check WASM file exists (sync, no race concern)
-  const wasmPath = resolve(grammarsDir, wasmFile);
+  const wasmPath = resolveGrammarPath(wasmFile, grammarsDir);
   if (!existsSync(wasmPath)) {
     log.debug(`Grammar not found: ${wasmPath}`);
     parsers.set(wasmFile, null);

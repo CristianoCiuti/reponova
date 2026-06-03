@@ -25,13 +25,12 @@ const DocsConfigSchema = z.object({
   max_file_size_kb: z.number().default(500),
 });
 
-const ImagesConfigSchema = z.object({
+const PluginConfigSchema = z.object({
+  package: z.string().optional(),
   enabled: z.boolean().default(true),
   patterns: z.array(z.string()).default([]),
   exclude: z.array(z.string()).default([]),
-  parse_puml: z.boolean().default(true),
-  parse_svg_text: z.boolean().default(true),
-});
+}).passthrough();
 
 const ProviderConfigSchema = z.object({
   type: z.enum(["openai", "llama-cpp", "onnx"]),
@@ -98,7 +97,7 @@ const ConfigSchema = z.object({
   exclude_common: z.boolean().default(true),
   incremental: z.boolean().default(true),
   docs: DocsConfigSchema.default({}),
-  images: ImagesConfigSchema.default({}),
+  plugins: z.record(z.string(), PluginConfigSchema).default({}),
   embeddings: EmbeddingsConfigSchema.default({}),
   enrich: EnrichConfigSchema.default({}),
   html: z.boolean().default(true),

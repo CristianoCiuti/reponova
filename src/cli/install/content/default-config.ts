@@ -39,13 +39,15 @@ docs:
   # exclude: []                   # e.g. ["**/CHANGELOG.md"]
   # max_file_size_kb: 500
 
-# ── Diagrams / Images ──
-images:
-  enabled: true
-  # patterns: []                  # empty = auto-detect (.puml, .plantuml, .svg, ...)
-  # exclude: []
-  # parse_puml: true
-  # parse_svg_text: true
+# ── Language Plugins ──
+# Declare plugins here. Installed via \`reponova lang add <package>\`.
+# If \`package\` is omitted, resolved as @reponova/lang-<key>.
+# plugins:
+#   python:
+#     enabled: true
+#   rust:
+#     package: "@exampleorg/lang-rust"
+#     enabled: true
 
 # ── Embeddings ──
 # Default: TF-IDF (fast, no download). Set provider for ONNX or remote embeddings.

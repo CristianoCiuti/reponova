@@ -4,16 +4,11 @@
  * This registry is the SINGLE SOURCE OF TRUTH for language support.
  * Both the extraction engine and the outline module use it.
  *
- * TO ADD A NEW LANGUAGE:
- * 1. Create src/extract/languages/<lang>.ts implementing LanguageExtractor
- * 2. Import and register it here
- * 3. Add the .wasm grammar file to grammars/
- * 4. Done — both extraction and outline pick it up automatically
+ * Built-in: only markdown. All other languages are provided by plugins
+ * (`@reponova/lang-*`) discovered at runtime via `discoverLanguagePlugins()`.
  */
 import type { LanguageExtractor } from "../types.js";
-import { PythonExtractor } from "./python.js";
 import { MarkdownExtractor } from "./markdown.js";
-import { DiagramExtractor } from "./diagrams.js";
 
 // ─── Registry State ──────────────────────────────────────────────────────────
 
@@ -34,13 +29,10 @@ export function registerExtractor(extractor: LanguageExtractor): void {
 
 // ─── Built-in Extractors ─────────────────────────────────────────────────────
 
-registerExtractor(new PythonExtractor());
 registerExtractor(new MarkdownExtractor());
-registerExtractor(new DiagramExtractor());
 
-// Future:
-// registerExtractor(new JavaScriptExtractor());
-// registerExtractor(new JavaExtractor());
+// All other languages (python, plantuml, svg, etc.) are provided by plugins.
+// They are registered via discoverLanguagePlugins() at boot time.
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
