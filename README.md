@@ -825,7 +825,7 @@ interface LanguageSupport {
 }
 ```
 
-Reference: `@reponova/lang-python` (includes both extraction and outline support).
+Reference: [`@reponova/lang-python`](https://github.com/CristianoCiuti/reponova-lang-python) (includes both extraction and outline support).
 
 ---
 
