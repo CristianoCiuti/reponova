@@ -338,19 +338,24 @@ RepoNova uses a plugin system for language support. Only Markdown is built-in; e
 
 ### Available Plugins
 
-Install via `reponova lang add <package>`:
+All official plugins are developed in the [`reponova-langs`](https://github.com/CristianoCiuti/reponova-langs) monorepo and published to npm under the `@reponova/lang-*` scope. Install with `reponova lang add <package>`:
 
 | Plugin | Package | Extensions | What it extracts |
 |--------|---------|-----------|------------------|
-| Python | `@reponova/lang-python` | `.py`, `.pyw` | Functions, classes, methods, decorators, docstrings, variables, imports, calls, inheritance. Tree-sitter AST outlines. |
-| PlantUML | `@reponova/lang-plantuml` | `.puml`, `.plantuml` | Classes, interfaces, relationships from PlantUML diagrams |
-| SVG | `@reponova/lang-svg` | `.svg` | Text elements from SVG XML |
+| Python | [`@reponova/lang-python`](https://www.npmjs.com/package/@reponova/lang-python) | `.py`, `.pyw` | Functions, classes, methods, decorators, docstrings, top-level constants, `TypeVar` / `NewType` / type aliases, imports (incl. `TYPE_CHECKING` and aliased), heritage (incl. generics), calls, `__all__` exports. Tree-sitter AST outlines. |
+| JavaScript | [`@reponova/lang-javascript`](https://www.npmjs.com/package/@reponova/lang-javascript) | `.js`, `.mjs`, `.cjs`, `.jsx` | Functions, classes, methods, arrow-function components, class fields / getters / setters, decorators (`async` / `generator` / `static`), JSDoc docstrings, ES `import` + CommonJS `require`, calls (incl. JSX components and React hooks), `extends` heritage. Tree-sitter AST outlines. |
+| TypeScript | [`@reponova/lang-typescript`](https://www.npmjs.com/package/@reponova/lang-typescript) | `.ts`, `.mts`, `.cts` | Functions, classes (incl. `abstract`), methods, interfaces, type aliases, enums, namespaces / modules, class fields with full modifier markers, getters / setters, exported `const` bindings, JSDoc docstrings, imports, `extends` / `implements` heritage, calls. Tree-sitter AST outlines. |
+| TSX | [`@reponova/lang-tsx`](https://www.npmjs.com/package/@reponova/lang-tsx) | `.tsx` | Same shape as `lang-typescript` against the JSX-aware grammar. Captures React functional components, JSX-element calls, hooks, plus all TS symbols (interfaces, type aliases, enums, namespaces, …). Tree-sitter AST outlines. |
+| PlantUML | [`@reponova/lang-plantuml`](https://www.npmjs.com/package/@reponova/lang-plantuml) | `.puml`, `.plantuml` | Classes / interfaces / enums, sequence-diagram participants (actor, boundary, control, entity, …), state diagrams (incl. implicit states), components / deployment nodes, C4-DSL macros (`Person`, `System`, `Container`, `Component`, …), relationships (extends, association, aggregation, composition). |
+| SVG | [`@reponova/lang-svg`](https://www.npmjs.com/package/@reponova/lang-svg) | `.svg` | File `<title>` as docstring, plus up to 20 labels per file from `<text>` / `<title>` / `<desc>` / `aria-label` (essential for path-only icon SVGs). Source kind preserved per symbol. Useful for design assets, hand-authored diagrams, icon libraries, rendered Mermaid / PlantUML output. |
 
 ```bash
 reponova lang add @reponova/lang-python
+reponova lang add @reponova/lang-typescript
+reponova lang add @reponova/lang-tsx
 reponova lang add @exampleorg/lang-rust       # community plugins work too
-reponova lang list                        # show declared plugins
-reponova lang remove svg                  # uninstall by plugin id
+reponova lang list                            # show declared plugins
+reponova lang remove svg                      # uninstall by plugin id
 ```
 
 ### Edge Types
@@ -825,7 +830,7 @@ interface LanguageSupport {
 }
 ```
 
-Reference: [`@reponova/lang-python`](https://github.com/CristianoCiuti/reponova-lang-python) (includes both extraction and outline support).
+Reference implementations live in the [`reponova-langs`](https://github.com/CristianoCiuti/reponova-langs) monorepo — e.g. [`packages/lang-python`](https://github.com/CristianoCiuti/reponova-langs/tree/main/packages/lang-python) (regex + tree-sitter outline) and [`packages/lang-typescript`](https://github.com/CristianoCiuti/reponova-langs/tree/main/packages/lang-typescript) (shared core reused by `lang-tsx` and `lang-javascript`).
 
 ---
 
