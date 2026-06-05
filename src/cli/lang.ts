@@ -10,6 +10,7 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { parseDocument, isMap, YAMLMap, type Document } from "yaml";
 import { resolveNodeModulesDir } from "../plugin/discovery.js";
 import { loadConfig } from "../shared/config.js";
 import type { LanguagePlugin } from "../plugin/types.js";
@@ -314,8 +315,42 @@ plugins: {}
 }
 
 /**
- * Add a plugin entry to the YAML config.
- * Uses text manipulation to preserve existing formatting/comments.
+ * Parse, mutate, and re-write a YAML config file using the `yaml` package's
+ * Document API.
+ *
+ * Unlike a plain `parse`/`stringify` round-trip, this preserves comments,
+ * blank-line layout, key order, and original quoting style — the parsed
+ * Document keeps the source CST and only the explicitly mutated nodes are
+ * rewritten on `toString()`. The original line-ending style (LF or CRLF) is
+ * also restored so Windows-authored configs stay Windows-friendly.
+ */
+function editConfig(
+  configPath: string,
+  mutate: (doc: Document) => void,
+): void {
+  const raw = readFileSync(configPath, "utf-8");
+  const eol: "\r\n" | "\n" = raw.includes("\r\n") ? "\r\n" : "\n";
+
+  const doc = parseDocument(raw);
+  mutate(doc);
+
+  let serialized = doc.toString({ lineWidth: 0 });
+
+  if (eol === "\r\n") {
+    serialized = serialized.replace(/\r?\n/g, "\r\n");
+  }
+
+  writeFileSync(configPath, serialized, "utf-8");
+}
+
+/**
+ * Add (or update) a plugin entry in the YAML config.
+ *
+ * Idempotent: if the plugin id is already declared, its existing user-set
+ * fields (and surrounding comments) are preserved; only missing keys are
+ * filled in from `configDefaults`, `enabled` defaults to `true`, and the
+ * `package` field is normalized (set for community plugins, dropped for
+ * official `@reponova/lang-<id>` packages).
  */
 function addPluginToConfig(
   configPath: string,
@@ -323,65 +358,59 @@ function addPluginToConfig(
   packageName: string,
   configDefaults?: Record<string, unknown>,
 ): void {
-  let content = readFileSync(configPath, "utf-8");
-
-  const isOfficial = packageName.startsWith(OFFICIAL_PREFIX) &&
+  const isOfficial =
+    packageName.startsWith(OFFICIAL_PREFIX) &&
     packageName === `${OFFICIAL_PREFIX}${id}`;
 
-  // Build the entry lines
-  const lines: string[] = [];
-  if (!isOfficial) {
-    lines.push(`    package: "${packageName}"`);
-  }
-  lines.push(`    enabled: true`);
-  if (configDefaults) {
-    for (const [key, value] of Object.entries(configDefaults)) {
-      lines.push(`    ${key}: ${formatYamlValue(value)}`);
-    }
-  }
-  const entry = `  ${id}:\n${lines.join("\n")}`;
-
-  // Check if plugins section exists
-  const pluginsMatch = content.match(/^plugins:\s*(\{\})?$/m);
-  if (pluginsMatch) {
-    const isEmptyObj = pluginsMatch[1] === "{}";
-    if (isEmptyObj) {
-      // Replace `plugins: {}` with `plugins:\n  <entry>`
-      content = content.replace(/^plugins:\s*\{\}$/m, `plugins:\n${entry}`);
+  editConfig(configPath, (doc) => {
+    const pluginsNode = doc.get("plugins");
+    let plugins: YAMLMap;
+    if (isMap(pluginsNode)) {
+      plugins = pluginsNode;
     } else {
-      // Check if this plugin id already exists
-      const existingRegex = new RegExp(`^  ${id}:.*$`, "m");
-      if (existingRegex.test(content)) {
-        // Remove old entry and re-add
-        content = removePluginSection(content, id);
-      }
-      // Append after `plugins:` line
-      content = content.replace(/^(plugins:)$/m, `$1\n${entry}`);
+      plugins = new YAMLMap();
+      doc.set("plugins", plugins);
     }
-  } else {
-    // No plugins section at all — add it at the end
-    content = content.trimEnd() + `\n\nplugins:\n${entry}\n`;
-  }
 
-  writeFileSync(configPath, content, "utf-8");
+    const entryNode = plugins.get(id);
+    let entry: YAMLMap;
+    if (isMap(entryNode)) {
+      entry = entryNode;
+    } else {
+      entry = new YAMLMap();
+      plugins.set(id, entry);
+    }
+
+    if (configDefaults) {
+      for (const [key, value] of Object.entries(configDefaults)) {
+        if (!entry.has(key)) {
+          entry.set(key, value);
+        }
+      }
+    }
+
+    if (isOfficial) {
+      if (entry.has("package")) entry.delete("package");
+    } else {
+      entry.set("package", packageName);
+    }
+
+    if (!entry.has("enabled")) {
+      entry.set("enabled", true);
+    }
+  });
 }
 
 /**
- * Remove a plugin entry from the YAML config.
+ * Remove a plugin entry from the YAML config (no-op if absent).
  */
 function removePluginFromConfig(configPath: string, id: string): void {
-  let content = readFileSync(configPath, "utf-8");
-  content = removePluginSection(content, id);
-  writeFileSync(configPath, content, "utf-8");
-}
-
-/**
- * Remove a plugin's YAML block (key + indented children).
- */
-function removePluginSection(content: string, id: string): string {
-  // Match `  <id>:` followed by indented lines (4+ spaces or empty)
-  const regex = new RegExp(`^  ${id}:.*\n(    .*\n)*`, "m");
-  return content.replace(regex, "");
+  editConfig(configPath, (doc) => {
+    const plugins = doc.get("plugins");
+    if (isMap(plugins)) {
+      plugins.delete(id);
+    }
+  });
 }
 
 /**
@@ -415,10 +444,4 @@ function findPluginInYaml(configPath: string, id: string): { package?: string } 
   } catch {
     return null;
   }
-}
-
-function formatYamlValue(value: unknown): string {
-  if (typeof value === "string") return `"${value}"`;
-  if (typeof value === "boolean" || typeof value === "number") return String(value);
-  return JSON.stringify(value);
 }

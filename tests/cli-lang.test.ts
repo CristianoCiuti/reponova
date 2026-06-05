@@ -107,6 +107,54 @@ describe("reponova lang CLI", () => {
       const output = result.stdout + result.stderr;
       expect(output).toContain("does not export a valid LanguagePlugin");
     });
+
+    it("should preserve comments and user-set fields when re-adding existing plugin", () => {
+      const configPath = join(tmpDir, "reponova.yml");
+      writeFileSync(
+        configPath,
+        [
+          "# RepoNova configuration",
+          "output: out",
+          "",
+          "# Languages",
+          "plugins:",
+          "  # Python plugin",
+          "  python:",
+          "    enabled: false # explicitly disabled",
+          "    exclude:",
+          "      - \"**/migrations/**\"",
+          "",
+        ].join("\n"),
+      );
+
+      const result = run("lang add @reponova/lang-python", tmpDir);
+      expect(result.exitCode).toBe(0);
+
+      const content = readFileSync(configPath, "utf-8");
+      expect(content).toContain("# RepoNova configuration");
+      expect(content).toContain("# Languages");
+      expect(content).toContain("# Python plugin");
+      expect(content).toContain("explicitly disabled");
+      expect(content).toContain("**/migrations/**");
+      expect(content).toContain("enabled: false"); // user override preserved
+      expect(content.match(/python:/g)?.length).toBe(1);
+    });
+
+    it("should preserve CRLF line endings", () => {
+      const configPath = join(tmpDir, "reponova.yml");
+      const crlf =
+        "output: out\r\n\r\nplugins:\r\n  python:\r\n    enabled: true\r\n";
+      writeFileSync(configPath, crlf);
+
+      const result = run("lang add @reponova/lang-svg", tmpDir);
+      expect(result.exitCode).toBe(0);
+
+      const content = readFileSync(configPath, "utf-8");
+      expect(content).toMatch(/\r\n/); // CRLF preserved
+      expect(content).not.toMatch(/(?<!\r)\n/); // no bare LFs
+      expect(content.match(/python:/g)?.length).toBe(1); // no duplicate
+      expect(content).toContain("svg:");
+    });
   });
 
   describe("lang remove", () => {

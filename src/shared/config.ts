@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { z } from "zod";
-import yaml from "js-yaml";
+import { parse as parseYaml } from "yaml";
 import type { Config, ProviderConfig } from "../shared/types.js";
 import { DEFAULT_CONFIG } from "../shared/types.js";
 import { log } from "../shared/utils.js";
@@ -159,7 +159,7 @@ export function loadConfig(configPath?: string): { config: Config; configDir: st
   log.info(`Using config: ${resolvedPath}`);
 
   const raw = readFileSync(resolvedPath, "utf-8");
-  const parsed = yaml.load(raw) as Record<string, unknown>;
+  const parsed = parseYaml(raw) as Record<string, unknown>;
 
   // Migrate legacy configs with `build` nesting
   const migrated = migrateLegacyConfig(parsed ?? {});
