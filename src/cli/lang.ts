@@ -8,7 +8,7 @@
  */
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { resolveNodeModulesDir } from "../plugin/discovery.js";
 import { loadConfig } from "../shared/config.js";
@@ -16,6 +16,79 @@ import type { LanguagePlugin } from "../plugin/types.js";
 
 /** Standard shorthand prefix — if package matches this, no `package:` field needed in config. */
 const OFFICIAL_PREFIX = "@reponova/lang-";
+
+/**
+ * How reponova was installed: either as a globally installed CLI (`npm i -g`,
+ * fnm/nvm shim, etc.) or as a dependency of a local project.
+ *
+ * This drives whether `npm install <pkg>` is run with `-g` (global) or in the
+ * owning project root (local). It is CRITICAL never to run `npm install <pkg>`
+ * with cwd inside a `node_modules/` directory: npm would walk up looking for a
+ * `package.json`, fail to find one, then create a synthetic one in the parent
+ * (e.g. the Node-version directory itself) and PRUNE every "extraneous"
+ * package — including `npm` and `corepack` themselves — leaving Node unusable.
+ */
+type InstallMode =
+  | { kind: "global" }
+  | { kind: "local"; projectRoot: string };
+
+/**
+ * Decide whether reponova lives in a global Node install context or inside a
+ * regular project. We detect "global" by looking for a Node binary or a
+ * `package.json` whose name matches a known Node-distribution layout next to
+ * the resolved `node_modules` directory.
+ */
+function detectInstallMode(nodeModulesDir: string): InstallMode {
+  const parent = resolve(nodeModulesDir, "..");
+
+  // Global install: a Node distribution sits directly above node_modules.
+  // Covers Windows fnm aliases dir, nvm versions dir, and `npm prefix -g` on
+  // Linux/macOS (.../lib/node_modules → .../bin/node).
+  if (
+    existsSync(join(parent, "node.exe")) ||
+    existsSync(join(parent, "node")) ||
+    existsSync(join(parent, "bin", "node"))
+  ) {
+    return { kind: "global" };
+  }
+
+  // Otherwise reponova is a normal dependency: install/uninstall from the
+  // project root that owns the node_modules directory.
+  return { kind: "local", projectRoot: parent };
+}
+
+/** Run `npm install <pkg>` in the right context. Returns true on success. */
+function runNpmInstall(packageName: string, mode: InstallMode): boolean {
+  try {
+    if (mode.kind === "global") {
+      execSync(`npm install -g ${packageName}`, { stdio: "inherit" });
+    } else {
+      execSync(`npm install ${packageName}`, { cwd: mode.projectRoot, stdio: "inherit" });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Run `npm uninstall <pkg>` in the right context. Returns true on success. */
+function runNpmUninstall(
+  packageName: string,
+  mode: InstallMode,
+  opts: { silent?: boolean } = {},
+): boolean {
+  const stdio = opts.silent ? "ignore" : "inherit";
+  try {
+    if (mode.kind === "global") {
+      execSync(`npm uninstall -g ${packageName}`, { stdio });
+    } else {
+      execSync(`npm uninstall ${packageName}`, { cwd: mode.projectRoot, stdio });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function langHandler(argv: Record<string, unknown>): Promise<void> {
   const positionals = argv._ as string[];
@@ -57,18 +130,17 @@ async function langAdd(packageName: string): Promise<void> {
     process.exit(1);
   }
 
-  // Check if already present in node_modules (e.g. npm link)
+  const installMode = detectInstallMode(nodeModulesDir);
+
+  // Check if already present in node_modules (e.g. npm link, prior install)
   const pkgDir = join(nodeModulesDir, ...packageName.split("/"));
   const wasAlreadyInstalled = existsSync(pkgDir);
   let plugin = await importPlugin(nodeModulesDir, packageName);
 
   if (!plugin) {
     if (!wasAlreadyInstalled) {
-      // Not present — try npm install
       console.log(`Installing ${packageName}...`);
-      try {
-        execSync(`npm install ${packageName}`, { cwd: nodeModulesDir, stdio: "inherit" });
-      } catch {
+      if (!runNpmInstall(packageName, installMode)) {
         console.error(`Failed to install ${packageName}`);
         process.exit(1);
       }
@@ -78,7 +150,7 @@ async function langAdd(packageName: string): Promise<void> {
     if (!plugin) {
       // Rollback only if we installed it ourselves
       if (!wasAlreadyInstalled) {
-        try { execSync(`npm uninstall ${packageName}`, { cwd: nodeModulesDir, stdio: "ignore" }); } catch { /* */ }
+        runNpmUninstall(packageName, installMode, { silent: true });
       }
       console.error(`Package ${packageName} does not export a valid LanguagePlugin (missing plugin.id or plugin.extractor)`);
       process.exit(1);
@@ -114,11 +186,8 @@ async function langRemove(id: string): Promise<void> {
     const pkgDir = join(nodeModulesDir, ...packageName.split("/"));
     if (existsSync(pkgDir)) {
       console.log(`Removing ${packageName}...`);
-      try {
-        execSync(`npm uninstall ${packageName}`, { cwd: nodeModulesDir, stdio: "inherit" });
-      } catch {
-        // npm uninstall may fail for linked packages — continue with config removal
-      }
+      // npm uninstall may fail for linked packages — continue with config removal
+      runNpmUninstall(packageName, detectInstallMode(nodeModulesDir));
     }
   }
 
