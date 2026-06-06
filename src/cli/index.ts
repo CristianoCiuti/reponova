@@ -212,7 +212,9 @@ const langCommand: CommandModule = {
       .strictCommands(false)
       .strict(false)
       .option("dry-run", { type: "boolean", describe: "lang suggest: only print the report, no prompt" })
-      .option("yes", { type: "boolean", describe: "lang suggest: install all suggestions without prompt" }),
+      .option("yes", { type: "boolean", describe: "lang suggest: install all suggestions without prompt" })
+      .option("config-only", { type: "boolean", describe: "lang remove: only update reponova.yml, keep the package installed" })
+      .option("purge-global", { type: "boolean", describe: "lang remove: in global context, uninstall without confirmation" }),
   handler: async (argv) => {
     const { langHandler } = await import("./lang.js");
     await langHandler(argv);

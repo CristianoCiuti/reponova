@@ -83,9 +83,14 @@ export async function langHandler(argv: Record<string, unknown>): Promise<void> 
     case "remove":
       if (!name) {
         console.error("Usage: reponova lang remove <id>");
+        console.error("  --config-only       only update reponova.yml, leave the package installed");
+        console.error("  --purge-global      in global context, uninstall without confirmation");
         process.exit(1);
       }
-      await langRemove(name);
+      await langRemove(name, {
+        configOnly: argv["config-only"] === true || argv.configOnly === true,
+        purgeGlobal: argv["purge-global"] === true || argv.purgeGlobal === true,
+      });
       break;
     case "list":
       await langList();
@@ -100,6 +105,7 @@ export async function langHandler(argv: Record<string, unknown>): Promise<void> 
     }
     default:
       console.error("Usage: reponova lang <add|remove|list|suggest> [package|id]");
+      console.error("  remove options:  --config-only, --purge-global");
       console.error("  suggest options: --dry-run (report only), --yes (install all without prompt)");
       process.exit(1);
   }
@@ -164,7 +170,67 @@ export async function langAdd(packageName: string): Promise<void> {
   console.log(`✓ Installed ${packageName} → plugins.${plugin.id} (extensions: ${plugin.extensions.join(", ")})`);
 }
 
-async function langRemove(id: string): Promise<void> {
+export interface RemoveOptions {
+  /** `--config-only`: remove from reponova.yml without touching `node_modules/`. */
+  configOnly?: boolean;
+  /** `--purge-global`: in global mode, uninstall without confirmation (also enables it in non-TTY). */
+  purgeGlobal?: boolean;
+}
+
+interface RemoveEnv {
+  /** True when stdin/stdout are a TTY — controls whether we can prompt. */
+  isInteractive: boolean;
+  /** True when the package directory exists in `node_modules/`. */
+  packageInstalled: boolean;
+}
+
+/**
+ * Decision matrix for `reponova lang remove`. Pure function — no I/O, no
+ * side effects. Determines what the caller should do given the install
+ * context and CLI flags.
+ *
+ * Returned actions:
+ *   • `config-only` — only mutate reponova.yml; do NOT call the package
+ *     manager. Used when: --config-only was passed; the package isn't on
+ *     disk at all; the context is `linked` (dev tree — would touch
+ *     reponova's own devDependencies) or `abort` (no safe PM call).
+ *   • `uninstall`   — proceed with `runPmRemove`. Used for `local`
+ *     contexts (always) and for `global` when --purge-global is set.
+ *   • `prompt-global` — global context, no `--purge-global` flag:
+ *       - in an interactive shell, ask the user before uninstalling
+ *         (uninstall affects the entire Node install, not just this
+ *         project, so we don't do it silently);
+ *       - in a non-interactive shell, fall back to config-only and warn
+ *         the user that the package is still installed system-wide
+ *         (signalled by `warningOnly: true`).
+ */
+export type RemoveAction =
+  | { kind: "config-only"; reason: "flag" | "linked" | "abort" | "missing-pkg" }
+  | { kind: "uninstall" }
+  | { kind: "prompt-global"; warningOnly: boolean };
+
+export function planRemoveAction(
+  ctx: InstallContext,
+  opts: RemoveOptions,
+  env: RemoveEnv,
+): RemoveAction {
+  if (opts.configOnly) return { kind: "config-only", reason: "flag" };
+  if (!env.packageInstalled) return { kind: "config-only", reason: "missing-pkg" };
+
+  switch (ctx.kind) {
+    case "linked":
+      return { kind: "config-only", reason: "linked" };
+    case "abort":
+      return { kind: "config-only", reason: "abort" };
+    case "local":
+      return { kind: "uninstall" };
+    case "global":
+      if (opts.purgeGlobal) return { kind: "uninstall" };
+      return { kind: "prompt-global", warningOnly: !env.isInteractive };
+  }
+}
+
+async function langRemove(id: string, opts: RemoveOptions = {}): Promise<void> {
   const configPath = findConfig();
   if (!configPath) {
     console.error("No reponova.yml found. Nothing to remove.");
@@ -180,26 +246,102 @@ async function langRemove(id: string): Promise<void> {
 
   const packageName = pluginEntry.package ?? `${OFFICIAL_PREFIX}${id}`;
 
-  // Uninstall from node_modules (only if package is actually installed, not linked).
   const nodeModulesDir = resolveNodeModulesDir();
-  if (nodeModulesDir) {
-    const pkgDir = join(nodeModulesDir, ...packageName.split("/"));
-    if (existsSync(pkgDir)) {
-      const ctx = detectInstallContext();
-      // In linked / abort contexts we skip the PM call entirely (linked: would
-      // mutate reponova's own deps; abort: nothing safe to do here, just clean
-      // up the config below).
-      if (ctx.kind === "global" || ctx.kind === "local") {
-        console.log(`Removing ${packageName} (${describeContext(ctx)})...`);
-        // The PM call may fail for linked packages — continue with config removal.
-        runPmRemove(packageName, ctx);
-      }
-    }
-  }
+  const pkgDir = nodeModulesDir
+    ? join(nodeModulesDir, ...packageName.split("/"))
+    : null;
+  const packageInstalled = pkgDir ? existsSync(pkgDir) : false;
+  const ctx = detectInstallContext();
+  const action = planRemoveAction(ctx, opts, {
+    isInteractive: !!process.stdout.isTTY,
+    packageInstalled,
+  });
 
-  // Remove from config
+  await executeRemoveAction(packageName, ctx, action);
+
   removePluginFromConfig(configPath, id);
   console.log(`✓ Removed ${packageName} (was plugins.${id})`);
+}
+
+/**
+ * Carry out the planned action (PM call, confirmation prompt, or
+ * informative log). Keeps `langRemove` focused on orchestration.
+ */
+async function executeRemoveAction(
+  packageName: string,
+  ctx: InstallContext,
+  action: RemoveAction,
+): Promise<void> {
+  if (action.kind === "uninstall") {
+    console.log(`Removing ${packageName} (${describeContext(ctx)})...`);
+    // The PM call may fail for linked packages — continue with config removal.
+    runPmRemove(packageName, ctx);
+    return;
+  }
+
+  if (action.kind === "prompt-global") {
+    if (action.warningOnly) {
+      console.warn(
+        `Note: ${packageName} is still installed globally (${describeContext(ctx)}).\n` +
+          `Re-run with --purge-global to also uninstall the package, or run manually:\n` +
+          `  reponova lang remove ${packageName} --purge-global`,
+      );
+      return;
+    }
+    const proceed = await confirmGlobalUninstall(packageName, ctx);
+    if (!proceed) {
+      console.log(
+        `Skipped global uninstall. ${packageName} remains installed (use --purge-global to skip this prompt next time).`,
+      );
+      return;
+    }
+    console.log(`Removing ${packageName} (${describeContext(ctx)})...`);
+    runPmRemove(packageName, ctx);
+    return;
+  }
+
+  // config-only — log a short reason so the user understands why no PM
+  // command was run (some reasons are silent by design).
+  switch (action.reason) {
+    case "flag":
+      // User explicitly asked: no extra noise.
+      return;
+    case "linked":
+      console.log(
+        `Skipped package manager call: reponova is in linked/dev mode (${ctx.kind === "linked" ? ctx.reponovaDir : "?"}). ` +
+          `Unlink the plugin manually if needed.`,
+      );
+      return;
+    case "missing-pkg":
+      console.log(`Note: ${packageName} is not present in node_modules/ — config-only update.`);
+      return;
+    case "abort":
+      // The install context detection already produced its own error
+      // path for `add`; for `remove` we silently fall back to config
+      // updates so the user can still clean up a broken state.
+      return;
+  }
+}
+
+/**
+ * Interactive Y/n confirmation before running a global uninstall.
+ * Defaults to "no" to favour the safer outcome.
+ */
+async function confirmGlobalUninstall(packageName: string, ctx: InstallContext): Promise<boolean> {
+  const { default: confirm } = await import("@inquirer/confirm");
+  try {
+    return await confirm({
+      message:
+        `About to uninstall ${packageName} via ${describeContext(ctx)}.\n` +
+        `This affects the entire Node installation, not just the current project.\n` +
+        `Proceed?`,
+      default: false,
+    });
+  } catch (err) {
+    // Ctrl+C on the prompt — treat as a "no".
+    if (err instanceof Error && err.name === "ExitPromptError") return false;
+    throw err;
+  }
 }
 
 async function langList(): Promise<void> {

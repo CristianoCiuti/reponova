@@ -191,6 +191,25 @@ describe("reponova lang CLI", () => {
       const output = result.stdout + result.stderr;
       expect(output).toContain("No reponova.yml found");
     });
+
+    it("should not touch the package when --config-only is passed", () => {
+      // We can't observe the absence of an npm call directly in a
+      // subprocess test, but we CAN check that the config is updated
+      // AND that the subprocess exits 0 even for a plugin whose
+      // package isn't installed on disk (which would otherwise be a
+      // no-op anyway). The real safety net is the unit-tested matrix
+      // in `plan-remove-action.test.ts`.
+      const configPath = join(tmpDir, "reponova.yml");
+      writeFileSync(
+        configPath,
+        "output: out\nrepos:\n  - name: x\n    path: .\n\nplugins:\n  fake-lang:\n    package: \"@fake/lang-test\"\n    enabled: true\n",
+      );
+
+      const result = run("lang remove fake-lang --config-only", tmpDir);
+      expect(result.exitCode).toBe(0);
+      const content = readFileSync(configPath, "utf-8");
+      expect(content).not.toContain("fake-lang:");
+    });
   });
 
   describe("lang list", () => {

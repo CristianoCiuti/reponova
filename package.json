@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@inquirer/checkbox": "^3.0.1",
+    "@inquirer/confirm": "^4.0.1",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "global-directory": "^4.0.1",
     "graphology": "^0.26.0",
