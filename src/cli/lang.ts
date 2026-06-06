@@ -6,89 +6,62 @@
  *   reponova lang remove <id>       Uninstall a language plugin by id
  *   reponova lang list              List declared language plugins
  */
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseDocument, isMap, YAMLMap, type Document } from "yaml";
 import { resolveNodeModulesDir } from "../plugin/discovery.js";
 import { loadConfig } from "../shared/config.js";
 import type { LanguagePlugin } from "../plugin/types.js";
+import {
+  detectInstallContext,
+  buildInstallCommand,
+  buildUninstallCommand,
+  describeContext,
+  formatAbort,
+  type InstallContext,
+} from "../plugin/install-context.js";
 
 /** Standard shorthand prefix — if package matches this, no `package:` field needed in config. */
 const OFFICIAL_PREFIX = "@reponova/lang-";
 
 /**
- * How reponova was installed: either as a globally installed CLI (`npm i -g`,
- * fnm/nvm shim, etc.) or as a dependency of a local project.
+ * Run a package-manager command for `packageName` under `ctx`.
  *
- * This drives whether `npm install <pkg>` is run with `-g` (global) or in the
- * owning project root (local). It is CRITICAL never to run `npm install <pkg>`
- * with cwd inside a `node_modules/` directory: npm would walk up looking for a
- * `package.json`, fail to find one, then create a synthetic one in the parent
- * (e.g. the Node-version directory itself) and PRUNE every "extraneous"
- * package — including `npm` and `corepack` themselves — leaving Node unusable.
+ * For `linked` contexts (development tree / `npm link`) this is a no-op
+ * returning `true`: we MUST NOT call any PM there or we'd mutate reponova's
+ * own dependencies. For `abort` contexts, this should not be reached —
+ * callers must surface the abort before getting here.
+ *
+ * Returns `true` on success (including the linked no-op).
  */
-type InstallMode =
-  | { kind: "global" }
-  | { kind: "local"; projectRoot: string };
-
-/**
- * Decide whether reponova lives in a global Node install context or inside a
- * regular project. We detect "global" by looking for a Node binary or a
- * `package.json` whose name matches a known Node-distribution layout next to
- * the resolved `node_modules` directory.
- */
-function detectInstallMode(nodeModulesDir: string): InstallMode {
-  const parent = resolve(nodeModulesDir, "..");
-
-  // Global install: a Node distribution sits directly above node_modules.
-  // Covers Windows fnm aliases dir, nvm versions dir, and `npm prefix -g` on
-  // Linux/macOS (.../lib/node_modules → .../bin/node).
-  if (
-    existsSync(join(parent, "node.exe")) ||
-    existsSync(join(parent, "node")) ||
-    existsSync(join(parent, "bin", "node"))
-  ) {
-    return { kind: "global" };
-  }
-
-  // Otherwise reponova is a normal dependency: install/uninstall from the
-  // project root that owns the node_modules directory.
-  return { kind: "local", projectRoot: parent };
+function runPmAdd(packageName: string, ctx: InstallContext): boolean {
+  const cmd = buildInstallCommand(packageName, ctx);
+  if (!cmd) return true; // linked / abort — caller's responsibility
+  return runSpawn(cmd.argv, cmd.cwd, "inherit");
 }
 
-/** Run `npm install <pkg>` in the right context. Returns true on success. */
-function runNpmInstall(packageName: string, mode: InstallMode): boolean {
-  try {
-    if (mode.kind === "global") {
-      execSync(`npm install -g ${packageName}`, { stdio: "inherit" });
-    } else {
-      execSync(`npm install ${packageName}`, { cwd: mode.projectRoot, stdio: "inherit" });
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Run `npm uninstall <pkg>` in the right context. Returns true on success. */
-function runNpmUninstall(
+function runPmRemove(
   packageName: string,
-  mode: InstallMode,
+  ctx: InstallContext,
   opts: { silent?: boolean } = {},
 ): boolean {
-  const stdio = opts.silent ? "ignore" : "inherit";
-  try {
-    if (mode.kind === "global") {
-      execSync(`npm uninstall -g ${packageName}`, { stdio });
-    } else {
-      execSync(`npm uninstall ${packageName}`, { cwd: mode.projectRoot, stdio });
-    }
-    return true;
-  } catch {
-    return false;
-  }
+  const cmd = buildUninstallCommand(packageName, ctx);
+  if (!cmd) return true;
+  return runSpawn(cmd.argv, cmd.cwd, opts.silent ? "ignore" : "inherit");
+}
+
+function runSpawn(
+  argv: [string, ...string[]],
+  cwd: string | undefined,
+  stdio: "inherit" | "ignore",
+): boolean {
+  const [cmd, ...args] = argv;
+  // shell: true so that Windows `.cmd` shims (npm.cmd, pnpm.cmd, yarn.cmd)
+  // resolve via PATH the same way they do interactively.
+  const result = spawnSync(cmd, args, { cwd, stdio, shell: true });
+  return result.status === 0;
 }
 
 export async function langHandler(argv: Record<string, unknown>): Promise<void> {
@@ -125,23 +98,39 @@ export async function langHandler(argv: Record<string, unknown>): Promise<void> 
 }
 
 async function langAdd(packageName: string): Promise<void> {
+  const ctx = detectInstallContext();
+  if (ctx.kind === "abort") {
+    console.error(formatAbort(ctx));
+    process.exit(1);
+  }
+
   const nodeModulesDir = resolveNodeModulesDir();
   if (!nodeModulesDir) {
     console.error("Could not resolve node_modules directory. Is reponova installed?");
     process.exit(1);
   }
 
-  const installMode = detectInstallMode(nodeModulesDir);
-
-  // Check if already present in node_modules (e.g. npm link, prior install)
+  // Check if already present in node_modules (e.g. npm link, prior install).
   const pkgDir = join(nodeModulesDir, ...packageName.split("/"));
   const wasAlreadyInstalled = existsSync(pkgDir);
   let plugin = await importPlugin(nodeModulesDir, packageName);
 
   if (!plugin) {
     if (!wasAlreadyInstalled) {
-      console.log(`Installing ${packageName}...`);
-      if (!runNpmInstall(packageName, installMode)) {
+      if (ctx.kind === "linked") {
+        // Dev mode / npm link: refuse to touch reponova's own dependencies.
+        console.error(
+          `Plugin ${packageName} is not linked into ${nodeModulesDir}, and reponova is ` +
+            `running from a non-installed location (${ctx.reponovaDir}).\n` +
+            `Link or install the plugin manually, e.g.\n` +
+            `  cd /path/to/${packageName} && npm link\n` +
+            `  cd ${ctx.reponovaDir} && npm link ${packageName}`,
+        );
+        process.exit(1);
+      }
+
+      console.log(`Installing ${packageName} (${describeContext(ctx)})...`);
+      if (!runPmAdd(packageName, ctx)) {
         console.error(`Failed to install ${packageName}`);
         process.exit(1);
       }
@@ -149,9 +138,9 @@ async function langAdd(packageName: string): Promise<void> {
 
     plugin = await importPlugin(nodeModulesDir, packageName);
     if (!plugin) {
-      // Rollback only if we installed it ourselves
+      // Rollback only if we installed it ourselves.
       if (!wasAlreadyInstalled) {
-        runNpmUninstall(packageName, installMode, { silent: true });
+        runPmRemove(packageName, ctx, { silent: true });
       }
       console.error(`Package ${packageName} does not export a valid LanguagePlugin (missing plugin.id or plugin.extractor)`);
       process.exit(1);
@@ -181,14 +170,20 @@ async function langRemove(id: string): Promise<void> {
 
   const packageName = pluginEntry.package ?? `${OFFICIAL_PREFIX}${id}`;
 
-  // Uninstall from node_modules (only if package is actually installed, not linked)
+  // Uninstall from node_modules (only if package is actually installed, not linked).
   const nodeModulesDir = resolveNodeModulesDir();
   if (nodeModulesDir) {
     const pkgDir = join(nodeModulesDir, ...packageName.split("/"));
     if (existsSync(pkgDir)) {
-      console.log(`Removing ${packageName}...`);
-      // npm uninstall may fail for linked packages — continue with config removal
-      runNpmUninstall(packageName, detectInstallMode(nodeModulesDir));
+      const ctx = detectInstallContext();
+      // In linked / abort contexts we skip the PM call entirely (linked: would
+      // mutate reponova's own deps; abort: nothing safe to do here, just clean
+      // up the config below).
+      if (ctx.kind === "global" || ctx.kind === "local") {
+        console.log(`Removing ${packageName} (${describeContext(ctx)})...`);
+        // The PM call may fail for linked packages — continue with config removal.
+        runPmRemove(packageName, ctx);
+      }
     }
   }
 
