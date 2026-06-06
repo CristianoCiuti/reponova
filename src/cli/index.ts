@@ -206,8 +206,13 @@ const enrichFinalizeCommand: CommandModule = {
 
 const langCommand: CommandModule = {
   command: "lang",
-  describe: "Manage language plugins (add, remove, list)",
-  builder: (y) => y.strictCommands(false).strict(false),
+  describe: "Manage language plugins (add, remove, list, suggest)",
+  builder: (y) =>
+    y
+      .strictCommands(false)
+      .strict(false)
+      .option("dry-run", { type: "boolean", describe: "lang suggest: only print the report, no prompt" })
+      .option("yes", { type: "boolean", describe: "lang suggest: install all suggestions without prompt" }),
   handler: async (argv) => {
     const { langHandler } = await import("./lang.js");
     await langHandler(argv);

@@ -105,7 +105,10 @@ describe("reponova lang CLI", () => {
       const result = run("lang add yargs", tmpDir);
       expect(result.exitCode).toBe(1);
       const output = result.stdout + result.stderr;
-      expect(output).toContain("does not export a valid LanguagePlugin");
+      // The new check distinguishes WHY a package isn't a usable plugin.
+      // For yargs (no `reponova.type` field), we expect the
+      // "not a reponova language plugin" diagnostic.
+      expect(output).toMatch(/not a reponova language plugin|reponova\.type/i);
     });
 
     it("should preserve comments and user-set fields when re-adding existing plugin", () => {

@@ -9,11 +9,9 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { parseDocument, isMap, YAMLMap, type Document } from "yaml";
 import { resolveNodeModulesDir } from "../plugin/discovery.js";
 import { loadConfig } from "../shared/config.js";
-import type { LanguagePlugin } from "../plugin/types.js";
 import {
   detectInstallContext,
   buildInstallCommand,
@@ -22,6 +20,7 @@ import {
   formatAbort,
   type InstallContext,
 } from "../plugin/install-context.js";
+import { checkPluginStatus, describeNotInstalled } from "../plugin/installed-check.js";
 
 /** Standard shorthand prefix — if package matches this, no `package:` field needed in config. */
 const OFFICIAL_PREFIX = "@reponova/lang-";
@@ -91,13 +90,22 @@ export async function langHandler(argv: Record<string, unknown>): Promise<void> 
     case "list":
       await langList();
       break;
+    case "suggest": {
+      const { langSuggest } = await import("./lang-suggest.js");
+      await langSuggest({
+        dryRun: argv["dry-run"] === true || argv.dryRun === true,
+        yes: argv.yes === true,
+      });
+      break;
+    }
     default:
-      console.error("Usage: reponova lang <add|remove|list> [package|id]");
+      console.error("Usage: reponova lang <add|remove|list|suggest> [package|id]");
+      console.error("  suggest options: --dry-run (report only), --yes (install all without prompt)");
       process.exit(1);
   }
 }
 
-async function langAdd(packageName: string): Promise<void> {
+export async function langAdd(packageName: string): Promise<void> {
   const ctx = detectInstallContext();
   if (ctx.kind === "abort") {
     console.error(formatAbort(ctx));
@@ -113,9 +121,9 @@ async function langAdd(packageName: string): Promise<void> {
   // Check if already present in node_modules (e.g. npm link, prior install).
   const pkgDir = join(nodeModulesDir, ...packageName.split("/"));
   const wasAlreadyInstalled = existsSync(pkgDir);
-  let plugin = await importPlugin(nodeModulesDir, packageName);
+  let status = await checkPluginStatus(packageName, nodeModulesDir);
 
-  if (!plugin) {
+  if (status.kind !== "loaded") {
     if (!wasAlreadyInstalled) {
       if (ctx.kind === "linked") {
         // Dev mode / npm link: refuse to touch reponova's own dependencies.
@@ -136,16 +144,18 @@ async function langAdd(packageName: string): Promise<void> {
       }
     }
 
-    plugin = await importPlugin(nodeModulesDir, packageName);
-    if (!plugin) {
+    status = await checkPluginStatus(packageName, nodeModulesDir);
+    if (status.kind !== "loaded") {
       // Rollback only if we installed it ourselves.
       if (!wasAlreadyInstalled) {
         runPmRemove(packageName, ctx, { silent: true });
       }
-      console.error(`Package ${packageName} does not export a valid LanguagePlugin (missing plugin.id or plugin.extractor)`);
+      console.error(describeNotInstalled(status.reason, packageName));
       process.exit(1);
     }
   }
+
+  const { plugin } = status;
 
   // Update reponova.yml
   const configPath = findOrCreateConfig();
@@ -222,13 +232,12 @@ async function langList(): Promise<void> {
     if (!enabled) {
       status = "(disabled)";
     } else if (nodeModulesDir) {
-      const plugin = await importPlugin(nodeModulesDir, packageName);
-      if (plugin) {
-        const version = readInstalledVersion(nodeModulesDir, packageName);
-        const mode = plugin.grammarPath ? "tree-sitter" : "regex";
-        status = `${plugin.extensions.join(", ")}  ${packageName}@${version}  [${mode}]`;
+      const result = await checkPluginStatus(packageName, nodeModulesDir);
+      if (result.kind === "loaded") {
+        const mode = result.plugin.grammarPath ? "tree-sitter" : "regex";
+        status = `${result.plugin.extensions.join(", ")}  ${packageName}@${result.version}  [${mode}]`;
       } else {
-        status = `(not installed — run: reponova lang add ${packageName})`;
+        status = `(${describeNotInstalled(result.reason, packageName)})`;
       }
     }
 
@@ -237,41 +246,6 @@ async function langList(): Promise<void> {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-async function importPlugin(nodeModulesDir: string, packageName: string): Promise<LanguagePlugin | null> {
-  const pkgDir = join(nodeModulesDir, ...packageName.split("/"));
-  const pkgJsonPath = join(pkgDir, "package.json");
-
-  if (!existsSync(pkgJsonPath)) return null;
-
-  try {
-    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-    const meta = pkgJson.reponova as Record<string, unknown> | undefined;
-    if (meta?.type !== "language") return null;
-
-    const exports = pkgJson.exports as Record<string, string> | undefined;
-    const entryFile = exports?.["."] ?? "./dist/index.js";
-    const entryPath = join(pkgDir, entryFile);
-
-    const mod = await import(pathToFileURL(entryPath).href);
-    const plugin: LanguagePlugin = mod.plugin ?? mod.default;
-
-    if (!plugin?.id || !plugin?.extractor) return null;
-    return plugin;
-  } catch {
-    return null;
-  }
-}
-
-function readInstalledVersion(nodeModulesDir: string, packageName: string): string {
-  const pkgJsonPath = join(nodeModulesDir, ...packageName.split("/"), "package.json");
-  try {
-    const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-    return (pkg.version as string) ?? "?";
-  } catch {
-    return "?";
-  }
-}
 
 /**
  * Find existing reponova.yml using the standard resolution chain.

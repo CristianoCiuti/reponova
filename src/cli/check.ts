@@ -85,24 +85,83 @@ export async function checkHandler(argv: Record<string, unknown>): Promise<void>
       checks.push({ label: "Graph", status: "reponova-out/ not found ✗", ok: false });
     }
 
-    // Check language plugins
+    // Check language plugins:
+    // iterate over DECLARED plugins (config.plugins) — not just the ones
+    // that loaded successfully — so we can surface
+    // "declared but not installed" entries explicitly instead of hiding
+    // them behind a single log.warn during discovery.
     try {
       const { loadConfig } = await import("../shared/config.js");
-      const { loadDeclaredPlugins, getDiscoveredPlugins } = await import("../plugin/discovery.js");
+      const { resolveNodeModulesDir, resolvePluginPackage } = await import(
+        "../plugin/discovery.js"
+      );
+      const { checkPluginStatus, describeNotInstalled } = await import(
+        "../plugin/installed-check.js"
+      );
       const { config } = loadConfig(argv.config as string | undefined);
-      await loadDeclaredPlugins(config);
-      const plugins = getDiscoveredPlugins();
-      if (plugins.length > 0) {
-        const lines = plugins.map((p) => {
-          const mode = p.hasGrammar ? "tree-sitter ✓" : "regex";
-          return `${p.id} (${p.extensions.join(", ")}) — ${p.packageName}@${p.version} [${mode}]`;
+
+      const declared = Object.entries(config.plugins);
+      const nodeModulesDir = resolveNodeModulesDir();
+
+      if (declared.length === 0) {
+        checks.push({
+          label: "Language plugins",
+          status: "none declared (run: reponova lang suggest)",
+          ok: true,
         });
-        checks.push({ label: "Language plugins", status: `${plugins.length} plugin(s): ${lines.join("; ")} ✓`, ok: true });
+      } else if (!nodeModulesDir) {
+        checks.push({
+          label: "Language plugins",
+          status: "could not resolve node_modules/ ✗",
+          ok: false,
+        });
       } else {
-        checks.push({ label: "Language plugins", status: "none installed (run: reponova lang add <name>)", ok: true });
+        const loaded: string[] = [];
+        const missing: { id: string; message: string }[] = [];
+        const disabled: string[] = [];
+
+        for (const [id, cfg] of declared) {
+          if (cfg.enabled === false) {
+            disabled.push(id);
+            continue;
+          }
+          const packageName = resolvePluginPackage(id, cfg as { package?: string });
+          const status = await checkPluginStatus(packageName, nodeModulesDir);
+          if (status.kind === "loaded") {
+            const mode = status.plugin.grammarPath ? "tree-sitter" : "regex";
+            loaded.push(
+              `${id} (${status.plugin.extensions.join(", ")}) — ${packageName}@${status.version} [${mode}]`,
+            );
+          } else {
+            missing.push({ id, message: describeNotInstalled(status.reason, packageName) });
+          }
+        }
+
+        if (missing.length === 0) {
+          const detail = loaded.length > 0 ? `: ${loaded.join("; ")}` : "";
+          const suffix = disabled.length > 0 ? ` (${disabled.length} disabled)` : "";
+          checks.push({
+            label: "Language plugins",
+            status: `${loaded.length} plugin(s)${suffix}${detail} ✓`,
+            ok: true,
+          });
+        } else {
+          const lines = missing.map((m) => `  ${m.id}: ${m.message}`);
+          checks.push({
+            label: "Language plugins",
+            status:
+              `${missing.length} declared but not installed, ${loaded.length} loaded ✗\n` +
+              lines.join("\n"),
+            ok: false,
+          });
+        }
       }
-    } catch {
-      checks.push({ label: "Language plugins", status: "discovery failed", ok: true });
+    } catch (err) {
+      checks.push({
+        label: "Language plugins",
+        status: `discovery failed: ${err instanceof Error ? err.message : String(err)}`,
+        ok: false,
+      });
     }
 
     // Check tree-sitter runtime
