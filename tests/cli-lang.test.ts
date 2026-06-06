@@ -54,6 +54,9 @@ describe("reponova lang CLI", () => {
       expect(content).toContain("enabled: true");
       // Official package → no "package:" field
       expect(content).not.toContain("package:");
+      // Result must be human-readable block YAML, not a flow-style blob.
+      expect(content).toMatch(/^plugins:\r?\n\s+python:\r?\n\s+enabled: true/m);
+      expect(content).not.toMatch(/\{[^}]*enabled/);
     });
 
     it("should add to existing reponova.yml with plugins: {}", () => {
@@ -67,6 +70,25 @@ describe("reponova lang CLI", () => {
       expect(content).toContain("plantuml:");
       expect(content).toContain("enabled: true");
       expect(content).toContain("parse: true"); // configDefaults
+      // Regression: a seed `plugins: {}` (flow) used to lock the section
+      // into flow style, producing `plugins: { plantuml: { enabled: ... } }`.
+      // We force block style on add to avoid this.
+      expect(content).not.toMatch(/\{[^}]*enabled/);
+    });
+
+    it("should produce block-style YAML when adding multiple plugins to a fresh config", () => {
+      // Reproduces the `lang suggest` scenario: no reponova.yml exists, then
+      // multiple plugins get installed one after the other. The resulting
+      // file must be a readable multiline mapping, not a one-line flow blob.
+      const r1 = run("lang add @reponova/lang-python", tmpDir);
+      expect(r1.exitCode).toBe(0);
+      const r2 = run("lang add @reponova/lang-plantuml", tmpDir);
+      expect(r2.exitCode).toBe(0);
+
+      const content = readFileSync(join(tmpDir, "reponova.yml"), "utf-8");
+      expect(content).not.toMatch(/\{[^}]*enabled/);
+      expect(content).toMatch(/^plugins:\r?\n\s+python:\r?\n\s+enabled: true/m);
+      expect(content).toMatch(/\r?\n\s+plantuml:\r?\n\s+parse: true/);
     });
 
     it("should add to existing plugins section", () => {

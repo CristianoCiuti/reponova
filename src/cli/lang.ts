@@ -412,13 +412,17 @@ function findOrCreateConfig(): string {
   if (existing) return existing;
 
   const newPath = join(process.cwd(), "reponova.yml");
+  // Empty mapping is written as a bare key (`plugins:`) — a flow-style
+  // `plugins: {}` seed would lock the section into flow mode, so every
+  // subsequent `lang add` would render an unreadable single-line blob like
+  // `plugins: { javascript: { enabled: true }, json: { ... } }`.
   const content = `output: reponova-out
 
 repos:
   - name: this
     path: .
 
-plugins: {}
+plugins:
 `;
   writeFileSync(newPath, content, "utf-8");
   console.log(`Created ${newPath}`);
@@ -482,6 +486,10 @@ function addPluginToConfig(
       plugins = new YAMLMap();
       doc.set("plugins", plugins);
     }
+    // Force block style — a user (or a stale seed file) may have left
+    // `plugins: {}` or a flow-style entry, which would otherwise propagate
+    // to every value we add, producing single-line `{ ... }` blobs.
+    plugins.flow = false;
 
     const entryNode = plugins.get(id);
     let entry: YAMLMap;
@@ -491,6 +499,7 @@ function addPluginToConfig(
       entry = new YAMLMap();
       plugins.set(id, entry);
     }
+    entry.flow = false;
 
     if (configDefaults) {
       for (const [key, value] of Object.entries(configDefaults)) {
