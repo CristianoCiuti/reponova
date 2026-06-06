@@ -58,8 +58,13 @@ interface SuggestOptions {
 }
 
 export async function langSuggest(opts: SuggestOptions = {}): Promise<void> {
+  // Load config once (or `null` if absent) and reuse it for both scan-roots
+  // resolution and installed-plugin lookup — otherwise we'd log "Using
+  // config: …" twice.
+  const ctx = loadSuggestContext();
+
   // ─── 1. Scan roots ──────────────────────────────────────────────────────
-  const { roots, configExclude, source } = resolveScanRoots();
+  const { roots, configExclude, source } = resolveScanRoots(ctx);
   if (roots.length === 0) {
     console.error("No directory to scan (cwd does not exist?).");
     process.exit(1);
@@ -84,7 +89,7 @@ export async function langSuggest(opts: SuggestOptions = {}): Promise<void> {
   console.log("Querying npm registry for available plugins...");
   const [registryCandidates, installedExtensions] = await Promise.all([
     discoverPluginsOnRegistry(),
-    resolveInstalledExtensions(),
+    resolveInstalledExtensions(ctx),
   ]);
   const extToCandidate = indexByExtension(registryCandidates);
 
@@ -121,6 +126,32 @@ export async function langSuggest(opts: SuggestOptions = {}): Promise<void> {
   await promptAndInstall(suggestions);
 }
 
+// ─── Suggest context (config loaded once) ───────────────────────────────────
+
+/**
+ * Result of loading the reponova config for `lang suggest`. We load it once
+ * up-front and thread it through both scan-root resolution and installed-
+ * plugin lookup so that the "Using config: …" banner doesn't double-print.
+ */
+interface SuggestContext {
+  configPath: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  config: any | null;
+}
+
+function loadSuggestContext(): SuggestContext {
+  const configPath = findConfig();
+  if (!configPath || !existsSync(configPath)) {
+    return { configPath: null, config: null };
+  }
+  try {
+    const { config } = loadConfig(configPath);
+    return { configPath, config };
+  } catch {
+    return { configPath, config: null };
+  }
+}
+
 // ─── Scan roots resolution ──────────────────────────────────────────────────
 
 interface ScanRoots {
@@ -129,20 +160,14 @@ interface ScanRoots {
   source: "config" | "cwd";
 }
 
-function resolveScanRoots(): ScanRoots {
-  const configPath = findConfig();
-  if (configPath && existsSync(configPath)) {
-    try {
-      const { config } = loadConfig(configPath);
-      const configDir = dirname(configPath);
-      const roots = (config.repos ?? [])
-        .map((r) => (isAbsolute(r.path) ? r.path : resolve(configDir, r.path)))
-        .filter((p) => existsSync(p));
-      if (roots.length > 0) {
-        return { roots, configExclude: config.exclude ?? [], source: "config" };
-      }
-    } catch {
-      // Fall through to cwd
+function resolveScanRoots(ctx: SuggestContext): ScanRoots {
+  if (ctx.configPath && ctx.config) {
+    const configDir = dirname(ctx.configPath);
+    const roots = (ctx.config.repos ?? [])
+      .map((r: { path: string }) => (isAbsolute(r.path) ? r.path : resolve(configDir, r.path)))
+      .filter((p: string) => existsSync(p));
+    if (roots.length > 0) {
+      return { roots, configExclude: ctx.config.exclude ?? [], source: "config" };
     }
   }
   const cwd = process.cwd();
@@ -174,24 +199,17 @@ function describeRoots(roots: string[], source: "config" | "cwd"): string {
  * plugin in the current reponova config. Built-in markdown extensions
  * are not included here — they're handled separately in `classify`.
  */
-async function resolveInstalledExtensions(): Promise<Set<string>> {
+async function resolveInstalledExtensions(ctx: SuggestContext): Promise<Set<string>> {
   const covered = new Set<string>();
-  const configPath = findConfig();
-  if (!configPath) return covered;
+  if (!ctx.config) return covered;
 
   const nodeModulesDir = resolveNodeModulesDir();
   if (!nodeModulesDir) return covered;
 
-  let config;
-  try {
-    ({ config } = loadConfig(configPath));
-  } catch {
-    return covered;
-  }
-
-  for (const [id, cfg] of Object.entries(config.plugins ?? {})) {
-    if (cfg.enabled === false) continue;
-    const packageName = resolvePluginPackage(id, cfg as { package?: string });
+  for (const [id, cfg] of Object.entries(ctx.config.plugins ?? {})) {
+    const pluginCfg = cfg as { package?: string; enabled?: boolean };
+    if (pluginCfg.enabled === false) continue;
+    const packageName = resolvePluginPackage(id, pluginCfg);
     const status = await checkPluginStatus(packageName, nodeModulesDir);
     if (status.kind === "loaded") {
       for (const ext of status.plugin.extensions) {

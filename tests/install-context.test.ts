@@ -7,8 +7,8 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { join, sep } from "node:path";
-import { tmpdir } from "node:os";
+import { join, sep, dirname } from "node:path";
+import { tmpdir, platform } from "node:os";
 import {
   detectInstallContext,
   detectPackageManager,
@@ -151,6 +151,42 @@ describe("detectInstallContext", () => {
 
     const ctx = detectInstallContext(dir);
     expect(ctx.kind).toBe("linked");
+  });
+
+  /**
+   * Regression: version managers (fnm, nvm-windows, Volta, asdf, …) install
+   * global packages right next to `node.exe`, NOT in `%APPDATA%\npm` /
+   * `/usr/local/lib/node_modules`. `global-directory@4` doesn't know these
+   * layouts on Windows, so we fall back to a `process.execPath`-derived
+   * candidate. This test makes sure the fallback fires.
+   */
+  it("detects global install when reponova lives next to process.execPath (fnm / Volta / system Node)", () => {
+    // Build a layout that matches the platform's `<execPath dir>` convention:
+    //   Windows: <install>/node.exe   + <install>/node_modules/reponova
+    //   POSIX:   <prefix>/bin/node    + <prefix>/lib/node_modules/reponova
+    const isWindows = platform() === "win32";
+    const installRoot = join(tmp, "fake-version-manager");
+    const fakeNode = isWindows
+      ? join(installRoot, "node.exe")
+      : join(installRoot, "bin", "node");
+    mkdirSync(dirname(fakeNode), { recursive: true });
+    writeFileSync(fakeNode, "", "utf-8");
+
+    const reponovaDir = isWindows
+      ? makeReponovaTree(installRoot, ["node_modules"])
+      : makeReponovaTree(installRoot, ["lib", "node_modules"]);
+
+    const originalDescriptor = Object.getOwnPropertyDescriptor(process, "execPath")!;
+    Object.defineProperty(process, "execPath", { value: fakeNode, configurable: true, writable: true });
+    try {
+      const ctx = detectInstallContext(reponovaDir);
+      expect(ctx.kind).toBe("global");
+      if (ctx.kind === "global") {
+        expect(ctx.packageManager).toBe("npm");
+      }
+    } finally {
+      Object.defineProperty(process, "execPath", originalDescriptor);
+    }
   });
 });
 

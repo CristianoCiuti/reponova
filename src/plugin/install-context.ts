@@ -100,12 +100,41 @@ function matchGlobalDir(
 /**
  * Yield each candidate global packages directory. Order matters: more
  * specific matchers (pnpm, yarn) come before the generic npm prefix so
- * that overlapping layouts resolve to the correct PM.
+ * that overlapping layouts resolve to the correct PM. The final
+ * `execPath`-derived fallback catches version managers (fnm, nvm,
+ * Volta, asdf, Homebrew Cellar) whose layouts aren't hardcoded into
+ * `global-directory@4`.
  */
 function* globalCandidates(): Generator<{ pm: PackageManager; dir: string | null }> {
   yield { pm: "pnpm", dir: getPnpmGlobalPackagesDir() };
   yield { pm: "yarn", dir: globalDirectory.yarn?.packages ?? null };
   yield { pm: "npm", dir: globalDirectory.npm?.packages ?? null };
+  yield { pm: "npm", dir: getExecPathGlobalDir() };
+}
+
+/**
+ * Global packages dir derived from `process.execPath`. Universal fallback
+ * for version managers that bypass the conventional npm prefix locations.
+ *
+ * Layouts handled:
+ *   • Windows (fnm, nvm-windows): `<install>/node.exe`         → `<install>/node_modules`
+ *   • POSIX   (nvm, asdf, Volta, system): `<prefix>/bin/node`  → `<prefix>/lib/node_modules`
+ *   • Homebrew Cellar: same POSIX rule (Cellar puts node under `<cellar>/bin/node`)
+ *
+ * Cheap to compute and based on the Node process actually running reponova,
+ * so it's correct even when the user's `npm prefix -g` is misconfigured.
+ */
+function getExecPathGlobalDir(): string | null {
+  try {
+    const exec = process.execPath;
+    if (!exec) return null;
+    if (platform() === "win32") {
+      return join(dirname(exec), "node_modules");
+    }
+    return join(dirname(dirname(exec)), "lib", "node_modules");
+  } catch {
+    return null;
+  }
 }
 
 /**
