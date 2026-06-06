@@ -284,15 +284,40 @@ reponova mcp [--graph <path>]
 
 ### `reponova check`
 
-Validate config, grammar availability, and display resolved paths.
+Health check for graph artifacts, search index, outlines, tree-sitter runtime, and declared language plugins. Exits `1` if anything is missing — declared-but-not-installed plugins are listed with the exact `lang add` command to fix them.
 
 ```bash
-reponova check [--config <path>]
+reponova check [--config <path>] [--graph <path>]
 ```
 
 | Option | Required | Description |
 |--------|----------|-------------|
 | `--config` | No | Path to `reponova.yml` (default: auto-detected) |
+| `--graph` | No | Path to output directory. Default: `./reponova-out` |
+
+### `reponova lang`
+
+Manage language plugins. The package manager (`npm` / `pnpm` / `yarn` / `bun`) and install scope (global / local / linked) are detected automatically.
+
+```bash
+reponova lang <subcommand> [args] [flags]
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `add <package>` | Install a language plugin and declare it in `reponova.yml` |
+| `remove <id>` | Remove a plugin from `reponova.yml` and uninstall its package |
+| `list` | List declared plugins with their load status |
+| `suggest` | Scan repos, find used file extensions, propose matching plugins (interactive) |
+
+| Flag | Applies to | Description |
+|------|-----------|-------------|
+| `--config-only` | `remove` | Only update `reponova.yml`, keep the package installed |
+| `--purge-global` | `remove` | In global context, uninstall without confirmation prompt |
+| `--dry-run` | `suggest` | Print the report only, skip the interactive prompt |
+| `--yes` | `suggest` | Install all suggestions without prompting (CI mode) |
+
+By default, `remove` on a globally-installed reponova prompts before touching the system-wide package (and skips it with a warning in non-interactive shells). `suggest` queries the public npm registry for `@reponova/lang-*` plus any community plugin tagged `reponova-plugin` / `reponova-language`.
 
 ### `reponova cache`
 
@@ -346,10 +371,12 @@ All official plugins are developed in the [`reponova-langs`](https://github.com/
 | JavaScript | [`@reponova/lang-javascript`](https://www.npmjs.com/package/@reponova/lang-javascript) | `.js`, `.mjs`, `.cjs`, `.jsx` | Functions, classes, methods, arrow-function components, class fields / getters / setters, decorators (`async` / `generator` / `static`), JSDoc docstrings, ES `import` + CommonJS `require`, calls (incl. JSX components and React hooks), `extends` heritage. Tree-sitter AST outlines. |
 | TypeScript | [`@reponova/lang-typescript`](https://www.npmjs.com/package/@reponova/lang-typescript) | `.ts`, `.mts`, `.cts` | Functions, classes (incl. `abstract`), methods, interfaces, type aliases, enums, namespaces / modules, class fields with full modifier markers, getters / setters, exported `const` bindings, JSDoc docstrings, imports, `extends` / `implements` heritage, calls. Tree-sitter AST outlines. |
 | TSX | [`@reponova/lang-tsx`](https://www.npmjs.com/package/@reponova/lang-tsx) | `.tsx` | Same shape as `lang-typescript` against the JSX-aware grammar. Captures React functional components, JSX-element calls, hooks, plus all TS symbols (interfaces, type aliases, enums, namespaces, …). Tree-sitter AST outlines. |
+| JSON / JSONC | [`@reponova/lang-json`](https://www.npmjs.com/package/@reponova/lang-json) | `.json`, `.jsonc` | Schema-aware extraction for canonical JS/TS configs: `package.json` (name, `scripts.*`, `bin`, dependencies as imports), `tsconfig*.json` (`extends`, `references[].path`, `compilerOptions.paths` aliases), `nx.json` and `project.json` (targets, `namedInputs`, tags, `implicitDependencies`), `turbo.json` (`pipeline.*` / `tasks.*`), npm / `lerna.json` workspaces. Generic JSON / JSONC fallback surfaces top-level keys (capped via `maxGenericKeys`). Uses `jsonc-parser` — supports trailing commas and `//` / `/* */` comments. |
 | PlantUML | [`@reponova/lang-plantuml`](https://www.npmjs.com/package/@reponova/lang-plantuml) | `.puml`, `.plantuml` | Classes / interfaces / enums, sequence-diagram participants (actor, boundary, control, entity, …), state diagrams (incl. implicit states), components / deployment nodes, C4-DSL macros (`Person`, `System`, `Container`, `Component`, …), relationships (extends, association, aggregation, composition). |
 | SVG | [`@reponova/lang-svg`](https://www.npmjs.com/package/@reponova/lang-svg) | `.svg` | File `<title>` as docstring, plus up to 20 labels per file from `<text>` / `<title>` / `<desc>` / `aria-label` (essential for path-only icon SVGs). Source kind preserved per symbol. Useful for design assets, hand-authored diagrams, icon libraries, rendered Mermaid / PlantUML output. |
 
 ```bash
+reponova lang suggest                         # scan repos + propose plugins (interactive)
 reponova lang add @reponova/lang-python
 reponova lang add @reponova/lang-typescript
 reponova lang add @reponova/lang-tsx
@@ -357,6 +384,8 @@ reponova lang add @exampleorg/lang-rust       # community plugins work too
 reponova lang list                            # show declared plugins
 reponova lang remove svg                      # uninstall by plugin id
 ```
+
+See the [`reponova lang`](#reponova-lang) reference for the full subcommand and flag list.
 
 ### Edge Types
 
@@ -405,24 +434,24 @@ repos:
 
 # ── Providers (optional — AI backends) ────────────────────────────────────────
 # Default (no provider) = fully algorithmic. No downloads, no API keys.
-# providers:
-#   my-openai:
-#     type: openai                  # "openai" | "llama-cpp" | "onnx"
-#     base_url: https://api.openai.com/v1
-#     model: text-embedding-3-small
-#     api_key: ${OPENAI_API_KEY}    # env var (resolved at runtime)
-#     timeout: 30                   # seconds (default: 30)
-#   local-llm:
-#     type: llama-cpp
-#     model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
-#     context_size: 512
-#   local-embeddings:
-#     type: onnx
-#     model: all-MiniLM-L6-v2
-#   ollama:
-#     type: openai
-#     base_url: http://localhost:11434/v1
-#     model: nomic-embed-text
+providers:
+  my-openai:
+    type: openai                  # "openai" | "llama-cpp" | "onnx"
+    base_url: https://api.openai.com/v1
+    model: text-embedding-3-small
+    api_key: ${OPENAI_API_KEY}    # env var (resolved at runtime)
+    timeout: 30                   # seconds (default: 30)
+  local-llm:
+    type: llama-cpp
+    model: "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
+    context_size: 512
+  local-embeddings:
+    type: onnx
+    model: all-MiniLM-L6-v2
+  ollama:
+    type: openai
+    base_url: http://localhost:11434/v1
+    model: nomic-embed-text
 
 # ── Model Management ─────────────────────────────────────────────────────────
 models:
@@ -447,21 +476,21 @@ docs:
 # ── Language Plugins ──────────────────────────────────────────────────────────
 # Declare plugins here. Installed via `reponova lang add <package>`.
 # If `package` is omitted, resolved as @reponova/lang-<key>.
-# plugins:
-#   python:                          # shorthand → @reponova/lang-python
-#     enabled: true
-#   rust:                            # community plugin → explicit package
-#     package: "@exampleorg/lang-rust"
-#     enabled: true
-#   plantuml:
-#     enabled: true
-#     parse: true                    # plugin-specific option
+plugins:
+  python:                          # shorthand → @reponova/lang-python
+    enabled: true
+  rust:                            # community plugin → explicit package
+    package: "@exampleorg/lang-rust"
+    enabled: true
+  plantuml:
+    enabled: true
+    parse: true                    # plugin-specific option
 
 # ── Embeddings ────────────────────────────────────────────────────────────────
 # Default: TF-IDF (fast, no download). Set provider for ONNX or remote embeddings.
 embeddings:
   enabled: true
-  # provider: my-openai
+  provider: my-openai              # enables llm embeddings
   batch_size: 128
 
 # ── Enrich ────────────────────────────────────────────────────────────────────
@@ -469,6 +498,7 @@ embeddings:
 # With provider: intelligent multi-step LLM enrichment pipeline
 enrich:
   enabled: true
+  provider: local-llm             # enables intelligent enrichment
   threshold: 0.8                  # top 20% of nodes by degree get descriptions
   max_communities: 0              # 0 = no limit
   candidate_threshold: 0.3        # boundary ratio for routing candidates
@@ -476,16 +506,15 @@ enrich:
   routing_batch_size: 30
   concurrency: 4                  # max parallel LLM calls
   max_retry_depth: 3
-  # provider: local-llm           # enables intelligent enrichment
   max_tokens:                     # per-step LLM output token limits
     descriptions: 32768
     profiles: 2048
     routing: 8192
     restructure: 4096
-  # profile:                      # community profile prompt limits
-  #   max_nodes: 80
-  #   max_edges: 50
-  # restructure_max_pairs: 20
+  profile:                        # community profile prompt limits
+    max_nodes: 80
+    max_edges: 50
+  restructure_max_pairs: 20       # max cross-community pairs for merge/split analysis
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
 html: true
