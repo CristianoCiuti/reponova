@@ -5,9 +5,14 @@
  * A plugin is considered usable only when ALL of the following hold:
  *   1. its npm package exists under the resolved `node_modules/`
  *   2. its `package.json` has `reponova.type === "language"`
- *   3. its entry point is importable
- *   4. the imported module exports a valid `LanguagePlugin`
+ *   3. its `package.json` has a non-empty `reponova.extensions[]`
+ *   4. its entry point is importable
+ *   5. the imported module exports a valid `LanguagePlugin`
  *      (has `id` and `extractor`)
+ *
+ * Extensions are read EXCLUSIVELY from the manifest (`reponova.extensions`),
+ * not from the imported module — this is the single source of truth for
+ * what files the plugin claims to handle.
  *
  * Used by:
  *   • `reponova lang list`     — show ✓ vs "not installed"
@@ -21,14 +26,24 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { PLUGIN_TYPE_LANGUAGE } from "./manifest-spec.js";
 import type { LanguagePlugin } from "./types.js";
 
 /**
  * Outcome of `checkPluginStatus`. Discriminated union so callers can
  * decide what to render (icon, hint) without branching on string codes.
+ *
+ * `extensions` on the `loaded` variant is the authoritative list from
+ * the manifest — callers should use it directly instead of poking into
+ * the loaded `plugin` object.
  */
 export type PluginStatus =
-  | { kind: "loaded"; plugin: LanguagePlugin; version: string }
+  | {
+      kind: "loaded";
+      plugin: LanguagePlugin;
+      extensions: string[];
+      version: string;
+    }
   | { kind: "not-installed"; reason: NotInstalledReason };
 
 export type NotInstalledReason =
@@ -36,6 +51,8 @@ export type NotInstalledReason =
   | "missing"
   /** package.json exists but `reponova.type !== "language"` */
   | "not-a-language-plugin"
+  /** package.json has `reponova.type === "language"` but no extensions[] */
+  | "missing-extensions"
   /** Import failed (syntax error, missing native dep, ...) */
   | "import-failed"
   /** Module loaded but exported value isn't a valid LanguagePlugin */
@@ -66,8 +83,13 @@ export async function checkPluginStatus(
   }
 
   const meta = pkgJson.reponova as Record<string, unknown> | undefined;
-  if (meta?.type !== "language") {
+  if (meta?.type !== PLUGIN_TYPE_LANGUAGE) {
     return { kind: "not-installed", reason: "not-a-language-plugin" };
+  }
+
+  const extensions = normalizeExtensions(meta.extensions);
+  if (extensions.length === 0) {
+    return { kind: "not-installed", reason: "missing-extensions" };
   }
 
   const exports = pkgJson.exports as Record<string, string> | undefined;
@@ -87,7 +109,7 @@ export async function checkPluginStatus(
   }
 
   const version = typeof pkgJson.version === "string" ? pkgJson.version : "?";
-  return { kind: "loaded", plugin, version };
+  return { kind: "loaded", plugin, extensions, version };
 }
 
 /**
@@ -115,9 +137,19 @@ export function describeNotInstalled(
       return `declared but not installed — run: reponova lang add ${packageName}`;
     case "not-a-language-plugin":
       return `${packageName} is installed but is not a reponova language plugin (missing \`reponova.type: language\` in its package.json)`;
+    case "missing-extensions":
+      return `${packageName} is missing \`reponova.extensions\` in its package.json (this is the authoritative list of file extensions the plugin handles)`;
     case "import-failed":
       return `${packageName} is installed but failed to import — try reinstalling: reponova lang add ${packageName}`;
     case "invalid-export":
       return `${packageName} loaded but its default/plugin export is not a valid LanguagePlugin (missing id or extractor)`;
   }
+}
+
+/** Normalize a raw extensions value from `package.json` (filter + lowercase + dot). */
+function normalizeExtensions(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((e): e is string => typeof e === "string" && e.length > 0)
+    .map((e) => (e.startsWith(".") ? e : `.${e}`).toLowerCase());
 }

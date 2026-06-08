@@ -143,9 +143,6 @@ export interface LanguageExtractor {
   /** Language identifier (must match tree-sitter grammar name) */
   readonly languageId: string;
 
-  /** File extensions this extractor handles (e.g., [".py", ".pyw"]) */
-  readonly extensions: string[];
-
   /**
    * WASM grammar filename (e.g., "tree-sitter-python.wasm").
    * If provided, the pipeline parses with tree-sitter and passes the AST.

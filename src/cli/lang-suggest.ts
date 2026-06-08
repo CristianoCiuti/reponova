@@ -212,7 +212,7 @@ async function resolveInstalledExtensions(ctx: SuggestContext): Promise<Set<stri
     const packageName = resolvePluginPackage(id, pluginCfg);
     const status = await checkPluginStatus(packageName, nodeModulesDir);
     if (status.kind === "loaded") {
-      for (const ext of status.plugin.extensions) {
+      for (const ext of status.extensions) {
         covered.add(ext.toLowerCase());
       }
     }

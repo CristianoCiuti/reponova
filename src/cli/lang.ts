@@ -161,13 +161,12 @@ export async function langAdd(packageName: string): Promise<void> {
     }
   }
 
-  const { plugin } = status;
+  const { plugin, extensions } = status;
 
-  // Update reponova.yml
   const configPath = findOrCreateConfig();
   addPluginToConfig(configPath, plugin.id, packageName, plugin.configDefaults);
 
-  console.log(`✓ Installed ${packageName} → plugins.${plugin.id} (extensions: ${plugin.extensions.join(", ")})`);
+  console.log(`✓ Installed ${packageName} → plugins.${plugin.id} (extensions: ${extensions.join(", ")})`);
 }
 
 export interface RemoveOptions {
@@ -377,7 +376,7 @@ async function langList(): Promise<void> {
       const result = await checkPluginStatus(packageName, nodeModulesDir);
       if (result.kind === "loaded") {
         const mode = result.plugin.grammarPath ? "tree-sitter" : "regex";
-        status = `${result.plugin.extensions.join(", ")}  ${packageName}@${result.version}  [${mode}]`;
+        status = `${result.extensions.join(", ")}  ${packageName}@${result.version}  [${mode}]`;
       } else {
         status = `(${describeNotInstalled(result.reason, packageName)})`;
       }

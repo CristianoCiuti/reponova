@@ -2,15 +2,18 @@
  * Discover language plugins from the public npm registry.
  *
  * Strategy:
- *   1. SEARCH the registry for plugin candidates via two parallel queries:
- *        a. scope: `@reponova/lang-*` (official plugins)
- *        b. keyword: `reponova-language` (community plugins)
- *      Results are merged and de-duplicated by package name, with
- *      official packages taking precedence.
+ *   1. SEARCH the registry once for `keywords:reponova-language`. This is
+ *      the single canonical keyword every reponova language plugin must
+ *      declare (official `@reponova/lang-*` packages included — they get
+ *      no special bypass, just a ranking boost).
  *
- *   2. For each candidate, FETCH the latest manifest
- *      (`/<name>/latest`) to read the `reponova.extensions[]` field —
- *      the search API doesn't include it.
+ *   2. For each candidate, FETCH the latest manifest (`/<name>/latest`)
+ *      to read `reponova.type` and `reponova.extensions[]` — the search
+ *      API doesn't include them.
+ *
+ *   3. Filter out manifests that don't meet the discovery contract:
+ *        • `reponova.type === "language"`
+ *        • `reponova.extensions[]` non-empty
  *
  * The whole operation is best-effort: any network error degrades to an
  * empty result with a warning logged via `log.warn`, never throws.
@@ -19,17 +22,10 @@
  * and freshness is more valuable than the ~1-2s saved.
  */
 import { log } from "../shared/utils.js";
+import { KEYWORD_LANGUAGE, OFFICIAL_SCOPE_PREFIX, PLUGIN_TYPE_LANGUAGE } from "./manifest-spec.js";
 
 /** Public npm registry. Configurable via env for tests / corporate mirrors. */
 const REGISTRY = process.env.REPONOVA_NPM_REGISTRY ?? "https://registry.npmjs.org";
-/**
- * Keywords searched on the registry. Both are accepted to cover existing
- * community usage (`reponova-plugin`) and the documented convention
- * (`reponova-language`). False positives are filtered later by checking
- * `manifest.reponova.type === "language"`.
- */
-const PLUGIN_KEYWORDS = ["reponova-plugin", "reponova-language"] as const;
-const OFFICIAL_SCOPE_PREFIX = "@reponova/lang-";
 const REQUEST_TIMEOUT_MS = 8000;
 const SEARCH_PAGE_SIZE = 100;
 
@@ -82,32 +78,26 @@ interface ManifestResponse {
  * an empty array.
  */
 export async function discoverPluginsOnRegistry(): Promise<PluginCandidate[]> {
-  const [official, ...communityBatches] = await Promise.all([
-    searchOfficial(),
-    ...PLUGIN_KEYWORDS.map((kw) => searchByKeyword(kw)),
-  ]);
+  const hits = await searchByKeyword(KEYWORD_LANGUAGE);
 
-  // Dedupe by name; official entries (encountered first) win over community.
   const byName = new Map<string, { name: string; isOfficial: boolean }>();
-  for (const hit of official) byName.set(hit.package.name, { name: hit.package.name, isOfficial: true });
-  for (const batch of communityBatches) {
-    for (const hit of batch) {
-      if (!byName.has(hit.package.name)) {
-        byName.set(hit.package.name, { name: hit.package.name, isOfficial: false });
-      }
-    }
+  for (const hit of hits) {
+    if (byName.has(hit.package.name)) continue;
+    byName.set(hit.package.name, {
+      name: hit.package.name,
+      isOfficial: hit.package.name.startsWith(OFFICIAL_SCOPE_PREFIX),
+    });
   }
 
-  // Resolve manifests in parallel to populate `extensions[]`.
   const candidates = await Promise.all(
     [...byName.values()].map(async (entry): Promise<PluginCandidate | null> => {
       const manifest = await fetchManifest(entry.name);
       if (!manifest) return null;
-      if (manifest.reponova?.type !== "language") return null;
+      if (manifest.reponova?.type !== PLUGIN_TYPE_LANGUAGE) return null;
       const exts = Array.isArray(manifest.reponova.extensions)
         ? manifest.reponova.extensions.filter((e): e is string => typeof e === "string")
         : [];
-      if (exts.length === 0) return null; // useless for suggestion: skip
+      if (exts.length === 0) return null;
       return {
         name: entry.name,
         version: manifest.version ?? "?",
@@ -149,16 +139,6 @@ export function indexByExtension(
 }
 
 // ─── Network primitives ──────────────────────────────────────────────────────
-
-async function searchOfficial(): Promise<SearchHit[]> {
-  // The npm registry's `text:` qualifier treats input as a free-form
-  // substring against package names. Using the bare `@reponova` scope
-  // anchors results to that namespace (~8 results today); we then
-  // narrow client-side to the `@reponova/lang-*` prefix to filter out
-  // sibling packages like `reponova` itself.
-  const hits = await runSearch("@reponova");
-  return hits.filter((h) => h.package.name.startsWith(OFFICIAL_SCOPE_PREFIX));
-}
 
 async function searchByKeyword(keyword: string): Promise<SearchHit[]> {
   return runSearch(`keywords:${keyword}`);

@@ -11,8 +11,6 @@ import type { LanguageSupport } from "../outline/languages/types.js";
 export interface LanguagePlugin {
   /** Unique language identifier (e.g. "python", "plantuml") */
   readonly id: string;
-  /** File extensions handled (with leading dot, e.g. [".py", ".pyw"]) */
-  readonly extensions: string[];
   /** Label for file categorization in detected-files.json (default: plugin id) */
   readonly fileType?: string;
   /** Absolute path to a tree-sitter WASM grammar, if needed */

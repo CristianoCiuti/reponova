@@ -4,6 +4,11 @@
  * We stub `globalThis.fetch` to return canned npm-registry responses,
  * exercising the search → manifest → extension-index pipeline without
  * making real network calls. Tests are deterministic and offline-safe.
+ *
+ * Discovery model (post-v0.5): one keyword (`reponova-language`) is the
+ * single source of truth for what's a language plugin on npm. The
+ * `@reponova/lang-*` scope is just a ranking signal — packages under it
+ * still need the keyword to be discovered.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
@@ -43,30 +48,18 @@ describe("discoverPluginsOnRegistry", () => {
     vi.unstubAllGlobals();
   });
 
-  it("merges official + community results and reads extensions from manifests", async () => {
+  it("classifies @reponova/lang-* hits as official; everything else as community", async () => {
     installFetchStub({
       routes: [
-        // Official scope search (URL is decoded inside the stub matcher).
-        // Returns all `@reponova/*` packages; the client narrows to
-        // `@reponova/lang-*` before classifying as official.
-        {
-          match: "text=@reponova&",
-          body: {
-            objects: [
-              { package: { name: "reponova" } }, // sibling, must be filtered out
-              { package: { name: "@reponova/lang-python" } },
-            ],
-          },
-        },
-        // Community keyword: reponova-plugin
-        {
-          match: "text=keywords:reponova-plugin",
-          body: { objects: [{ package: { name: "@community/lang-elixir" } }] },
-        },
-        // Community keyword: reponova-language
+        // Single keyword search returns both official and community plugins.
         {
           match: "text=keywords:reponova-language",
-          body: { objects: [{ package: { name: "@reponova/lang-python" } }] }, // dup
+          body: {
+            objects: [
+              { package: { name: "@reponova/lang-python" } },
+              { package: { name: "@community/lang-elixir" } },
+            ],
+          },
         },
         // Manifests
         {
@@ -92,7 +85,7 @@ describe("discoverPluginsOnRegistry", () => {
 
     const result = await discoverPluginsOnRegistry();
     expect(result).toHaveLength(2);
-    // Official first
+    // Official ranked first
     expect(result[0]?.name).toBe("@reponova/lang-python");
     expect(result[0]?.isOfficial).toBe(true);
     expect(result[0]?.extensions).toEqual([".py", ".pyw"]);
@@ -101,11 +94,50 @@ describe("discoverPluginsOnRegistry", () => {
     expect(result[1]?.isOfficial).toBe(false);
   });
 
+  it("does NOT discover packages that lack the `reponova-language` keyword", async () => {
+    // No keyword hits → no candidates, even if some real plugin is published.
+    installFetchStub({
+      routes: [
+        { match: "text=keywords:reponova-language", body: { objects: [] } },
+      ],
+    });
+
+    const result = await discoverPluginsOnRegistry();
+    expect(result).toEqual([]);
+  });
+
+  it("dedupes duplicate hits in the search result", async () => {
+    installFetchStub({
+      routes: [
+        {
+          match: "text=keywords:reponova-language",
+          body: {
+            objects: [
+              { package: { name: "@reponova/lang-python" } },
+              { package: { name: "@reponova/lang-python" } }, // dup
+            ],
+          },
+        },
+        {
+          match: "@reponova/lang-python/latest",
+          body: {
+            name: "@reponova/lang-python",
+            version: "0.3.0",
+            reponova: { type: "language", extensions: [".py"] },
+          },
+        },
+      ],
+    });
+
+    const result = await discoverPluginsOnRegistry();
+    expect(result.map((c) => c.name)).toEqual(["@reponova/lang-python"]);
+  });
+
   it("skips packages whose manifest is not a language plugin", async () => {
     installFetchStub({
       routes: [
         {
-          match: "text=@reponova&",
+          match: "text=keywords:reponova-language",
           body: {
             objects: [
               { package: { name: "@reponova/lang-python" } },
@@ -113,7 +145,6 @@ describe("discoverPluginsOnRegistry", () => {
             ],
           },
         },
-        { match: "text=keywords:", body: { objects: [] } },
         {
           match: "@reponova/lang-python/latest",
           body: {
@@ -143,10 +174,9 @@ describe("discoverPluginsOnRegistry", () => {
     installFetchStub({
       routes: [
         {
-          match: "text=@reponova&",
+          match: "text=keywords:reponova-language",
           body: { objects: [{ package: { name: "@reponova/lang-empty" } }] },
         },
-        { match: "text=keywords:", body: { objects: [] } },
         {
           match: "@reponova/lang-empty/latest",
           body: {

@@ -25,6 +25,11 @@ import { MarkdownExtractor } from "../src/extract/languages/markdown.js";
 import { PlantUmlExtractor } from "@reponova/lang-plantuml";
 import { SvgExtractor } from "@reponova/lang-svg";
 
+// Routing — the single source of truth for which extractor handles a file is
+// the registry, populated from each plugin's manifest (`reponova.extensions[]`).
+// Extractor classes themselves no longer carry an `extensions` field.
+import { getExtractorForFile } from "../src/extract/languages/registry.js";
+
 // Pipeline
 import { detectAllFiles, type RegisteredFileType } from "../src/extract/index.js";
 import { DEFAULT_CONFIG } from "../src/shared/types.js";
@@ -172,10 +177,14 @@ describe("Markdown Extractor", () => {
     expect(extraction.fileNode.docstring).toContain("high-level architecture");
   });
 
-  it("should handle extensions correctly", () => {
-    expect(extractor.extensions).toContain(".md");
-    expect(extractor.extensions).toContain(".txt");
-    expect(extractor.extensions).toContain(".rst");
+  it("routes its extensions via the registry", () => {
+    // The registry is built from the built-in markdown extractor — the
+    // extractor class itself no longer carries an `extensions` field.
+    // We assert by `languageId` because the registry holds its own singleton
+    // instance, distinct from the one constructed locally in this test.
+    expect(getExtractorForFile("foo.md")?.languageId).toBe("markdown");
+    expect(getExtractorForFile("foo.txt")?.languageId).toBe("markdown");
+    expect(getExtractorForFile("foo.rst")?.languageId).toBe("markdown");
   });
 
   it("should not require wasmFile", () => {
@@ -233,9 +242,11 @@ describe("PlantUML Extractor", () => {
     });
   });
 
-  it("should handle extensions correctly", () => {
-    expect(extractor.extensions).toContain(".puml");
-    expect(extractor.extensions).toContain(".plantuml");
+  it("routes its extensions via the registry", () => {
+    const plantuml = getExtractorForFile("foo.puml");
+    expect(plantuml).toBeTruthy();
+    expect(plantuml?.languageId).toBe("plantuml");
+    expect(getExtractorForFile("foo.plantuml")?.languageId).toBe("plantuml");
   });
 
   it("should not require wasmFile", () => {
@@ -256,8 +267,10 @@ describe("SVG Extractor", () => {
     expect(names).toContain("DataProcessor");
   });
 
-  it("should handle extensions correctly", () => {
-    expect(extractor.extensions).toContain(".svg");
+  it("routes its extensions via the registry", () => {
+    const svg = getExtractorForFile("foo.svg");
+    expect(svg).toBeTruthy();
+    expect(svg?.languageId).toBe("svg");
   });
 
   it("should not require wasmFile", () => {

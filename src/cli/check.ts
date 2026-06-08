@@ -130,7 +130,7 @@ export async function checkHandler(argv: Record<string, unknown>): Promise<void>
           if (status.kind === "loaded") {
             const mode = status.plugin.grammarPath ? "tree-sitter" : "regex";
             loaded.push(
-              `${id} (${status.plugin.extensions.join(", ")}) — ${packageName}@${status.version} [${mode}]`,
+              `${id} (${status.extensions.join(", ")}) — ${packageName}@${status.version} [${mode}]`,
             );
           } else {
             missing.push({ id, message: describeNotInstalled(status.reason, packageName) });

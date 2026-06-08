@@ -1,8 +1,15 @@
 /**
  * Language plugin discovery and registration.
  *
- * Loads plugins declared in config.plugins. No filesystem scanning —
- * only explicitly declared plugins are loaded.
+ * Loads plugins declared in `config.plugins`. No filesystem scanning —
+ * only explicitly declared plugins are loaded (`scanReponovaScope` is the
+ * one exception, kept for tests that run without a config).
+ *
+ * Authoritative source of truth for every plugin attribute that npm could
+ * possibly need to see (type, extensions) is `package.json`. The imported
+ * module only contributes runtime behavior (`id`, `extractor`, `outline`,
+ * `grammarPath`, `configDefaults`). This eliminates the previous duplicate
+ * declaration of `extensions` in both code and manifest.
  *
  * Resolution rule: if plugin config has `package`, use it verbatim.
  * Otherwise resolve as `@reponova/lang-<key>`.
@@ -13,6 +20,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { registerExtractor } from "../extract/languages/registry.js";
 import { registerOutlineLanguage } from "../outline/languages/registry.js";
 import { registerGrammarPath } from "./grammar-registry.js";
+import { PLUGIN_TYPE_LANGUAGE } from "./manifest-spec.js";
 import type { LanguagePlugin } from "./types.js";
 import type { RegisteredFileType } from "../extract/index.js";
 import type { Config } from "../shared/types.js";
@@ -29,6 +37,16 @@ export interface DiscoveredPlugin {
   hasOutline: boolean;
 }
 
+/**
+ * Resolved manifest data for a plugin candidate (from its `package.json`).
+ * Extensions come from `manifest.reponova.extensions[]` — never from code.
+ */
+interface PluginManifest {
+  entryPath: string;
+  extensions: string[];
+  version: string;
+}
+
 const discoveredPlugins: DiscoveredPlugin[] = [];
 
 /**
@@ -39,40 +57,44 @@ export function resolvePluginPackage(key: string, config: { package?: string }):
 }
 
 /**
- * Load and register plugins declared in config.plugins.
- * No filesystem scanning — only explicitly declared plugins are loaded.
+ * Load and register plugins declared in `config.plugins`.
+ * Plugins missing `reponova.type` or `reponova.extensions[]` in their
+ * manifest are skipped with a warning — they cannot be safely routed.
  */
 export async function loadDeclaredPlugins(config: Config): Promise<void> {
   for (const [key, pluginConfig] of Object.entries(config.plugins)) {
     if (pluginConfig.enabled === false) continue;
 
     const packageName = resolvePluginPackage(key, pluginConfig);
-    const entryPath = resolvePluginEntry(packageName);
+    const manifest = resolvePluginManifest(packageName);
 
-    if (!entryPath) {
-      log.warn(`Plugin "${key}" (${packageName}) not found. Run: reponova lang add ${packageName}`);
+    if (!manifest) {
+      log.warn(
+        `Plugin "${key}" (${packageName}) not found or invalid manifest. ` +
+          `Run: reponova lang add ${packageName}`,
+      );
       continue;
     }
 
     try {
-      const mod = await import(pathToFileURL(entryPath).href);
+      const mod = await import(pathToFileURL(manifest.entryPath).href);
       const plugin: LanguagePlugin = mod.plugin ?? mod.default;
 
       if (!plugin?.id || !plugin?.extractor) {
-        log.warn(`Plugin "${key}" (${packageName}): invalid export (missing plugin.id or plugin.extractor)`);
+        log.warn(
+          `Plugin "${key}" (${packageName}): invalid export ` +
+            `(missing plugin.id or plugin.extractor)`,
+        );
         continue;
       }
 
-      // Register extractor
-      registerExtractor(plugin.extractor);
+      registerExtractor(plugin.extractor, manifest.extensions);
 
-      // Register outline if provided
       if (plugin.outline) {
-        const extsNoDot = plugin.extensions.map((e) => e.replace(/^\./, ""));
+        const extsNoDot = manifest.extensions.map((e) => e.replace(/^\./, ""));
         registerOutlineLanguage(plugin.id, extsNoDot, plugin.outline);
       }
 
-      // Register grammar path if provided
       if (plugin.grammarPath) {
         const wasmFile = plugin.extractor.wasmFile ?? `tree-sitter-${plugin.id}.wasm`;
         registerGrammarPath(wasmFile, plugin.grammarPath);
@@ -81,14 +103,14 @@ export async function loadDeclaredPlugins(config: Config): Promise<void> {
       discoveredPlugins.push({
         id: plugin.id,
         fileType: plugin.fileType ?? plugin.id,
-        extensions: plugin.extensions,
+        extensions: manifest.extensions,
         packageName,
-        version: readPackageVersion(entryPath) ?? "unknown",
+        version: manifest.version,
         hasGrammar: !!plugin.grammarPath,
         hasOutline: !!plugin.outline,
       });
 
-      log.info(`Plugin loaded: ${packageName} (${plugin.extensions.join(", ")})`);
+      log.info(`Plugin loaded: ${packageName} (${manifest.extensions.join(", ")})`);
     } catch (err) {
       log.warn(`Plugin "${key}" (${packageName}): failed to load — ${err}`);
     }
@@ -96,74 +118,76 @@ export async function loadDeclaredPlugins(config: Config): Promise<void> {
 }
 
 /**
- * Legacy alias — calls loadDeclaredPlugins with an empty config (no plugins).
- * Used by tests/setup.ts when no config is available.
- * In test mode, falls back to scanning @reponova/lang-* in node_modules.
+ * Legacy alias — calls `loadDeclaredPlugins` with an empty config (no plugins).
+ * Used by `tests/setup.ts` when no config is available.
+ * In test mode, falls back to scanning `@reponova/lang-*` in `node_modules`.
  */
 export async function discoverLanguagePlugins(config?: Config): Promise<void> {
   if (config) {
     return loadDeclaredPlugins(config);
   }
-  // Fallback: scan node_modules/@reponova/lang-* (for tests without config)
   await scanReponovaScope();
 }
 
 /**
- * Get list of discovered plugins (after loadDeclaredPlugins() has run).
+ * Get list of discovered plugins (after `loadDeclaredPlugins()` has run).
  */
 export function getDiscoveredPlugins(): DiscoveredPlugin[] {
   return discoveredPlugins;
 }
 
 /**
- * Resolve entry point for a package by name.
- * Tries require.resolve-style lookup from the node_modules that contains reponova.
+ * Resolve a plugin's manifest from its installed package. Returns `null` if
+ * the package is missing, isn't a reponova language plugin, or doesn't
+ * declare any extensions.
  */
-function resolvePluginEntry(packageName: string): string | null {
+function resolvePluginManifest(packageName: string): PluginManifest | null {
   const nodeModulesDir = resolveNodeModulesDir();
   if (!nodeModulesDir) return null;
 
-  // Handle scoped packages: @org/name → @org/name
-  // Handle unscoped: name → name
   const pkgDir = join(nodeModulesDir, ...packageName.split("/"));
   const pkgJsonPath = join(pkgDir, "package.json");
-
   if (!existsSync(pkgJsonPath)) return null;
 
+  let pkgJson: Record<string, unknown>;
   try {
-    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-    const reponovaMeta = pkgJson.reponova as Record<string, unknown> | undefined;
-    if (reponovaMeta?.type !== "language") return null;
-
-    const exports = pkgJson.exports as Record<string, string> | undefined;
-    const entryFile = exports?.["."] ?? "./dist/index.js";
-    return join(pkgDir, entryFile);
+    pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
   } catch {
     return null;
   }
+
+  const reponovaMeta = pkgJson.reponova as Record<string, unknown> | undefined;
+  if (reponovaMeta?.type !== PLUGIN_TYPE_LANGUAGE) return null;
+
+  const extensions = readExtensions(reponovaMeta);
+  if (extensions.length === 0) return null;
+
+  const exports = pkgJson.exports as Record<string, string> | undefined;
+  const entryFile = exports?.["."] ?? "./dist/index.js";
+  const version = typeof pkgJson.version === "string" ? pkgJson.version : "unknown";
+
+  return {
+    entryPath: join(pkgDir, entryFile),
+    extensions,
+    version,
+  };
 }
 
 /**
- * Read package version from the package.json near the entry path.
+ * Read and normalize `manifest.reponova.extensions[]`. Returns `[]` if
+ * the field is missing or not a string array.
  */
-function readPackageVersion(entryPath: string): string | null {
-  // Walk up to find package.json
-  let dir = resolve(entryPath, "..");
-  for (let i = 0; i < 5; i++) {
-    const pkgPath = join(dir, "package.json");
-    if (existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-        return pkg.version as string ?? null;
-      } catch { return null; }
-    }
-    dir = resolve(dir, "..");
-  }
-  return null;
+function readExtensions(meta: Record<string, unknown> | undefined): string[] {
+  if (!meta) return [];
+  const raw = meta.extensions;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((e): e is string => typeof e === "string" && e.length > 0)
+    .map((e) => (e.startsWith(".") ? e : `.${e}`).toLowerCase());
 }
 
 /**
- * Fallback scan for tests: discover @reponova/lang-* from node_modules.
+ * Fallback scan for tests: discover `@reponova/lang-*` from `node_modules`.
  */
 async function scanReponovaScope(): Promise<void> {
   const { readdirSync } = await import("node:fs");
@@ -182,35 +206,19 @@ async function scanReponovaScope(): Promise<void> {
 
   for (const entry of entries) {
     if (!entry.startsWith("lang-")) continue;
-
-    const pkgDir = join(scopeDir, entry);
-    const pkgJsonPath = join(pkgDir, "package.json");
-    if (!existsSync(pkgJsonPath)) continue;
-
-    let pkgJson: Record<string, unknown>;
-    try {
-      pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-    } catch {
-      continue;
-    }
-
-    const reponovaMeta = pkgJson.reponova as Record<string, unknown> | undefined;
-    if (reponovaMeta?.type !== "language") continue;
+    const packageName = `@reponova/${entry}`;
+    const manifest = resolvePluginManifest(packageName);
+    if (!manifest) continue;
 
     try {
-      const exports = pkgJson.exports as Record<string, string> | undefined;
-      const entryFile = exports?.["."] ?? "./dist/index.js";
-      const entryPath = join(pkgDir, entryFile);
-
-      const mod = await import(pathToFileURL(entryPath).href);
+      const mod = await import(pathToFileURL(manifest.entryPath).href);
       const plugin: LanguagePlugin = mod.plugin ?? mod.default;
-
       if (!plugin || !plugin.id || !plugin.extractor) continue;
 
-      registerExtractor(plugin.extractor);
+      registerExtractor(plugin.extractor, manifest.extensions);
 
       if (plugin.outline) {
-        const extsNoDot = plugin.extensions.map((e) => e.replace(/^\./, ""));
+        const extsNoDot = manifest.extensions.map((e) => e.replace(/^\./, ""));
         registerOutlineLanguage(plugin.id, extsNoDot, plugin.outline);
       }
 
@@ -222,13 +230,15 @@ async function scanReponovaScope(): Promise<void> {
       discoveredPlugins.push({
         id: plugin.id,
         fileType: plugin.fileType ?? plugin.id,
-        extensions: plugin.extensions,
-        packageName: `@reponova/${entry}`,
-        version: (pkgJson.version as string) ?? "unknown",
+        extensions: manifest.extensions,
+        packageName,
+        version: manifest.version,
         hasGrammar: !!plugin.grammarPath,
         hasOutline: !!plugin.outline,
       });
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 }
 
@@ -249,13 +259,10 @@ export function resolveNodeModulesDir(): string | null {
       try {
         const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
         if (pkg.name === "reponova") {
-          // In production: dir is node_modules/reponova/ → parent is node_modules/
           const parent = resolve(dir, "..");
-          // Check if parent looks like a node_modules dir
           if (parent.endsWith("node_modules")) {
             return parent;
           }
-          // In development: reponova is not inside node_modules, use its own node_modules
           const localNm = join(dir, "node_modules");
           if (existsSync(localNm)) return localNm;
           return null;
@@ -275,7 +282,6 @@ export function resolveNodeModulesDir(): string | null {
 export function getRegisteredFileTypes(config: Config): RegisteredFileType[] {
   const types: RegisteredFileType[] = [];
 
-  // Built-in: document (markdown, txt, rst)
   const docsConfig = config.docs;
   types.push({
     id: "document",
@@ -286,7 +292,6 @@ export function getRegisteredFileTypes(config: Config): RegisteredFileType[] {
     maxFileSizeKb: docsConfig.max_file_size_kb,
   });
 
-  // Plugin-provided types
   for (const plugin of discoveredPlugins) {
     const pluginConfig = config.plugins[plugin.id];
     types.push({

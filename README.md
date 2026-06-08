@@ -317,7 +317,7 @@ reponova lang <subcommand> [args] [flags]
 | `--dry-run` | `suggest` | Print the report only, skip the interactive prompt |
 | `--yes` | `suggest` | Install all suggestions without prompting (CI mode) |
 
-By default, `remove` on a globally-installed reponova prompts before touching the system-wide package (and skips it with a warning in non-interactive shells). `suggest` queries the public npm registry for `@reponova/lang-*` plus any community plugin tagged `reponova-plugin` / `reponova-language`.
+By default, `remove` on a globally-installed reponova prompts before touching the system-wide package (and skips it with a warning in non-interactive shells). `suggest` queries the public npm registry for every package tagged with the `reponova-language` keyword; `@reponova/lang-*` packages are ranked first as "official".
 
 ### `reponova cache`
 
@@ -692,29 +692,27 @@ Yes. `reponova build` and the programmatic API work standalone. The MCP server i
 
 **Any npm package can be a RepoNova language plugin**. Community plugins like `@exampleorg/lang-rust` or `reponova-lang-kotlin` work exactly like official ones.
 
-#### Requirements for a valid language plugin
+#### Plugin manifest spec
 
-A package is a valid RepoNova language plugin when it meets **all** of these criteria:
+Every language plugin lives at the intersection of two contracts: what makes it **installable** (loaded at runtime by reponova) and what makes it **discoverable** (returned by `reponova lang suggest` querying the npm registry). The two are deliberately layered — a plugin installed manually (`lang add <pkg>` or `npm link`) only has to satisfy the runtime contract.
 
-1. **`package.json`** contains `"reponova": { "type": "language" }`
-2. **Entry point** exports a `plugin` (or `default`) object conforming to `LanguagePlugin`
-3. **`plugin.id`** is a unique string identifier (e.g. `"rust"`, `"kotlin"`)
-4. **`plugin.extensions`** is a non-empty array of file extensions (e.g. `[".rs"]`)
-5. **`plugin.extractor`** is a valid `LanguageExtractor` implementation
-
-Optional but recommended:
-- `plugin.grammarPath` — tree-sitter WASM grammar for AST-based parsing
-- `plugin.outline` — `LanguageSupport` implementation for `graph_outline` tool
-- `plugin.fileType` — category label in output (defaults to `id`)
-- `plugin.configDefaults` — default values for plugin-specific config options
+| `package.json` field | Required for |
+|---|---|---|
+| `reponova.type: "language"` | install + discovery |
+| `reponova.extensions: string[]` (non-empty) | install + discovery |
+| `keywords` includes `"reponova-language"` | discovery only |
+| Scope `@reponova/lang-*` | nothing — ranking only |
+| Entry exports `LanguagePlugin` with `id` + `extractor` | install only |
 
 #### Creating a new language plugin
 
-1. **Create a new npm package** (any name, any scope)
-2. **Add** `"reponova": { "type": "language" }` to `package.json`
-3. **Export** a `plugin` object conforming to `LanguagePlugin`
-4. **Optionally** include a tree-sitter WASM grammar in `grammars/`
-5. **Publish** to npm (or use locally via `npm link`)
+1. **Create a new npm package** (any name, any scope).
+2. **In `package.json`** add:
+   - `"reponova": { "type": "language", "extensions": [".rs"] }`
+   - `"keywords": ["reponova-language"]` (so `reponova lang suggest` can find it)
+3. **Export** a `plugin` object conforming to `LanguagePlugin`.
+4. **Optionally** include a tree-sitter WASM grammar in `grammars/`.
+5. **Publish** to npm (or use locally via `npm link`).
 
 Users install it with:
 ```bash
@@ -734,7 +732,6 @@ plugins:
 ```typescript
 interface LanguagePlugin {
   readonly id: string;              // e.g. "python", "plantuml"
-  readonly extensions: string[];    // e.g. [".py", ".pyw"]
   readonly fileType?: string;       // category label in detected-files.json (default: id)
   readonly grammarPath?: string;    // absolute path to tree-sitter WASM grammar
   readonly extractor: LanguageExtractor;
@@ -748,7 +745,6 @@ interface LanguagePlugin {
 ```typescript
 interface LanguageExtractor {
   readonly languageId: string;
-  readonly extensions: string[];
   readonly wasmFile?: string;
   extract(tree: SyntaxTree | null, sourceCode: string, filePath: string): FileExtraction;
   resolveImportPath(importModule: string, currentFilePath: string): string[];
@@ -789,7 +785,6 @@ const grammarPath = resolve(fileURLToPath(new URL(".", import.meta.url)), "../gr
 
 export const plugin: LanguagePlugin = {
   id: "python",
-  extensions: [".py", ".pyw"],
   fileType: "python",
   grammarPath,
   extractor: new PythonExtractor(),
@@ -805,7 +800,6 @@ import { RustExtractor } from "./extractor.js";
 
 export const plugin: LanguagePlugin = {
   id: "rust",
-  extensions: [".rs"],
   fileType: "rust",
   extractor: new RustExtractor(),
 };
@@ -819,8 +813,12 @@ export const plugin: LanguagePlugin = {
   "version": "1.0.0",
   "type": "module",
   "exports": { ".": "./dist/index.js" },
-  "peerDependencies": { "reponova": ">=0.4.0" },
-  "reponova": { "type": "language" }
+  "keywords": ["reponova-language"],
+  "peerDependencies": { "reponova": ">=0.5.0" },
+  "reponova": {
+    "type": "language",
+    "extensions": [".rs"]
+  }
 }
 ```
 

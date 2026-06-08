@@ -6,6 +6,13 @@
  *
  * Built-in: only markdown. All other languages are provided by plugins
  * (`@reponova/lang-*`) discovered at runtime via `discoverLanguagePlugins()`.
+ *
+ * Extensions are passed EXPLICITLY by the caller (loaded from
+ * `package.json.reponova.extensions[]` for plugins, hard-coded for built-ins).
+ * The `LanguageExtractor` interface no longer exposes `extensions` — concrete
+ * extractor classes are free to keep a private field for their own logic
+ * (e.g. import-path resolution), but the routing table below is built solely
+ * from the explicit `extensions` parameter.
  */
 import type { LanguageExtractor } from "../types.js";
 import { MarkdownExtractor } from "./markdown.js";
@@ -18,18 +25,32 @@ const byExtension = new Map<string, LanguageExtractor>();
 /** languageId → extractor */
 const byLanguageId = new Map<string, LanguageExtractor>();
 
+/** languageId → extensions handled (mirror of the byExtension reverse map). */
+const extensionsByLanguageId = new Map<string, readonly string[]>();
+
 // ─── Registration ────────────────────────────────────────────────────────────
 
-export function registerExtractor(extractor: LanguageExtractor): void {
+export function registerExtractor(
+  extractor: LanguageExtractor,
+  extensions: readonly string[],
+): void {
   byLanguageId.set(extractor.languageId, extractor);
-  for (const ext of extractor.extensions) {
+  extensionsByLanguageId.set(extractor.languageId, [...extensions]);
+  for (const ext of extensions) {
     byExtension.set(ext, extractor);
   }
 }
 
+/** Extensions registered for a language id (empty array if unknown). */
+export function getExtensionsByLanguage(languageId: string): readonly string[] {
+  return extensionsByLanguageId.get(languageId) ?? [];
+}
+
 // ─── Built-in Extractors ─────────────────────────────────────────────────────
 
-registerExtractor(new MarkdownExtractor());
+/** Built-in: markdown / plain documentation. Other languages come from plugins. */
+const MARKDOWN_EXTENSIONS = [".md", ".txt", ".rst"] as const;
+registerExtractor(new MarkdownExtractor(), MARKDOWN_EXTENSIONS);
 
 // All other languages (python, plantuml, svg, etc.) are provided by plugins.
 // They are registered via discoverLanguagePlugins() at boot time.
