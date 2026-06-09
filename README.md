@@ -42,6 +42,7 @@ AI agents read files one at a time. They don't understand how your codebase fits
 ### What makes it different
 
 - **Zero external dependencies** — no Python, no Docker, no database servers. Pure Node.js
+- **Plugin-based language support** — install only what your workspace needs via `reponova lang suggest` (Markdown is the only built-in)
 - **Multi-repo support** — build one graph spanning multiple repositories
 - **Smart incremental builds** — SHA256 file hashing, per-phase config change detection
 - **Intelligent enrichment** — your AI agent or a configured LLM provider generates architectural descriptions, community profiles, and routing decisions
@@ -64,7 +65,7 @@ AI agents read files one at a time. They don't understand how your codebase fits
                                      6. HTML visualizations                       ... (11 tools)
 ```
 
-Language support is provided via plugins, only Markdown is built-in. See [Contributing](#contributing) for how to create a language plugin.
+Language extraction lives in [language plugins](#available-plugins) — only Markdown is built-in. Run `reponova lang suggest` to scan your repos and install the ones you need (the [official `@reponova/lang-*` catalogue](#available-plugins) plus any community plugin). See [Contributing](#contributing) to author a new plugin.
 
 ---
 
@@ -87,7 +88,15 @@ Artifacts installed per editor:
 | Claude Code | `claude mcp add` (manual) | `.claude/settings.json` (PreToolUse) | `.claude/skills/reponova-mcp/SKILL.md` | `.claude/skills/reponova-enrich/SKILL.md` | `.claude/reponova.yml` |
 | VS Code | `.vscode/mcp.json` | *(skill auto-loads)* | `.github/skills/reponova-mcp/SKILL.md` | `.github/skills/reponova-enrich/SKILL.md` | `.vscode/reponova.yml` |
 
-### 2. Build and enrich the graph
+### 2. Install language plugins for your workspace
+
+```bash
+reponova lang suggest
+```
+
+Scans every repo in the workspace and queries the public npm registry for matching language plugins. Pick what you need; `reponova lang add <pkg>` then declares them in `reponova.yml`. See [Available Plugins](#available-plugins) for the official catalogue.
+
+### 3. Build and enrich the graph
 
 Type `/reponova-enrich` in your editor. This single command handles the entire pipeline:
 
@@ -102,7 +111,7 @@ Your AI agent acts as the reasoning engine — no API keys, no local models, no 
 
 > **Headless alternative:** Run `reponova build` from the CLI for a fully algorithmic build (no LLM). For automated LLM enrichment, configure `enrich.provider` in `reponova.yml` — then `reponova build` handles everything including intelligent enrichment.
 
-### 3. Use it
+### 4. Use it
 
 The MCP server starts automatically. Your AI agent now has 11 graph tools.
 
