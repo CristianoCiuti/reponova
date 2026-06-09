@@ -13,6 +13,7 @@ import type { FileExtraction } from "./types.js";
 import type { Config } from "../shared/types.js";
 import { parse } from "./parser.js";
 import { getExtractorForFile } from "./languages/registry.js";
+import { getPluginConfig } from "../plugin/plugin-config-registry.js";
 import { buildSkipDirs, createPatternMatcher, extensionsToGlobs } from "../shared/path-resolver.js";
 import { relativePosix } from "../shared/paths.js";
 import { log } from "../shared/utils.js";
@@ -183,7 +184,8 @@ export async function extractAll(workspace: string, filePaths: string[]): Promis
         }
       }
 
-      const extraction = extractor.extract(tree, source, relPath);
+      const pluginConfig = getPluginConfig(extractor.languageId);
+      const extraction = extractor.extract(tree, source, relPath, pluginConfig);
       extractions.push(extraction);
       succeeded++;
     } catch (err) {

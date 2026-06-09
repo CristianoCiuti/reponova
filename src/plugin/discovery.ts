@@ -21,6 +21,11 @@ import { registerExtractor } from "../extract/languages/registry.js";
 import { registerOutlineLanguage } from "../outline/languages/registry.js";
 import { registerGrammarPath } from "./grammar-registry.js";
 import { PLUGIN_TYPE_LANGUAGE } from "./manifest-spec.js";
+import {
+  clearPluginConfigs,
+  mergePluginConfig,
+  setPluginConfig,
+} from "./plugin-config-registry.js";
 import type { LanguagePlugin } from "./types.js";
 import type { RegisteredFileType } from "../extract/index.js";
 import type { Config } from "../shared/types.js";
@@ -62,6 +67,7 @@ export function resolvePluginPackage(key: string, config: { package?: string }):
  * manifest are skipped with a warning — they cannot be safely routed.
  */
 export async function loadDeclaredPlugins(config: Config): Promise<void> {
+  clearPluginConfigs();
   for (const [key, pluginConfig] of Object.entries(config.plugins)) {
     if (pluginConfig.enabled === false) continue;
 
@@ -99,6 +105,13 @@ export async function loadDeclaredPlugins(config: Config): Promise<void> {
         const wasmFile = plugin.extractor.wasmFile ?? `tree-sitter-${plugin.id}.wasm`;
         registerGrammarPath(wasmFile, plugin.grammarPath);
       }
+
+      // Merge plugin-declared defaults with the user's overrides from
+      // `reponova.yml`, then index the result under both the plugin id
+      // and the extractor's language id so call sites can look it up
+      // with whichever identifier they have on hand.
+      const merged = mergePluginConfig(plugin.configDefaults, pluginConfig);
+      setPluginConfig([plugin.id, plugin.extractor.languageId], merged);
 
       discoveredPlugins.push({
         id: plugin.id,

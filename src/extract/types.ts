@@ -156,9 +156,21 @@ export interface LanguageExtractor {
    * @param tree - The parsed tree-sitter syntax tree (null if no wasmFile)
    * @param sourceCode - The raw source code string
    * @param filePath - Relative file path (for qualified name generation)
+   * @param pluginConfig - Effective plugin configuration for this call.
+   *   The pipeline merges the plugin's declared `LanguagePlugin.configDefaults`
+   *   with the user's `config.plugins[pluginId]` (from `reponova.yml`), strips
+   *   the loader-reserved fields (`package`, `enabled`, `patterns`, `exclude`),
+   *   and passes the result. The parameter is optional so plugins built
+   *   against earlier RepoNova versions keep working — when omitted, the
+   *   extractor should fall back to its own defaults.
    * @returns FileExtraction with all discovered symbols and relationships
    */
-  extract(tree: SyntaxTree | null, sourceCode: string, filePath: string): FileExtraction;
+  extract(
+    tree: SyntaxTree | null,
+    sourceCode: string,
+    filePath: string,
+    pluginConfig?: Readonly<Record<string, unknown>>,
+  ): FileExtraction;
 
   /**
    * Resolve an import module path to candidate relative file paths.

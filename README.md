@@ -751,7 +751,12 @@ interface LanguagePlugin {
 interface LanguageExtractor {
   readonly languageId: string;
   readonly wasmFile?: string;
-  extract(tree: SyntaxTree | null, sourceCode: string, filePath: string): FileExtraction;
+  extract(
+    tree: SyntaxTree | null,
+    sourceCode: string,
+    filePath: string,
+    pluginConfig?: Readonly<Record<string, unknown>>,
+  ): FileExtraction;
   resolveImportPath(importModule: string, currentFilePath: string): string[];
 }
 ```
@@ -857,8 +862,18 @@ Outlines (`graph_outline`) are provided by plugins alongside extraction. A plugi
 ```typescript
 interface LanguageSupport {
   readonly wasmFile: string;
-  treeSitterExtract(rootNode: SyntaxNode, filePath: string, lineCount: number): FileOutline;
-  regexExtract(filePath: string, source: string, lineCount: number): FileOutline;
+  treeSitterExtract(
+    rootNode: SyntaxNode,
+    filePath: string,
+    lineCount: number,
+    pluginConfig?: Readonly<Record<string, unknown>>,
+  ): FileOutline;
+  regexExtract(
+    filePath: string,
+    source: string,
+    lineCount: number,
+    pluginConfig?: Readonly<Record<string, unknown>>,
+  ): FileOutline;
 }
 ```
 

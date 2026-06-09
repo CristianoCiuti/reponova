@@ -19,6 +19,26 @@ export interface LanguagePlugin {
   readonly extractor: LanguageExtractor;
   /** Outline support (optional — not all languages have outlines) */
   readonly outline?: LanguageSupport;
-  /** Default values for plugin-specific config properties */
+  /**
+   * Default values for plugin-specific config properties.
+   *
+   * Two effects at runtime:
+   *
+   * 1. **`reponova lang add` documentation surface** — `addPluginToConfig`
+   *    writes these defaults into `reponova.yml` under the plugin's key
+   *    so users discover the available knobs without reading the README.
+   * 2. **Effective config delivered to the plugin** — at build time the
+   *    loader merges these defaults with the user's `config.plugins[id]`
+   *    (user overrides win), strips the loader-reserved fields
+   *    (`package`, `enabled`, `patterns`, `exclude`), and passes the
+   *    resulting object as the optional `pluginConfig` argument of
+   *    {@link LanguageExtractor.extract}, {@link LanguageSupport.treeSitterExtract},
+   *    and {@link LanguageSupport.regexExtract}.
+   *
+   * Plugins are free to declare any keys they want — RepoNova never
+   * inspects the contents. The convention is to use camelCase keys and
+   * primitive / JSON-friendly values so they round-trip cleanly through
+   * `reponova.yml`.
+   */
   readonly configDefaults?: Record<string, unknown>;
 }
