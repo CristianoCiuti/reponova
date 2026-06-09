@@ -38,6 +38,14 @@ export type { LanguageSupport } from "./outline/languages/types.js";
 export type { LanguagePlugin } from "./plugin/types.js";
 export { discoverLanguagePlugins, loadDeclaredPlugins, getDiscoveredPlugins, resolvePluginPackage } from "./plugin/discovery.js";
 export { registerGrammarPath, resolveGrammarPath } from "./plugin/grammar-registry.js";
+export {
+  getPluginConfig,
+  getAllPluginConfigs,
+  setPluginConfig,
+  mergePluginConfig,
+  clearPluginConfigs,
+  EMPTY_PLUGIN_CONFIG,
+} from "./plugin/plugin-config-registry.js";
 
 // Build API
 export { build } from "./pipeline/build.js";

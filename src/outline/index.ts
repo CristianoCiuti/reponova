@@ -19,6 +19,7 @@
 import { detectLanguage, getLanguage } from "./languages/registry.js";
 import type { FileOutline } from "../shared/types.js";
 import { parse } from "../extract/parser.js";
+import { getPluginConfig } from "../plugin/plugin-config-registry.js";
 import { log } from "../shared/utils.js";
 
 // Re-export for convenience
@@ -42,17 +43,18 @@ export async function generateOutline(filePath: string, source: string): Promise
   if (!lang) return null;
 
   const lineCount = source.split("\n").length;
+  const pluginConfig = getPluginConfig(langName);
 
   // Try tree-sitter via shared parser
   const tree = await parse(source, lang.wasmFile);
   if (tree) {
     try {
-      return lang.treeSitterExtract(tree.rootNode, filePath, lineCount);
+      return lang.treeSitterExtract(tree.rootNode, filePath, lineCount, pluginConfig);
     } catch (err) {
       log.debug(`Tree-sitter extract failed for ${filePath}, using regex: ${err}`);
     }
   }
 
   // Regex fallback
-  return lang.regexExtract(filePath, source, lineCount);
+  return lang.regexExtract(filePath, source, lineCount, pluginConfig);
 }
